@@ -219,12 +219,24 @@ validate lifecycle state, including stale calls made after a transition.
 Normal prompt/dashboard reads use per-goal ledger indexes: 12 recent events,
 64 activity candidates in stable timestamp order, pinned audit/lifecycle state,
 and blocker-fingerprint Oracle state. Appends extend these indexes without
-copying history. Version 2 derived checkpoints use UTF-8 byte offsets; old or
+copying history. Version 3 derived checkpoints use UTF-8 byte offsets and retain
+reconstructed Oracle advice; old or
 corrupt checkpoints rebuild from the authoritative JSONL ledger. Full history
 is loaded for explicit history/diagnostic requests. Saved goal/session formats
 remain compatible. Task presentation caches use content snapshots; usage changes
 do not rebuild task trees. Stable prompt rules precede changing goal data and
 usage counters, with retrieval instructions beside bounded excerpts.
+
+Warm settings resolution is cached by layer identity and applicable environment
+values; public resolved values remain independently editable. Task and prompt
+caches compare content fields without repeatedly serializing long contracts.
+Compiled detail pages reuse their source and cursor hash; history sources are
+invalidated by an opaque ledger generation on append or refresh. Cache size
+limits bound retained data; larger requirements remain available losslessly.
+Pure ANSI text wrapping/truncation is cached by text and layout arguments across
+widgets and dialogs. Live auditor previews scan only the report tail, while the
+complete final report remains available. Measurements and the module audit are
+in `specs/2026-09-07-comprehensive-optimization/`.
 
 The `tool_call` interceptor blocks work tools after a stop tool has fired in
 the same turn, and blocks work tools when the checkpoint that triggered the

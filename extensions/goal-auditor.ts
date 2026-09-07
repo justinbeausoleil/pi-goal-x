@@ -109,6 +109,20 @@ function escapePromptPayload(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Stream previews need only the tail, not a split/copy of the full growing report. */
+export function recentNonEmptyLines(text: string, limit: number): string[] {
+	const lines: string[] = [];
+	let end = text.length;
+	while (end >= 0 && lines.length < limit) {
+		const newline = end > 0 ? text.lastIndexOf("\n", end - 1) : -1;
+		const line = text.slice(newline + 1, end);
+		if (line.trim()) lines.push(line);
+		if (newline < 0) break;
+		end = newline;
+	}
+	return lines.reverse();
+}
+
 /** §60: human-readable labels for the auditor's read-only tool set. */
 export function labelForReadOnlyTool(toolName: string): string {
 	switch (toolName) {
@@ -322,6 +336,7 @@ export async function runGoalCompletionAuditor(args: {
 	const model = resolved.model;
 	const thinkingLevel = config.thinkingLevel;
 	const outputParts: string[] = [];
+	let outputTail: string[] = [];
 	if (resolved.error) {
 		return { approved: false, disapproved: true, output: "", model: modelLabel(model), thinkingLevel, error: resolved.error };
 	}
@@ -404,10 +419,10 @@ export async function runGoalCompletionAuditor(args: {
 				const message = event.message as { role?: string; content?: Array<{ type?: string; text?: string }> };
 				if (message?.role === "assistant") {
 					for (const part of message.content ?? []) {
-						if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+						if (part.type === "text" && typeof part.text === "string") {
 							// Keep the last 5 non-empty text lines for live display
-							const lines = part.text.split("\n").filter((l: string) => l.trim());
-							progress.recentOutput = [...lines.slice(-5)];
+							const lines = recentNonEmptyLines(part.text, 5);
+							if (lines.length) progress.recentOutput = lines;
 						}
 					}
 				}
@@ -418,18 +433,19 @@ export async function runGoalCompletionAuditor(args: {
 			const message = event.message as { role?: string; content?: Array<{ type?: string; text?: string }> };
 			if (message.role !== "assistant") return;
 			for (const part of message.content ?? []) {
-				if (part.type === "text" && typeof part.text === "string") outputParts.push(part.text);
+				if (part.type === "text" && typeof part.text === "string") {
+					outputParts.push(part.text);
+					outputTail = [...outputTail, ...recentNonEmptyLines(part.text, 8)].slice(-8);
+				}
 			}
 			// Final report production: derived label for the widget.
-			if (outputParts.some((t) => t.trim())) {
+			if (outputTail.length > 0) {
 				progress.label = "Producing report...";
 				progress.percentage = Math.max(progress.percentage ?? 0, 90);
 				progress.phase = "producing_report";
 			}
 			// Show the accumulated output in progress
-			const fullText = outputParts.join("\n\n");
-			const lines = fullText.split("\n").filter((l: string) => l.trim());
-			progress.recentOutput = lines.slice(-8);
+			progress.recentOutput = outputTail;
 			emitProgress();
 		});
 		// Wire the external AbortSignal to abort the running session when fired

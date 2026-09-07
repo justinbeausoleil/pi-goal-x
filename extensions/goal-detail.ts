@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { GoalRecord, GoalTask } from "./goal-record.ts";
+import { taskIndex } from "./goal-task-index.ts";
+import type { GoalRecord } from "./goal-record.ts";
 import type { GoalLedgerEvent } from "./goal-ledger.ts";
 
 export const GOAL_DETAIL_PAGE_CHARS = 4000;
@@ -7,21 +8,45 @@ export type GoalDetailSection = "objective" | "tasks" | "history";
 export interface GoalDetailQuery { section: GoalDetailSection; task_id?: string; cursor?: string }
 export type GoalDetailPage = {ok: true; text: string; content: string; nextCursor?: string; totalChars: number} | {ok: false; text: string};
 
-/** Stable, lossless detail text. Paging never mutates the authoritative record. */
-export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[] = []): GoalDetailPage {
+interface DetailSource { source: string; key: string }
+const detailCache: Array<{inputs: readonly unknown[]; result: DetailSource}> = [];
+let detailCacheChars = 0;
+
+function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[], revision?: object): DetailSource | undefined {
+ const index = query.section === "tasks" ? taskIndex(goal.taskList?.tasks) : undefined;
+ const inputs = [goal.id, query.section, query.task_id, ...(query.section === "objective" ? [goal.objective, goal.verificationContract]
+  : query.section === "tasks" ? [index, goal.currentTaskId] : [revision])];
+ // Arbitrary caller-owned histories remain content checked; only the ledger can supply a generation.
+ const cacheable = query.section !== "history" || revision !== undefined;
+ if (cacheable) for (let i = detailCache.length - 1; i >= 0; i--) {
+  const entry = detailCache[i]!;
+  if (inputs.length === entry.inputs.length && inputs.every((value, j) => value === entry.inputs[j])) return entry.result;
+ }
  let source: string;
- if (query.task_id !== undefined && query.section !== "tasks") return {ok: false, text: "task_id requires section=tasks."};
  if (query.section === "objective") source = `${goal.objective}${goal.verificationContract ? `\n\nVerification contract:\n${goal.verificationContract}` : ""}`;
  else if (query.section === "history") source = events.filter(e => "goalId" in e && e.goalId === goal.id).map(e => JSON.stringify(e)).join("\n");
  else {
-  const rows: Array<{task: GoalTask; parent_id?: string}> = [];
-  const walk = (tasks: GoalTask[], parent_id?: string): void => { for (const task of tasks) { rows.push({task, parent_id}); if (task.subtasks) walk(task.subtasks, task.id); } };
-  walk(goal.taskList?.tasks ?? []);
-  const selected = query.task_id ? rows.find(r => r.task.id === query.task_id) : undefined;
-  if (query.task_id && !selected) return {ok: false, text: `Task "${query.task_id}" not found.`};
-  source = (selected ? [selected] : rows).map(({task: {subtasks, ...task}, parent_id}) => JSON.stringify({...task, parent_id, ...(task.id === goal.currentTaskId ? {current: true} : {})})).join("\n");
+  const rows = index!.ordered;
+  const selected = query.task_id ? rows.find(row => row.task.id === query.task_id) : undefined;
+  if (query.task_id && !selected) return undefined;
+  source = (selected ? [selected] : rows).map(({task: {subtasks, ...task}, parentId}) => JSON.stringify({...task, parent_id: parentId, ...(task.id === goal.currentTaskId ? {current: true} : {})})).join("\n");
  }
  const key = createHash("sha256").update(JSON.stringify([goal.id, query.section, query.task_id, source])).digest("hex");
+ const result = {source, key};
+ // Full data remains available even when it exceeds the bounded shared page cache.
+ if (cacheable && source.length <= 16_000_000) {
+  while (detailCache.length >= 16 || detailCacheChars + source.length > 16_000_000) detailCacheChars -= detailCache.shift()!.result.source.length;
+  detailCache.push({inputs, result}); detailCacheChars += source.length;
+ }
+ return result;
+}
+
+/** Stable, lossless detail text. Ledger revisions are opaque generations, never timestamps. */
+export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[] = [], historyRevision?: object): GoalDetailPage {
+ if (query.task_id !== undefined && query.section !== "tasks") return {ok: false, text: "task_id requires section=tasks."};
+ const compiled = compiledSource(goal, query, events, historyRevision);
+ if (!compiled) return {ok: false, text: `Task "${query.task_id}" not found.`};
+ const {source, key} = compiled;
  let offset = 0;
  if (query.cursor) {
   try {

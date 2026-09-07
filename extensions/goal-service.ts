@@ -238,7 +238,7 @@ export class GoalService {
     return null;
    }
    const base = freshDisk;
-			const next = sanitizeGoalPaths(ctx, { ...goal, revision: (base.revision ?? 0) + 1 });
+			const next = { ...goal, revision: (base.revision ?? 0) + 1 };
 			const written = this.turn.archive || next.status === "complete"
 				? archiveGoalFile(ctx, next)
 				: writeActiveGoalFile(ctx, next);
@@ -476,10 +476,10 @@ export class GoalService {
 
 			// 3. mutation on a clone (after an optional authoritative objective merge).
 			const base = spec.refreshFromDisk ? mergeGoalPromptFromDisk(ctx, current) : current;
-			const mutated = sanitizeGoalPaths(ctx, {
+			const mutated = {
 				...spec.mutate(cloneGoal(base)),
 				revision: capturedRevision + 1,
-			});
+			};
 
 			// 4. authoritative file write (active or archive). A failure here throws
 			//    and prevents any memory/ledger/focus/archive commit.
@@ -597,24 +597,38 @@ export class GoalService {
    if (fresh.status !== "active" || !fresh.taskList) return {ok: false, message: "The persisted goal is no longer active with tasks; no updates applied."};
    base = {...fresh, usage: current.usage};
   }
-  let next = cloneGoal(base);
+  const next = cloneGoal(base);
+  const locations = new Map<string, {tasks: GoalTask[]; index: number}>();
+  const indexTasks = (tasks: GoalTask[]): void => {
+   for (let i = 0; i < tasks.length; i++) { const task = tasks[i]!; locations.set(task.id, {tasks, index: i}); if (task.subtasks) indexTasks(task.subtasks); }
+  };
+  const removeTasks = (tasks: GoalTask[]): void => {
+   for (const task of tasks) { locations.delete(task.id); if (task.subtasks) removeTasks(task.subtasks); }
+  };
+  indexTasks(next.taskList!.tasks);
   const events: GoalLedgerEvent[] = [];
   for (const spec of specs) {
    if (spec.focusToken && !this.ref.isTokenCurrent(spec.focusToken)) return {ok: false, message: "The focused goal changed; no updates applied."};
-   const task = findTaskInTree(next.taskList!.tasks, spec.taskId);
+   const location = locations.get(spec.taskId);
+   const task = location?.tasks[location.index];
    if (!task) return {ok: false, message: `Task "${spec.taskId}" not found.`};
    const valid = spec.validate?.(task);
    if (valid && !valid.ok) return valid;
    const updated = spec.update(task);
    if ("ok" in updated && !updated.ok) return updated;
    const updatedTask = updated as GoalTask;
-   next.taskList = {...next.taskList!, tasks: updateTaskInTree(next.taskList!.tasks, spec.taskId, () => updatedTask)};
+   location!.tasks[location!.index] = updatedTask;
+   if (updatedTask.id !== task.id) { locations.delete(task.id); locations.set(updatedTask.id, location!); }
+   if (updatedTask.subtasks !== task.subtasks) {
+    if (task.subtasks) removeTasks(task.subtasks);
+    if (updatedTask.subtasks) indexTasks(updatedTask.subtasks);
+   }
    next.currentTaskId = resolveUpdatedCurrentTaskId(spec, next.currentTaskId, updatedTask);
    next.updatedAt = nowIso();
    if (spec.ledger) events.push(...spec.ledger(next, updatedTask));
   }
   if (this.turn.active) return this.apply(ctx, {reconcile: false, expectedGoalId: current.id, focusToken: specs[0]?.focusToken, mutate: () => next, ledger: events});
-  const written = writeActiveGoalFile(ctx, sanitizeGoalPaths(ctx, {...next, revision: (base.revision ?? 0) + 1}));
+  const written = writeActiveGoalFile(ctx, {...next, revision: (base.revision ?? 0) + 1});
   this.appendLedgerEventsBestEffort(ctx, events);
   this.trackBaseline(written.id, written.usage);
   this.ref.setFocused(written);
@@ -678,13 +692,13 @@ export class GoalService {
 			if (typeof updated === "object" && "ok" in updated && !updated.ok) return updated;
 			const updatedTask = updated as GoalTask;
 			const updatedTasks = updateTaskInTree(base.taskList.tasks, spec.taskId, () => updatedTask);
-			const mutated = sanitizeGoalPaths(ctx, {
+			const mutated = {
 				...base,
 				taskList: { ...base.taskList, tasks: updatedTasks },
 				currentTaskId: resolveUpdatedCurrentTaskId(spec, base.currentTaskId, updatedTask),
 				updatedAt: nowIso(),
 				revision: capturedRevision + 1,
-			});
+			};
 			const written = writeActiveGoalFile(ctx, mutated);
 			if (spec.ledger) {
 				try {
@@ -770,7 +784,7 @@ export class GoalService {
 	/** Create a goal: write active file → ledger → memory/focus commit. */
 	create(ctx: GoalServiceContext, spec: { goal: GoalRecord; ledger?: GoalLedgerEvent[] }): GoalMutationResult {
 		const previousGoalId = this.ref.getFocused()?.id ?? null;
-		const written = writeActiveGoalFile(ctx, sanitizeGoalPaths(ctx, spec.goal));
+		const written = writeActiveGoalFile(ctx, spec.goal);
 		if (spec.ledger && spec.ledger.length > 0) {
 			this.appendLedgerEventsBestEffort(ctx, spec.ledger);
 		}

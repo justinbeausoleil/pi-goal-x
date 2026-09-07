@@ -70,8 +70,8 @@ pi.registerTool(defineTool({
 		const includeHistory = params.include_history === true || verbose;
 		const otherCount = otherOpenGoalCount(core.goalsById, core.focusedGoalId);
 		if (!view) {
-			const text = core.openGoals().length > 0
-				? `${buildUnfocusedOpenGoalsSummary(core.openGoals().length)}\n\nCall create_goal with the objective to create and focus a new goal, or ask the user to run /goal-focus to choose an open goal.`
+			const text = otherOpenGoalCount(core.goalsById, null) > 0
+				? `${buildUnfocusedOpenGoalsSummary(otherOpenGoalCount(core.goalsById, null))}\n\nCall create_goal with the objective to create and focus a new goal, or ask the user to run /goal-focus to choose an open goal.`
 				: "No goal is set in this session. Call create_goal with the objective when the user explicitly asks to start a persistent goal.";
 			return {
 				content: [{ type: "text", text }],
@@ -80,7 +80,8 @@ pi.registerTool(defineTool({
 		}
   if (params.section && params.section !== "summary") {
    if (!["objective", "tasks", "history"].includes(params.section)) return {content: [{type: "text", text: "Unknown goal section."}], details: goalDetails(view)};
-   const page = goalDetailPage(view, {section: params.section, task_id: params.task_id, cursor: params.cursor}, params.section === "history" ? readGoalLedger(ctx).events : []);
+   const history = params.section === "history" ? readGoalLedger(ctx) : undefined;
+   const page = goalDetailPage(view, {section: params.section, task_id: params.task_id, cursor: params.cursor}, history?.events, history?.revision);
    return {content: [{type: "text", text: page.text}], details: {...goalDetails(view), ...(page.ok ? {page: {content: page.content, nextCursor: page.nextCursor, totalChars: page.totalChars}} : {})}};
   }
   if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};

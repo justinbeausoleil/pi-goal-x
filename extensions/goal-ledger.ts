@@ -43,6 +43,8 @@ export interface GoalLedgerContext {
 export interface GoalLedgerReadResult {
   events: GoalLedgerEvent[];
   malformed: number;
+  /** Opaque generation for borrowed, read-only history views; replaced on append/refresh. */
+  revision?: object;
 }
 
 export interface ReconstructedGoalState {
@@ -148,6 +150,7 @@ interface LedgerCacheEntry {
   chars: number;
   events: GoalLedgerEvent[];
   malformed: number;
+  revision: object;
 }
 
 const ledgerCache = new Map<string, LedgerCacheEntry>();
@@ -167,15 +170,14 @@ export function invalidateGoalLedgerCache(): void {
 function extendLedgerCache(filePath: string, lines: string, events: GoalLedgerEvent[]): void {
   const cached = ledgerCache.get(filePath);
   if (!cached) return;
-  const sanitized: GoalLedgerEvent[] = [];
-  for (const event of events) sanitized.push(sanitizeEvent(event));
-  cached.events.push(...sanitized);
+  for (const event of events) cached.events.push(sanitizeEvent(event));
   ledgerCache.set(filePath, {
     size: cached.size + Buffer.byteLength(lines, "utf8"),
     mtimeMs: cached.mtimeMs,
     chars: cached.chars + lines.length,
     events: cached.events,
     malformed: cached.malformed,
+    revision: {},
   });
 }
 
@@ -186,7 +188,7 @@ export function readGoalLedger(ctx: GoalLedgerContext): GoalLedgerReadResult {
     // NAF zero-op steady state: no stat, no read, no parse. The cache is kept
     // current by extendLedgerCache on every in-process append; external
     // (non-extension) edits to the ledger go stale mid-session (documented).
-    return { events: cached.events, malformed: cached.malformed };
+    return { events: cached.events, malformed: cached.malformed, revision: cached.revision };
   }
   return readGoalLedgerCold(ctx, filePath);
 }
@@ -198,17 +200,21 @@ function readGoalLedgerCold(ctx: GoalLedgerContext, filePath: string): GoalLedge
     content = fs.readFileSync(filePath, "utf8");
   } catch {
     // Missing or unreadable: cache the empty result so repeated reads are zero-op.
-    ledgerCache.set(filePath, { size: 0, mtimeMs: 0, chars: 0, events: [], malformed: 0 });
-    return { events: [], malformed: 0 };
+    const empty = {events: [], malformed: 0, revision: {}};
+    ledgerCache.set(filePath, {size: 0, mtimeMs: 0, chars: 0, ...empty});
+    return empty;
   }
   const parsed = parseLedgerLines(content);
-  ledgerCache.set(filePath, { size: Buffer.byteLength(content, "utf8"), mtimeMs: 0, chars: content.length, events: parsed.events, malformed: parsed.malformed });
-  return parsed;
+  const result = {...parsed, revision: {}};
+  ledgerCache.set(filePath, { size: Buffer.byteLength(content, "utf8"), mtimeMs: 0, chars: content.length, ...result });
+  return result;
 }
 
 /** Parse a JSONL ledger body into sanitized events + a malformed-line count. */
 function parseLedgerLines(content: string): GoalLedgerReadResult {
   const events: GoalLedgerEvent[] = [];
+  // Goal IDs repeat across most rows. A bounded per-read map avoids repeated sanitation.
+  const goalIds = new Map<string, string>();
   let malformed = 0;
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
@@ -216,7 +222,12 @@ function parseLedgerLines(content: string): GoalLedgerReadResult {
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       if (isValidLedgerEvent(parsed)) {
-        events.push(sanitizeEvent(parsed, true));
+        if ("goalId" in parsed) {
+          let id = goalIds.get(parsed.goalId);
+          if (id === undefined) { id = safeGoalId(parsed.goalId); if (goalIds.size < 1024) goalIds.set(parsed.goalId, id); }
+          parsed.goalId = id;
+        }
+        events.push(parsed);
       } else {
         malformed++;
       }
@@ -243,7 +254,7 @@ function parseLedgerLines(content: string): GoalLedgerReadResult {
 // ---------------------------------------------------------------------------
 
 export const LEDGER_CHECKPOINT_FILE = ".goal-ledger-checkpoint.json";
-export const LEDGER_CHECKPOINT_VERSION = 2;
+export const LEDGER_CHECKPOINT_VERSION = 3;
 const CHECKPOINT_RECENT_CAP = 12;
 
 /** In-memory ledger checkpoint (maps in native form). */
@@ -303,6 +314,7 @@ function checkpointToJson(cp: LedgerCheckpoint): unknown {
     latestPauseReason: s.latestPauseReason,
     latestPauseSuggestedAction: s.latestPauseSuggestedAction,
     latestAuditorResult: s.latestAuditorResult,
+    latestOracleResult: s.latestOracleResult,
     createdAt: s.createdAt,
     completedAt: s.completedAt,
     abortedAt: s.abortedAt,
@@ -339,10 +351,14 @@ function parseGoalState(value: unknown): ReconstructedGoalState | null {
     if (auditor.verdict !== "approved" && auditor.verdict !== "disapproved" && auditor.verdict !== "error") return null;
     if (typeof auditor.report !== "string" || typeof auditor.at !== "string") return null;
   }
+  const oracle = o.latestOracleResult as Record<string, unknown> | undefined;
+  if (oracle !== undefined && (!oracle || typeof oracle.fingerprint !== "string" || typeof oracle.adviceId !== "string" || typeof oracle.summary !== "string" || typeof oracle.at !== "string"
+   || !["actionable", "needs_human", "insufficient_context"].includes(oracle.disposition as string))) return null;
   return {
     goalId: o.goalId,
     latestStatus,
     latestFocus: o.latestFocus === true,
+    latestOracleResult: oracle as ReconstructedGoalState["latestOracleResult"],
     latestPauseReason: typeof o.latestPauseReason === "string" ? o.latestPauseReason : undefined,
     latestPauseSuggestedAction: typeof o.latestPauseSuggestedAction === "string" ? o.latestPauseSuggestedAction : undefined,
     latestAuditorResult: auditor
@@ -365,16 +381,18 @@ function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
   if (typeof o.coveredBytes !== "number" || !Number.isSafeInteger(o.coveredBytes) || o.coveredBytes < 0) return null;
   if (typeof o.coveredEvents !== "number" || !Number.isSafeInteger(o.coveredEvents) || o.coveredEvents < 0) return null;
   const accRaw = o.acc as Record<string, unknown> | undefined;
-  if (!accRaw || typeof accRaw.focusGeneration !== "number") return null;
+  if (!accRaw || typeof accRaw.focusGeneration !== "number" || !Number.isSafeInteger(accRaw.focusGeneration) || !Array.isArray(accRaw.goals) || !Array.isArray(accRaw.terminalGoals) || !Array.isArray(accRaw.focusGenByGoal) || !Array.isArray(o.recentEventsByGoal)) return null;
   const goals = new Map<string, ReconstructedGoalState>();
   for (const raw of Array.isArray(accRaw.goals) ? accRaw.goals : []) {
     const s = parseGoalState(raw);
-    if (s) goals.set(s.goalId, s);
+    if (!s) return null;
+    goals.set(s.goalId, s);
   }
   const terminalGoals = new Map<string, ReconstructedGoalState>();
   for (const raw of Array.isArray(accRaw.terminalGoals) ? accRaw.terminalGoals : []) {
     const s = parseGoalState(raw);
-    if (s) terminalGoals.set(s.goalId, s);
+    if (!s) return null;
+    terminalGoals.set(s.goalId, s);
   }
   const focusGenByGoal = new Map<string, number>();
   for (const [gid, gen] of Array.isArray(accRaw.focusGenByGoal) ? accRaw.focusGenByGoal : []) {
@@ -398,7 +416,15 @@ function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
     if (entry.recent.length > 12 || entry.activity.length > 64) return null;
     if (entry.activity.length > 0 && !entry.lastActivityEvent) return null;
     if (![...entry.recent, ...entry.activity, ...[entry.audit, entry.completion, entry.lifecycle, entry.lastActivityEvent].filter(Boolean)].every(isValidLedgerEvent)) return null;
-    if (!entry.oracle.every((p: unknown[]) => Array.isArray(p) && typeof p[0] === "string" && p[1] && typeof (p[1] as Record<string, unknown>).failedAttempts === "number" && typeof (p[1] as Record<string, unknown>).followupAttempted === "boolean")) return null;
+    if (!entry.oracle.every((p: unknown[]) => {
+     if (!Array.isArray(p) || p.length !== 2 || typeof p[0] !== "string" || !p[1] || typeof p[1] !== "object") return false;
+     const state = p[1] as Record<string, unknown>;
+     if (!Number.isSafeInteger(state.failedAttempts) || (state.failedAttempts as number) < 0 || typeof state.followupAttempted !== "boolean") return false;
+     const result = state.result as Record<string, unknown> | undefined;
+     if (result !== undefined && (!result || typeof result.adviceId !== "string" || typeof result.summary !== "string" || !["actionable", "needs_human", "insufficient_context"].includes(result.disposition as string))) return false;
+     const failure = state.lastFailure as Record<string, unknown> | undefined;
+     return failure === undefined || Boolean(failure && typeof failure.errorCode === "string" && typeof failure.message === "string");
+    })) return null;
     runtimeIndex.set(pair[0], { ...entry, oracle: new Map(entry.oracle) });
   }
   return {

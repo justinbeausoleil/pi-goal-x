@@ -19,7 +19,7 @@ import { formatTokenValue } from "./goal-core.ts";
 import { loadGoalSettings, invalidateGoalSettingsCache } from "./goal-settings.ts";
 import { budgetLine, budgetRemaining } from "./goal-accounting.ts";
 import { asRecord, nowIso, type AssistantMessageLike, type GoalRecord } from "./goal-record.ts";
-import { goalSelectorLabel } from "./goal-pool.ts";
+import { goalSelectorLabel, otherOpenGoalCount } from "./goal-pool.ts";
 import { invalidateGoalPoolCache } from "./storage/goal-files.ts";
 import { checkpointTriggerPrompt } from "./prompts/goal-prompts.ts";
 import { consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal } from "./goal-oracle.ts";import {
@@ -49,37 +49,28 @@ export function compactGoalCheckpointContext(
 	messages: readonly unknown[],
 	currentGoal: GoalRecord | null,
 ): unknown[] | null {
-	let lastCheckpointIndex = -1;
-	for (let i = 0; i < messages.length; i += 1) {
-		if (goalEventMessageId(messages[i] as { customType?: string; details?: unknown; content?: unknown }) !== null) {
-			lastCheckpointIndex = i;
-		}
-	}
-	if (lastCheckpointIndex < 0) return null;
-
-	const output: unknown[] = [];
-	for (let i = 0; i < messages.length; i += 1) {
-		const message = messages[i] as { customType?: string; details?: unknown; content?: unknown };
-		const checkpointGoalId = goalEventMessageId(message);
-		if (checkpointGoalId === null) {
-			output.push(messages[i]);
-			continue;
-		}
-		// Every historical checkpoint is dropped entirely.
-		if (i !== lastCheckpointIndex) continue;
-		output.push({
-			...(message as Record<string, unknown>),
-			content: checkpointTriggerPrompt(checkpointGoalId),
-			display: false,
-			details: {
-				version: 2,
-				kind: currentGoal?.id === checkpointGoalId && currentGoal?.status === "active" ? "checkpoint" : "stale",
-				goalId: checkpointGoalId,
-				currentGoalId: currentGoal?.id ?? null,
-				currentStatus: currentGoal?.status ?? null,
-			},
-		});
-	}
+ let lastCheckpointIndex = -1;
+ let checkpointGoalId: string | null = null;
+ const checkpoints: number[] = [];
+ // Parse each message once; retain ordinary messages and rewrite only the last marker.
+ for (let i = 0; i < messages.length; i++) {
+  const id = goalEventMessageId(messages[i] as {customType?: string; details?: unknown; content?: unknown});
+  if (id !== null) { checkpoints.push(i); lastCheckpointIndex = i; checkpointGoalId = id; }
+ }
+ if (checkpointGoalId === null) return null;
+ const output: unknown[] = [];
+ let start = 0;
+ for (const index of checkpoints) {
+  for (let i = start; i < index; i++) output.push(messages[i]);
+  start = index + 1;
+ }
+ const message = messages[lastCheckpointIndex] as Record<string, unknown>;
+ output.push({...message, content: checkpointTriggerPrompt(checkpointGoalId), display: false, details: {
+  version: 2,
+  kind: currentGoal?.id === checkpointGoalId && currentGoal?.status === "active" ? "checkpoint" : "stale",
+  goalId: checkpointGoalId, currentGoalId: currentGoal?.id ?? null, currentStatus: currentGoal?.status ?? null,
+ }});
+ for (let i = start; i < messages.length; i++) output.push(messages[i]);
 	return output;
 }
 
@@ -290,7 +281,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
 		rehydrateDraft(core, ctx);
 		syncTerminalInputPause(core, ctx);
-		if (event.reason === "resume" && !core.state.goal && !core.hasExplicitSessionFocus && core.openGoals().length > 1 && ctx.hasUI) {
+		if (event.reason === "resume" && !core.state.goal && !core.hasExplicitSessionFocus && otherOpenGoalCount(core.goalsById, null) > 1 && ctx.hasUI) {
 			// Prompt the user to pick which open goal to focus (mirrors /goal-focus).
 			const open = core.openGoals();
 			const labels = open.map((item) => goalSelectorLabel(item, core.focusedGoalId));
@@ -388,7 +379,7 @@ export function registerGoalEvents(core: GoalCore): void {
 
 		if (!core.state.goal) {
 			core.runningGoalId = null;
-			const openCount = core.openGoals().length;
+			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) {
 				return { systemPrompt: `${currentSystemPrompt()}\n\n${unfocusedOpenGoalsPrompt(openCount)}` };
 			}
@@ -397,7 +388,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.reconcileFocusedGoalFromDisk(ctx);
 		if (!core.state.goal) {
 			core.runningGoalId = null;
-			const openCount = core.openGoals().length;
+			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) return { systemPrompt: `${currentSystemPrompt()}\n\n${unfocusedOpenGoalsPrompt(openCount)}` };
 			return;
 		}

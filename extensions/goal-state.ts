@@ -644,7 +644,7 @@ export function createGoalCore(
 	}
 
 	function renderUI(ctx: ExtensionContext): void {
-		const totalOpen = openGoals().length;
+		const totalOpen = otherOpenGoalCount(goalsById, null);
 		if (!state.goal && totalOpen === 0) {
 			clearGoalWidget(ctx);
 			return;
@@ -663,7 +663,7 @@ export function createGoalCore(
 					GOAL_WIDGET_KEY,
 					makeGoalWidgetFactory({
 						getGoal: () => goalForDisplay() ?? state.goal,
-						getOpenGoalCount: () => openGoals().length,
+						getOpenGoalCount: () => otherOpenGoalCount(goalsById, null),
 						getAuditorProgress: () => auditProgress,
 						getSettings: () => loadGoalSettings(ctx.cwd),
 						getDebugMode: () => debugMode,
@@ -693,7 +693,7 @@ export function createGoalCore(
 				GOAL_WIDGET_KEY,
 				makeGoalWidgetFactory({
 					getGoal: () => goalForDisplay() ?? state.goal,
-					getOpenGoalCount: () => openGoals().length,
+					getOpenGoalCount: () => otherOpenGoalCount(goalsById, null),
 					getAuditorProgress: () => auditProgress,
 					getSettings: () => loadGoalSettings(ctx.cwd),
 					getDebugMode: () => debugMode,

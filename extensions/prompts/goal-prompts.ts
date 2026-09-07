@@ -198,39 +198,30 @@ function lifecyclePolicyBlock(): string {
  * Fragment memo (P1-4): the goal prompt block is rebuilt per context call;
  * keyed on every field that changes output, so steady-state turns reuse it.
  */
-const promptFragmentCache = new Map<string, string>();
-const PROMPT_CACHE_MAX = 100;
+const promptFragmentCache: Array<{key: readonly unknown[]; value: string; chars: number}> = [];
+let promptCacheChars = 0;
 
-function promptCacheKey(goal: GoalRecord, settings?: GoalSettings): string {
-	return JSON.stringify([
-		goal.id, goal.status, goal.autoContinue, goal.sisyphus,
-  goal.objective, goal.verificationContract, goal.taskList, promptProfile(),
-		// §7.1/§8.1: execution focus changes the Current: line in the task block.
-		goal.currentTaskId,
-		settings?.disableTasks, settings?.disableContracts,
-	]);
-}
-
-/**
- * Prompt-fragment cache shared across builders. The key is namespaced per
- * builder (goal vs continuation): both produce structurally different text
- * for the same goal record, so without the namespace a continuation prompt
- * cached first would be served back as the active prompt (or vice versa)
- * on the next turn. This was a real race: queueContinuation caches the
- * continuation prompt on a 0ms timer, and a following goalPrompt for the
- * same goal could hit that stale entry.
- */
 function cachedPrompt(goal: GoalRecord, settings: GoalSettings | undefined, kind: "goal" | "continuation", build: () => string): string {
-	const key = `${kind}:${promptCacheKey(goal, settings)}`;
-	const cached = promptFragmentCache.get(key);
-	if (cached !== undefined) return cached;
-	const value = build();
-	if (promptFragmentCache.size >= PROMPT_CACHE_MAX) {
-		const oldest = promptFragmentCache.keys().next().value;
-		if (oldest !== undefined) promptFragmentCache.delete(oldest);
-	}
-	promptFragmentCache.set(key, value);
-	return value;
+ const key = [kind, goal.id, goal.status, goal.autoContinue, goal.sisyphus, goal.objective,
+  goal.verificationContract, settings?.disableTasks ? undefined : taskIndex(goal.taskList?.tasks),
+  goal.taskList?.blockCompletion, promptProfile(), goal.currentTaskId, settings?.disableTasks, settings?.disableContracts];
+ for (let i = promptFragmentCache.length - 1; i >= 0; i--) {
+  const entry = promptFragmentCache[i]!;
+  if (key.every((part, j) => part === entry.key[j])) return entry.value;
+ }
+ const value = build();
+ // Include source text retained by this entry in the cache's memory allowance.
+ const chars = goal.objective.length + (goal.verificationContract?.length ?? 0) + value.length
+  + (goal.taskList ? goal.taskList.tasks.reduce((n, task) => n + retainedTaskChars(task), 0) : 0);
+ if (chars <= 2_000_000) {
+  while (promptFragmentCache.length >= 32 || promptCacheChars + chars > 2_000_000) promptCacheChars -= promptFragmentCache.shift()!.chars;
+  promptFragmentCache.push({key, value, chars}); promptCacheChars += chars;
+ }
+ return value;
+}
+function retainedTaskChars(task: GoalTask): number {
+ return task.id.length + task.title.length + (task.verificationContract?.length ?? 0) + (task.evidence?.length ?? 0)
+  + (task.skipReason?.length ?? 0) + (task.subtasks?.reduce((n, child) => n + retainedTaskChars(child), 0) ?? 0);
 }
 
 export function goalPrompt(goal: GoalRecord, settings?: GoalSettings): string {

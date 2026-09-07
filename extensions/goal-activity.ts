@@ -175,12 +175,23 @@ export function deriveGoalActivity(
 ): GoalActivityItem[] {
 	const { taskTitles, limit = 5 } = options;
 	const items: GoalActivityItem[] = [];
+	if (indexedActivity.has(events)) {
+		// Runtime indexes already deduplicate and sort. Format only the requested tail.
+		for (let i = events.length - 1; i >= 0; i--) {
+			const event = events[i]!;
+			if (!("goalId" in event) || event.goalId !== goalId) continue;
+			const item = mapEvent(event, taskTitles);
+			if (item) items.push(item);
+			if (limit > 0 && items.length >= limit) break;
+		}
+		return items.reverse().slice(-limit);
+	}
 	for (const event of events) {
 		if (!("goalId" in event) || event.goalId !== goalId) continue;
 		const item = mapEvent(event, taskTitles);
 		if (!item) continue;
 		const last = items[items.length - 1];
-		if (!indexedActivity.has(events) && last && last.kind === item.kind && last.text === item.text) continue;
+		if (last && last.kind === item.kind && last.text === item.text) continue;
 		items.push(item);
 	}
 	// The ledger is append-ordered, but sort defensively so the feed is

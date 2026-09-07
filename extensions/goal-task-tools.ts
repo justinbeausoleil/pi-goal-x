@@ -102,7 +102,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 			roots.push(item);
 		}
 	}
-	const order = new Map<string, number>(flat.map((item, index) => [item.id.trim(), index]));
 
 	function buildNode(item: FlatTaskInput): GoalTask {
 		const node: GoalTask = {
@@ -116,15 +115,12 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		};
 		const children = childrenOf.get(node.id) ?? [];
 		if (children.length > 0) {
-			node.subtasks = children
-				.sort((a, b) => (order.get(a.id.trim()) ?? 0) - (order.get(b.id.trim()) ?? 0))
-				.map(buildNode);
+			node.subtasks = children.map(buildNode);
 		}
 		return node;
 	}
-	const tasks = roots
-		.sort((a, b) => (order.get(a.id.trim()) ?? 0) - (order.get(b.id.trim()) ?? 0))
-		.map(buildNode);
+	// Both buckets were populated in input order, so sorting would repeat that work.
+	const tasks = roots.map(buildNode);
 
 	// Lightweight placement: lightweight_subtasks must be on a task with children.
 	for (const item of flat) {
