@@ -22,3 +22,7 @@
 
 - Final-branch CI run 34169322174 passed the full suite but exposed a pre-existing flaky self-check test: a random goal id can contain the task-id substring t1. Made the fixture deliberately include t1 and assert the exact bounded marker rather than banning that substring. Production/package bytes remain unchanged.
 - Package smoke harness initially used native Node type stripping, which deliberately rejects TypeScript under node_modules. Switched the check to Pi's actual extension loader; no package change is needed.
+
+- Deterministic checkpoint test passes; PR #50 final-head CI 34169518627 passed and it was merged as cb282e2. Exact merged-commit CI 34169616964 also passed. All four issues and both PRs are closed.
+- Built one tarball and verified all 62 files (52 extension modules) byte-match the final merged source. A clean npm install with peer SDK 0.84.4 loads through Pi's real extension loader; recovery CLI help succeeds. PACKAGE.json records the integrity and source commit.
+- Pushed v0.31.1 at cb282e2. npm publish requires the maintainer account's security-key authentication; opened the official approval page and requested the user complete two-factor authentication. No credentials or authentication URLs are stored in the repository. GitHub release 384357558 is a prepared draft with the matching tarball asset; registry latest remains 0.31.0 until authentication succeeds.
