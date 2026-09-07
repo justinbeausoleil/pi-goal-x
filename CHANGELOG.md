@@ -2,6 +2,101 @@
 
 All notable changes to pi-goal-x are documented here.
 
+## [0.31.0] — 2026-09-07
+
+### Performance and token overhead since 0.30.5
+
+- **38% smaller extension-added model context** across 14 active workflows: 145,134 → 89,993 serialized characters. This estimates input-token overhead; it is not a claim of 38% fewer total billed tokens.
+- **6× faster expanded dashboard rendering** with 50 long tasks: 1.71 → 0.28 ms.
+- **Over 99.9% less time to display recent activity** with 100,000 history events: 11.9 → 0.003 ms. This measures indexed warm reads, not initial history loading.
+- Direct comparisons use identical fixtures and SDK 0.84.1. Raw measurements, limitations and reproduction are in `specs/2026-09-07-release-0-31-0/`.
+
+### Changed
+
+- Reduced model context through applicable tool profiles, shared guidance, bounded objective/task excerpts, and lossless `get_goal` detail pages. Existing tool names and single-task forms remain supported.
+- Added ordered atomic `update_goal_task` batches, with full rollback on invalid transitions and individual ledger events.
+- Indexed ledger activity, audit and Oracle state; reused task presentation across usage updates; removed full-history copies on append. Version 3 checkpoints rebuild older/corrupt derived data, retain Oracle results and use correct Unicode byte offsets.
+- Buffered writes now reject competing revisions before overwriting state; completion audits require successful persistence. Isolated auditor/Oracle sessions release resources, and Oracle requests share the parent runtime and cancellation path.
+- Corrected SDK context measurement and added isolated before/after runtime, allocation, context, provider-payload, and capped live evaluation evidence under `specs/2026-09-07-runtime-token-optimization/`.
+- Added bounded caches for settings, task content, detail pages and text layout; streamlined task updates, storage reads, session diagnostics and auditor previews. Consolidated auditor instructions and bounded oversized post-compaction task context while retaining lossless retrieval.
+
+### Verified
+
+- 923 tests, TypeScript, lint, context and performance gates pass. SDK 0.83.0 and 0.84.1 each pass 888 serial compatibility tests and six provider-payload cross-checks.
+- Regular/Sisyphus goals, drafting, tasks, verification, independent auditing, Oracle, budgets, controls, saved data and recovery remain supported.
+
+## [0.30.5] — 2026-08-25
+
+### Fixed
+
+- **Provider-side aborts no longer pause goals mid-outage** — an assistant
+  message with `stopReason:"aborted"` arriving without a user abort signal
+  (transport-level termination during a provider outage) now routes into the
+  bounded unbounded recovery instead of pausing the goal. All three lifecycle
+  handlers (`message_end`, `turn_end`, `agent_end`) are signal-aware: only a
+  genuine user Esc (`ctx.signal.aborted`) pauses.
+- **429 rate limits are recoverable** — HTTP 429 payloads ("Provider returned
+  error ... temporarily rate-limited upstream") were not classified as
+  transient, so recovery never scheduled. Classification now covers `\b429\b`
+  and rate-limit wording; quota/billing exhaustion (`insufficient_quota`,
+  `out of budget`, usage-limit errors) remains fail-fast via a new exclusion
+  list that wins over transient matches.
+
+### Added
+
+- Live-pi e2e scenario for sustained 429 outages and a full real event-ordering
+  regression test (`message_end → turn_end → agent_end → agent_settled`)
+  proving provider-side aborts engage recovery without pausing.
+
+## [0.30.4] — 2026-08-25
+
+### Added
+
+- **Live-pi e2e regression guard for network-error recovery** —
+  `tests/e2e/network-recovery-rpc.test.ts` drives a real pi subprocess
+  against a mock provider returning the exact reported failure
+  (`503 server_error: Upstream request failed: Endpoint is unavailable.`)
+  and asserts the full unbounded backoff loop engages: escalating
+  "(recovery N, unbounded)" notifications, checkpoint continuation
+  delivery after settle. Skips automatically when the `pi` CLI is absent.
+
+### Verified
+
+- Field report of "unlimited retry not working" reproduced against real pi
+  on this tree: classification, scheduling, escalation, and checkpoint
+  delivery all work; the failing session predated 0.30.3 (extensions load
+  once per session). Restarting sessions loads the fixed behavior. See
+  `specs/2026-08-23-network-error-backoff/MILESTONES.md`.
+
+## [0.30.3] — 2026-08-25
+
+### Fixed
+
+- **503 `server_error` outages now engage goal recovery** — regression fix:
+  transient provider failures such as `Error: 503: {"type":"server_error",
+  "message":"...Upstream request failed: Endpoint is unavailable."}` were not
+  classified as network errors (the old matcher required the literal text
+  "network error"), so the goal-level backoff never scheduled and active
+  auto-continue goals stranded after Pi's built-in retries exhausted.
+  Classification now covers HTTP 5xx-style outages (`server_error`,
+  502/503/504/529, service unavailable, bad gateway, gateway timeout,
+  upstream request failed, endpoint unavailable, overloaded); 4xx auth and
+  malformed-request errors remain non-retryable.
+
+### Changed
+
+- **Unbounded-by-default recovery** — after Pi settles with a transient
+  provider failure, an active auto-continue goal keeps retrying on the
+  escalating backoff ladder (5–80s), plateauing at the maximum delay until
+  the provider recovers, instead of giving up after five attempts. The cap
+  and delays are configurable via layered settings:
+  `networkRecovery.maxAttempts` (0/unset = unbounded) and
+  `networkRecovery.maxDelayMs` (default 80000), or the
+  `PI_GOAL_NETWORK_RECOVERY_MAX_ATTEMPTS` /
+  `PI_GOAL_NETWORK_RECOVERY_MAX_DELAY_MS` environment overrides.
+- Recovery notifications distinguish bounded progress (`recovery 2/5`) from
+  unbounded (`recovery 2, unbounded`).
+
 ## [0.30.2] — 2026-08-24
 
 ### Added

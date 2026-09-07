@@ -251,6 +251,18 @@ Pressing `Esc` during active work pauses the goal.
 
 The agent can divide a goal into tasks and subtasks and update them as work progresses. The current task is tracked explicitly (persisted as the goal's execution focus) and highlighted in the dashboard; starting a task with `update_goal_task(status="start")` sets it, and completing or skipping it clears it.
 
+The model receives the objective excerpt, current task, next three pending tasks, progress, budget, and applicable rules. Full requirements, contracts, and evidence remain saved. `get_goal()` returns a compact summary; use `get_goal({section:"objective"})`, `section:"tasks"` (optionally `task_id`), or `section:"history"` for lossless pages of at most 4,000 content characters. Repeat the section and task with the returned `cursor` to continue. A changed source rejects stale cursors and asks for a restart. Existing `verbose` and `include_history` arguments remain supported.
+
+Task progress can be recorded atomically in order:
+
+```json
+{"updates":[{"task_id":"child","status":"complete","evidence":"Tests passed"},{"task_id":"parent","status":"complete"},{"task_id":"next","status":"start"}]}
+```
+
+Pass this to `update_goal_task`. A batch accepts 1–100 updates and validates every transition before applying any. Complete children before their parent; contracted tasks still require evidence, skips require reasons, and completed tasks cannot reopen. Single-task calls remain supported; do not mix the two forms. Each update retains its own ledger event. Turn-level writes check the original persisted revision, and completion audits wait for a successful flush.
+
+Goal tools appear when applicable. Outside drafting, creation and inspection remain available; outcomes appear for active, paused, or budget-limited goals, task planning for active or paused goals, and task progress for active goals with a task tree. Disabling tasks hides both task tools. Drafting keeps its question/proposal tools, and ordinary work tools remain available.
+
 Verification contracts describe the evidence required for completion. They can apply to the entire goal or to an individual task.
 
 Examples include:

@@ -9,7 +9,7 @@ import {
 import { loadGoalSettings, loadGoalSettingsFileConfig } from "./goal-settings.ts";
 import { runGoalCompletionAuditor } from "./goal-auditor.ts";
 import { nowIso, type GoalRecord } from "./goal-record.ts";
-import { latestEventsForGoal, readGoalLedger } from "./goal-ledger.ts";
+import { latestEventsForGoal, goalRuntimeEvents } from "./goal-ledger.ts";
 import { mergeGoalPromptFromDisk } from "./storage/goal-files.ts";
 import { showEscapeDialog, type EscapeDialogResult } from "./widgets/goal-escape-dialog.ts";
 import type { GoalCore } from "./goal-state.ts";
@@ -23,6 +23,8 @@ import type { GoalMutationOutcome } from "./goal-service.ts";
 // UNTRUSTED executor claim — never evidence and never an approval bypass.
 export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContext, completionSummary?: string): Promise<AgentToolResult<unknown>> {
 	const { pi } = core;
+ const flushError = core.goalService.flushForAudit(ctx);
+ if (flushError) return {content: [{type: "text", text: flushError}], details: goalDetails(core.state.goal)};
 	core.reconcileFocusedGoalFromDisk(ctx);
 
 	// -- Completion --
@@ -239,7 +241,7 @@ if (settings.disabled === true) {
 
 	// P1-6: warm start — seed the auditor with the parent-rendered ledger tail
 	// (recent lifecycle + task evidence) so it does not re-derive session facts.
-	const ledger = readGoalLedger(ctx).events;
+	const ledger = goalRuntimeEvents(ctx, auditTarget.id);
 	const warmTail = latestEventsForGoal(ledger, auditTarget.id, 8);
 	const warmContext = warmTail.length > 0
 		? `Recent goal events (from the shared ledger):\n${warmTail.map((e) => `- ${e.at} ${e.type}${"taskId" in e ? ` (task ${e.taskId})` : ""}${"evidence" in e && e.evidence ? ` evidence: ${e.evidence}` : ""}`).join("\n")}`

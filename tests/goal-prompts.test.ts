@@ -316,7 +316,7 @@ test("active prompts no longer reference removed tools", () => {
 		}
 	}
 	assert.ok(goalPrompt(g).includes("update_goal"), "active prompt must mention update_goal");
-	assert.ok(goalPrompt(g).includes("set_goal_tasks") || goalPrompt(g).includes("update_goal_task"), "active prompt must mention the task tools");
+	assert.ok(goalPrompt(g).includes('get_goal(section="tasks")'), "active prompt explains task-detail retrieval; tool-specific rules live in tool guidance");
 });
 
 test("taskListBlock surfaces the persisted current task with its contract", () => {

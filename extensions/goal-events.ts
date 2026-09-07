@@ -13,13 +13,13 @@ import {
 	isToolUseAssistantMessage,
 } from "./goal-format.ts";
 import { buildCompactionSummary, buildPostCompactionGoalDelta } from "./goal-compaction.ts";
-import { latestAuditorResultForGoal, loadLedgerState, readGoalLedger, invalidateGoalLedgerCache } from "./goal-ledger.ts";
+import { latestAuditorResultForGoal, readGoalLedger, goalRuntimeEvents, invalidateGoalLedgerCache } from "./goal-ledger.ts";
 import { shouldArmPostCompactReminder, shouldInjectPostCompactReminder } from "./goal-policy.ts";
 import { formatTokenValue } from "./goal-core.ts";
 import { loadGoalSettings, invalidateGoalSettingsCache } from "./goal-settings.ts";
 import { budgetLine, budgetRemaining } from "./goal-accounting.ts";
 import { asRecord, nowIso, type AssistantMessageLike, type GoalRecord } from "./goal-record.ts";
-import { goalSelectorLabel } from "./goal-pool.ts";
+import { goalSelectorLabel, otherOpenGoalCount } from "./goal-pool.ts";
 import { invalidateGoalPoolCache } from "./storage/goal-files.ts";
 import { checkpointTriggerPrompt } from "./prompts/goal-prompts.ts";
 import { consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal } from "./goal-oracle.ts";import {
@@ -28,7 +28,7 @@ import { consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal } fro
 	unfocusedOpenGoalsPrompt,
 	untrustedObjectiveBlock,
 } from "./prompts/goal-prompts.ts";
-import { rehydrateDraft } from "./goal-drafting.ts";
+import { hasActiveDraft, rehydrateDraft } from "./goal-drafting.ts";
 import { syncTerminalInputPause } from "./goal-widget.ts";
 import type { GoalCore } from "./goal-state.ts";
 import type { GoalMutationOutcome } from "./goal-service.ts";
@@ -49,37 +49,28 @@ export function compactGoalCheckpointContext(
 	messages: readonly unknown[],
 	currentGoal: GoalRecord | null,
 ): unknown[] | null {
-	let lastCheckpointIndex = -1;
-	for (let i = 0; i < messages.length; i += 1) {
-		if (goalEventMessageId(messages[i] as { customType?: string; details?: unknown; content?: unknown }) !== null) {
-			lastCheckpointIndex = i;
-		}
-	}
-	if (lastCheckpointIndex < 0) return null;
-
-	const output: unknown[] = [];
-	for (let i = 0; i < messages.length; i += 1) {
-		const message = messages[i] as { customType?: string; details?: unknown; content?: unknown };
-		const checkpointGoalId = goalEventMessageId(message);
-		if (checkpointGoalId === null) {
-			output.push(messages[i]);
-			continue;
-		}
-		// Every historical checkpoint is dropped entirely.
-		if (i !== lastCheckpointIndex) continue;
-		output.push({
-			...(message as Record<string, unknown>),
-			content: checkpointTriggerPrompt(checkpointGoalId),
-			display: false,
-			details: {
-				version: 2,
-				kind: currentGoal?.id === checkpointGoalId && currentGoal?.status === "active" ? "checkpoint" : "stale",
-				goalId: checkpointGoalId,
-				currentGoalId: currentGoal?.id ?? null,
-				currentStatus: currentGoal?.status ?? null,
-			},
-		});
-	}
+ let lastCheckpointIndex = -1;
+ let checkpointGoalId: string | null = null;
+ const checkpoints: number[] = [];
+ // Parse each message once; retain ordinary messages and rewrite only the last marker.
+ for (let i = 0; i < messages.length; i++) {
+  const id = goalEventMessageId(messages[i] as {customType?: string; details?: unknown; content?: unknown});
+  if (id !== null) { checkpoints.push(i); lastCheckpointIndex = i; checkpointGoalId = id; }
+ }
+ if (checkpointGoalId === null) return null;
+ const output: unknown[] = [];
+ let start = 0;
+ for (const index of checkpoints) {
+  for (let i = start; i < index; i++) output.push(messages[i]);
+  start = index + 1;
+ }
+ const message = messages[lastCheckpointIndex] as Record<string, unknown>;
+ output.push({...message, content: checkpointTriggerPrompt(checkpointGoalId), display: false, details: {
+  version: 2,
+  kind: currentGoal?.id === checkpointGoalId && currentGoal?.status === "active" ? "checkpoint" : "stale",
+  goalId: checkpointGoalId, currentGoalId: currentGoal?.id ?? null, currentStatus: currentGoal?.status ?? null,
+ }});
+ for (let i = start; i < messages.length; i++) output.push(messages[i]);
 	return output;
 }
 
@@ -174,7 +165,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.accountProgress(ctx, { completedTurnTokens: tokens });
 
 		if (isAbortedAssistantMessage(message)) {
-			core.pauseActiveGoal(ctx);
+			// Pause only on a genuine user abort (signal fired). A provider- or
+			// transport-side abort without the signal routes into recovery via
+			// agent_end instead of stranding the goal.
+			if (ctx.signal?.aborted) core.pauseActiveGoal(ctx);
 			return;
 		}
 		// Provider failures are not completed work: do not turn one failed turn
@@ -266,7 +260,9 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("message_end", async (event, ctx) => {
-		if (isAbortedAssistantMessage(event.message)) core.pauseActiveGoal(ctx);
+		// Signal-aware: see turn_end — only user aborts pause; provider-side
+		// aborts are handled by agent_end's recovery path.
+		if (isAbortedAssistantMessage(event.message) && ctx.signal?.aborted) core.pauseActiveGoal(ctx);
 		const raw = asRecord(event.message);
 		if (raw?.role === "custom" && raw.customType === GOAL_EVENT_ENTRY && raw.display !== false) {
 			return { message: { ...event.message, display: false } as typeof event.message };
@@ -285,7 +281,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
 		rehydrateDraft(core, ctx);
 		syncTerminalInputPause(core, ctx);
-		if (event.reason === "resume" && !core.state.goal && !core.hasExplicitSessionFocus && core.openGoals().length > 1 && ctx.hasUI) {
+		if (event.reason === "resume" && !core.state.goal && !core.hasExplicitSessionFocus && otherOpenGoalCount(core.goalsById, null) > 1 && ctx.hasUI) {
 			// Prompt the user to pick which open goal to focus (mirrors /goal-focus).
 			const open = core.openGoals();
 			const labels = open.map((item) => goalSelectorLabel(item, core.focusedGoalId));
@@ -341,13 +337,14 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		core.advanceTurnSeq();
+  if (!hasActiveDraft(core)) core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
 		const currentSystemPrompt = () => ctx.getSystemPrompt?.() || event.systemPrompt;
 		const incomingGoalId = extractGoalIdFromInjectedMessage(event.prompt ?? "");
 		// Several prompt enrichments may need the same ledger snapshot. Keep one
 		// local read for this hook instead of repeatedly traversing the cached
 		// ledger when rejection and post-compaction steering overlap.
 		let promptLedger: ReturnType<typeof readGoalLedger> | undefined;
-		const getPromptLedger = () => promptLedger ??= readGoalLedger(ctx);
+		const getPromptLedger = () => promptLedger ??= { events: core.state.goal ? goalRuntimeEvents(ctx, core.state.goal.id) : [], malformed: 0 };
 
 		// If this turn was triggered by a hidden goal checkpoint that no longer
 		// matches the active goal, abort the whole turn instead of letting the
@@ -382,7 +379,7 @@ export function registerGoalEvents(core: GoalCore): void {
 
 		if (!core.state.goal) {
 			core.runningGoalId = null;
-			const openCount = core.openGoals().length;
+			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) {
 				return { systemPrompt: `${currentSystemPrompt()}\n\n${unfocusedOpenGoalsPrompt(openCount)}` };
 			}
@@ -391,7 +388,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.reconcileFocusedGoalFromDisk(ctx);
 		if (!core.state.goal) {
 			core.runningGoalId = null;
-			const openCount = core.openGoals().length;
+			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) return { systemPrompt: `${currentSystemPrompt()}\n\n${unfocusedOpenGoalsPrompt(openCount)}` };
 			return;
 		}
@@ -439,6 +436,10 @@ export function registerGoalEvents(core: GoalCore): void {
 				systemPrompt: `${currentSystemPrompt()}\n\n[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${untrustedObjectiveBlock(limitedGoal)}${budgetText ? `\n${budgetText}` : ""}${reminder}`,
 			};
 		}
+  if (core.state.goal.status === "blocked") {
+   const blocked = core.state.goal;
+   return {systemPrompt: `${currentSystemPrompt()}\n\n[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\nBlocker: ${blocked.pauseReason ?? "unspecified"}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`};
+  }
 		const activeGoal = core.state.goal;
 		const settings = loadGoalSettings(ctx.cwd);
 		let prompt = goalPrompt(activeGoal, settings);
@@ -494,14 +495,19 @@ export function registerGoalEvents(core: GoalCore): void {
 		if (!core.state.goal || core.state.goal.status !== "active" || !core.state.goal.autoContinue) return;
 		if (endedGoalId && core.state.goal.id !== endedGoalId) return;
 		if (!core.reconcileFocusedGoalFromDisk(ctx)) return;
-		if (hasAbortedAssistantMessage(event.messages) || ctx.signal?.aborted) {
+		// A genuine user abort pauses the goal. An assistant message with
+		// stopReason "aborted" WITHOUT a user abort signal is a provider- or
+		// transport-side termination (e.g. after Pi exhausts its retries) —
+		// pausing there stranded goals during outages, so it routes into the
+		// same bounded recovery as classified transient errors instead.
+		if (ctx.signal?.aborted) {
 			core.pauseActiveGoal(ctx);
 			return;
 		}
 		// Provider failures are not completed work: persist and refresh the
 		// display, but never queue a continuation for a run whose messages
 		// include an assistant error (danim47c pattern).
-		if (hasNetworkErrorAssistantMessage(event.messages)) {
+		if (hasNetworkErrorAssistantMessage(event.messages) || hasAbortedAssistantMessage(event.messages)) {
 			core.persist(ctx);
 			core.updateUI(ctx);
 			networkErrorRecoveryAfterSettleFor = core.state.goal.id;
@@ -533,14 +539,20 @@ export function registerGoalEvents(core: GoalCore): void {
 			return;
 		}
 		if (!networkErrorGoalId || !core.isActionableContinuationGoal(networkErrorGoalId)) return;
-		const plan = core.runtime.scheduleNetworkErrorRetry(ctx, core.state.goal!);
+		const recovery = loadGoalSettings(ctx.cwd).networkRecovery;
+		const policy = recovery
+			? { maxAttempts: recovery.maxAttempts, maxDelayMs: recovery.maxDelayMs }
+			: undefined;
+		const plan = core.runtime.scheduleNetworkErrorRetry(ctx, core.state.goal!, policy);
 		if (plan) {
+			const cap = plan.maxAttempts > 0 ? `/${plan.maxAttempts}` : ", unbounded";
 			ctx.ui.notify(
-				`Provider network error. Retrying the goal in ${Math.round(plan.delayMs / 1000)}s (recovery ${plan.attempt}/${plan.maxAttempts}).`,
+				`Provider network error. Retrying the goal in ${Math.round(plan.delayMs / 1000)}s (recovery ${plan.attempt}${cap}).`,
 				"warning",
 			);
 			return;
 		}
+		// Only reachable under a configured bounded cap (maxAttempts > 0).
 		ctx.ui.notify(
 			"Provider network errors persisted after all recovery attempts. The goal remains active; resume it when the provider is healthy.",
 			"warning",
