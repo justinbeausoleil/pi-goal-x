@@ -1,0 +1,59 @@
+{
+  "version": "0.31.1",
+  "productionSourceCommit": "ce48088cabc85c35666189ab0fa320db01ee449f",
+  "extensionTree": "482e82f6a13eec1b06df0f4a74058aec4e65e68f",
+  "fullSuite": {
+    "passed": 961,
+    "failed": 0,
+    "skipped": 0
+  },
+  "checks": {
+    "typescript": true,
+    "eslint": true,
+    "testManifestSelfcheck": true,
+    "contextFixtures": 24,
+    "contextBaselineChanged": false,
+    "providerPayloadCrosscheck": true,
+    "npmPackDryRun": true,
+    "productionVulnerabilities": 0,
+    "ciNafGate": true
+  },
+  "benchmarkNote": "NAF gate validates committed campaign evidence; this patch makes no new performance claims.",
+  "sdkCompatibility": [
+    {
+      "sdk": "0.83.0",
+      "typecheck": true,
+      "serialUnitTests": 915,
+      "serialFailed": 0,
+      "realSdkSessionScenarios": 11,
+      "providerPayloadChecks": 6,
+      "paidModelCalls": 0
+    },
+    {
+      "sdk": "0.84.1",
+      "typecheck": true,
+      "serialUnitTests": 915,
+      "serialFailed": 0,
+      "realSdkSessionScenarios": 11,
+      "providerPayloadChecks": 6,
+      "paidModelCalls": 0
+    },
+    {
+      "sdk": "0.84.4",
+      "typecheck": true,
+      "serialUnitTests": 915,
+      "serialFailed": 0,
+      "realSdkSessionScenarios": 11,
+      "providerPayloadChecks": 6,
+      "paidModelCalls": 0
+    }
+  ],
+  "candidateCI": "https://github.com/tmonk/pi-goal-x/actions/runs/34169124742",
+  "pr46": {
+    "mergedCommit": "906b78a64582047b8d0c8cc982caf23f4c6c2c4d",
+    "originalHead": "e594a64e8b55af4c0c2d44b3e6e495a571cfc0d7",
+    "amendmentsPR": 50,
+    "forkPushDenied": true
+  },
+  "releaseStatus": "candidate validated; final integration and publication pending"
+}

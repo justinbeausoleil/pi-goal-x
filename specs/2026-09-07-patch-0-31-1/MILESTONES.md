@@ -16,3 +16,6 @@
 - Release date crossed midnight in Europe/London; changelog uses 2026-09-08 and the original 2026-09-07 spec directory remains the implementation record.
 
 - Final production implementation on pinned SDK 0.84.1 passes TypeScript, lint and all 961 tests (including 11 real-SDK session/protocol subprocess scenarios); no tests skipped. Production dependency audit reports zero vulnerabilities; NAF CI gate and package dry run pass. Context/provider validation remains unchanged.
+
+- SDK compatibility complete: 0.83.0, 0.84.1 and 0.84.4 each pass TypeScript, 915 serial unit tests, 11 real-SDK session scenarios and six provider-payload checks. Root full suite passes 961/961; discovery self-check passes 915 units; context baseline remains unchanged.
+- Maintainer release PR #50 passed CI run 34169124742 on ce48088. Updated #46 with the fork-permission explanation and companion link, then merged exact original head e594a64e as 906b78a. Merged main into the release branch; production files, tests and package inputs are byte-unchanged from the validated candidate.
