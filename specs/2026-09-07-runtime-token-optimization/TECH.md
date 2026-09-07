@@ -7,6 +7,7 @@
 5. Extend deterministic coverage and benchmarks; run checks and paired live smoke evaluation with request reservations under US$5. Update documentation and report measured gains and remaining limits.
 
 Retrieval cursors bind goal id, selected section/task, and content fingerprint; changed source returns a restart instruction. Full content is never modified by paging. Batches execute in input order, so child completion may precede parent completion; any invalid update rejects the whole batch.
-# Live evaluation steering
+
+## Live evaluation steering
 
 Use `opencode-go/deepseek-v4-flash`, the authenticated OpenCode connection (`opencode` has no configured authentication). Price worst-case requests before dispatch and only begin a pair if its maximum fits the remaining allowance after earlier attempts. Bound each run to eight requests so the complete pair fits even when reserving the entire model context window on every call. Retain model-specific results and incomplete coverage; never reset the US$5 campaign cap when switching models.

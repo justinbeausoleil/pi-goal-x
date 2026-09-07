@@ -2,6 +2,14 @@
 
 All notable changes to pi-goal-x are documented here.
 
+## Unreleased
+
+- Reduced model context through applicable tool profiles, shared guidance, bounded objective/task excerpts, and lossless `get_goal` detail pages. Existing tool names and single-task forms remain supported.
+- Added ordered atomic `update_goal_task` batches, with full rollback on invalid transitions and individual ledger events.
+- Indexed ledger activity, audit and Oracle state; reused task presentation across usage updates; removed full-history copies on append. Version 2 checkpoints rebuild older/corrupt derived data and use correct Unicode byte offsets.
+- Buffered writes now reject competing revisions before overwriting state; completion audits require successful persistence. Isolated auditor/Oracle sessions release resources, and Oracle requests share the parent runtime and cancellation path.
+- Corrected SDK context measurement and added isolated before/after runtime, allocation, context, provider-payload, and capped live evaluation evidence under `specs/2026-09-07-runtime-token-optimization/`.
+
 ## [0.30.5] — 2026-08-25
 
 ### Fixed

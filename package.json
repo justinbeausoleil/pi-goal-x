@@ -62,6 +62,9 @@
     "lint": "eslint .",
     "context:measure": "node experiments/context/run-measure.mjs",
     "context:gate": "node experiments/context/run-gate.mjs",
+    "context:provider-check": "node --experimental-strip-types experiments/context/provider-crosscheck.mjs",
+    "bench:runtime-token": "node --import ./experiments/bench/bench-adapter-hooks.mjs --expose-gc --experimental-strip-types experiments/bench/runtime-token.mjs",
+    "bench:gate:runtime-token": "node experiments/bench/runtime-token-gate.mjs",
     "test:oracle": "node --experimental-strip-types --test tests/goal-oracle.test.ts"
   },
   "peerDependencies": {
