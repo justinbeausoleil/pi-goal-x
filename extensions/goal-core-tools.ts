@@ -7,7 +7,7 @@ import { detailedSummary, goalDetails, renderGoalResult } from "./goal-format.ts
 import { budgetLine } from "./goal-accounting.ts";
 import { buildGoalCreatedReport, buildTaskSummary, findTaskInTree, validateGoalAgentPause, validateGoalBlock } from "./goal-policy.ts";
 import { buildUnfocusedOpenGoalsSummary, otherOpenGoalCount } from "./goal-pool.ts";
-import { readGoalLedger } from "./goal-ledger.ts";
+import { readGoalLedger, goalOracleState } from "./goal-ledger.ts";
 import { loadGoalSettings } from "./goal-settings.ts";
 import { buildGoalHistoryBlock, buildGoalTaskDetailBlock } from "./goal-format.ts";
 import { sisyphusStepProgress } from "./goal-policy.ts";
@@ -20,7 +20,6 @@ import {
 	buildBlockerFingerprint,
 	consumeOracleFollowupMarker,
 	hasPendingOracleAdviceForFocusedGoal,
-	oracleStateForFingerprint,
 	renderActionableOracleAdvice,
 	renderOracleAdviceReminder,
 	runBlockerOracle,
@@ -311,7 +310,7 @@ pi.registerTool(defineTool({
 	const goalAtBlock = core.state.goal;
 	const focusToken = core.focusedOperationToken(goalAtBlock.id);
 	const fingerprint = buildBlockerFingerprint(goalAtBlock, reason);
-	const consult = oracleStateForFingerprint(readGoalLedger(ctx).events, goalAtBlock.id, fingerprint);
+	const consult = goalOracleState(ctx, goalAtBlock.id, fingerprint);
 
 	// One actionable result already exists.
 	if (consult.result?.disposition === "actionable") {

@@ -223,18 +223,18 @@ export function buildGoalAuditorPrompt(args: {
 	].join("\n");
 }
 
-function makeAuditorResourceLoader(): ResourceLoader {
+export function makeAuditorResourceLoader(systemPrompt = [
+	"You are a read-only completion auditor running in an isolated pi agent session.",
+	"Inspect the repository and decide whether the claimed goal completion is genuinely satisfied.",
+	"Never modify files. Never approve unless the actual user objective is complete.",
+].join("\n")): ResourceLoader {
 	return {
 		getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
 		getSkills: () => ({ skills: [], diagnostics: [] }),
 		getPrompts: () => ({ prompts: [], diagnostics: [] }),
 		getThemes: () => ({ themes: [], diagnostics: [] }),
 		getAgentsFiles: () => ({ agentsFiles: [] }),
-		getSystemPrompt: () => [
-			"You are a read-only completion auditor running in an isolated pi agent session.",
-			"Inspect the repository and decide whether the claimed goal completion is genuinely satisfied.",
-			"Never modify files. Never approve unless the actual user objective is complete.",
-		].join("\n"),
+		getSystemPrompt: () => systemPrompt,
 		getSystemPromptSource: () => undefined,
 		getAppendSystemPrompt: () => [],
 		getAppendSystemPromptSources: () => [],
@@ -451,6 +451,7 @@ export async function runGoalCompletionAuditor(args: {
 			progress.percentage = 100;
 			emitProgress();
 			unsubscribe();
+   session.dispose?.();
 		}
 		// session.abort() does NOT throw — the agent loop returns normally with
 		// whatever output was captured before the abort. Check the signal after

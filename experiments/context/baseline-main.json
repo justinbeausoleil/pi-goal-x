@@ -511,9 +511,9 @@
       "breakdown": {
         "sdkGuidanceChars": 2689,
         "hostToolSchemaChars": 2554,
-        "childRequestChars": 6072,
+        "childRequestChars": 4541,
         "extensionMessageChars": 269,
-        "extensionAttributableChars": 15558,
+        "extensionAttributableChars": 14027,
         "baseSystemChars": 5092,
         "extensionSystemChars": 1439,
         "goalStateChars": 1439,

@@ -30,7 +30,7 @@ import {
 	sanitizeGoalPaths,
 } from "./storage/goal-files.ts";
 import { GoalService } from "./goal-service.ts";
-import { readGoalLedger } from "./goal-ledger.ts";
+import { goalActivityEvents } from "./goal-ledger.ts";
 import { GoalAccounting } from "./goal-accounting.ts";
 import { GoalRuntime } from "./goal-runtime.ts";
 import {
@@ -664,7 +664,7 @@ export function createGoalCore(
 						getDebugMode: () => debugMode,
 						getStalled: () => stallNotified,
 						getExpanded: () => dashboardExpanded,
-						getLedgerEvents: () => readGoalLedger(ctx).events,
+						getLedgerEvents: () => state.goal ? goalActivityEvents(ctx, state.goal.id) : [],
 						getAuditResult: () => auditResult,
 					}),
 					{ placement: "aboveEditor" },
@@ -694,7 +694,7 @@ export function createGoalCore(
 					getDebugMode: () => debugMode,
 					getStalled: () => stallNotified,
 					getExpanded: () => dashboardExpanded,
-					getLedgerEvents: () => readGoalLedger(ctx).events,
+					getLedgerEvents: () => state.goal ? goalActivityEvents(ctx, state.goal.id) : [],
 					getAuditResult: () => auditResult,
 				}),
 				{ placement: "aboveEditor" },
