@@ -19,3 +19,6 @@
 
 - SDK compatibility complete: 0.83.0, 0.84.1 and 0.84.4 each pass TypeScript, 915 serial unit tests, 11 real-SDK session scenarios and six provider-payload checks. Root full suite passes 961/961; discovery self-check passes 915 units; context baseline remains unchanged.
 - Maintainer release PR #50 passed CI run 34169124742 on ce48088. Updated #46 with the fork-permission explanation and companion link, then merged exact original head e594a64e as 906b78a. Merged main into the release branch; production files, tests and package inputs are byte-unchanged from the validated candidate.
+
+- Final-branch CI run 34169322174 passed the full suite but exposed a pre-existing flaky self-check test: a random goal id can contain the task-id substring t1. Made the fixture deliberately include t1 and assert the exact bounded marker rather than banning that substring. Production/package bytes remain unchanged.
+- Package smoke harness initially used native Node type stripping, which deliberately rejects TypeScript under node_modules. Switched the check to Pi's actual extension loader; no package change is needed.

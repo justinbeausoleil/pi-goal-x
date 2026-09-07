@@ -165,7 +165,8 @@ test("goalPrompt omits taskListBlock when no taskList", () => {
 });
 
 test("continuation checkpoint never embeds the task list (issue #30)", () => {
-	const g = goal();
+	// Task-like substrings are valid in goal ids; a random id made this test flaky.
+	const g = goal({ id: "goal-t1" });
 	g.taskList = {
 		tasks: [{ id: "t1", title: "Task 1", status: "pending" }],
 		blockCompletion: false,
@@ -173,7 +174,7 @@ test("continuation checkpoint never embeds the task list (issue #30)", () => {
 	};
 	const continuation = continuationPrompt(g);
 	assert.equal(continuation.includes("[TASK LIST"), false);
-	assert.equal(continuation.includes("t1"), false, "marker carries only goal id metadata");
+	assert.equal(continuation, '<pi_goal_continuation goal_id="goal-t1" kind="checkpoint" v="2"/>', "marker carries only goal id metadata");
 });
 
 test("continuationPrompt omits taskListBlock when no taskList", () => {
