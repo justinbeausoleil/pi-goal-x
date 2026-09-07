@@ -45,8 +45,10 @@
     ".tests/goal-record.test.ts",
     ".tests/goal-recovery.test.ts",
     ".tests/goal-refresh.test.ts",
+    ".tests/goal-rpc-dialogs.test.ts",
     ".tests/goal-service.test.ts",
     ".tests/goal-session-health.test.ts",
+    ".tests/goal-session-safety.test.ts",
     ".tests/goal-settings-race.test.ts",
     ".tests/goal-settings.test.ts",
     ".tests/goal-stale-continuation-golden.test.ts",
@@ -77,6 +79,7 @@
   ],
   "e2eFiles": [
     ".tests/e2e/goal-lifecycle-dashboard.test.ts",
+    ".tests/e2e/goal-session-safety.test.ts",
     ".tests/e2e/network-recovery-rpc.test.ts"
   ]
 }

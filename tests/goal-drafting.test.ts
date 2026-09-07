@@ -1344,3 +1344,27 @@ test("a tweak with no task list retains the current list and keeps its statuses"
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}
 });
+
+for (const unavailable of [false, true]) {
+	test(`all drafting tools preserve the draft when dialogs are ${unavailable ? "unavailable" : "failing"}`, async () => {
+		const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-dialog-failure-"));
+		try {
+			const h = createHarness(cwd, { hasUI: true });
+			await h.sessionStart();
+			await h.commands.get("goal")!.handler("Ship a tested feature", h.ctx);
+			h.ctx.ui.custom = (async () => { if (!unavailable) throw new Error("Host disconnected"); return undefined; }) as typeof h.ctx.ui.custom;
+			delete (h.ctx.ui as Partial<ExtensionContext["ui"]>).select;
+			for (const [name, params] of [
+				["goal_question", { question: "Scope?", options: ["A"] }],
+				["goal_questionnaire", { questions: [{ id: "scope", question: "Scope?", options: ["A"] }] }],
+				["propose_goal_draft", proposalParams("Ship a tested feature. Success criteria: tests pass.")],
+			] as const) {
+				const result = await h.tools.get(name).execute("test", params, new AbortController().signal, undefined, h.ctx);
+				assert.match(result.content[0].text, unavailable ? /cannot display/ : /Host disconnected/);
+				assert.doesNotMatch(result.content[0].text, /user cancelled|refinement requested/);
+				assert.equal(activeGoalFiles(cwd).length, 0);
+				assert.ok(h.activeTools().includes("propose_goal_draft"));
+			}
+		} finally { rmSync(cwd, { recursive: true, force: true }); }
+	});
+}

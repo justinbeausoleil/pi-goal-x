@@ -307,50 +307,57 @@ export function isHeadlessQuestionSufficientForDraft(args: { topic: string; ques
 
 const CUSTOM_ANSWER_LABEL = "Write your own answer...";
 
-/**
- * Run the questionnaire with the dialog primitives every host implements.
- *
- * `ui.custom` renders a terminal component, so it exists only in pi's TUI.
- * `confirm`, `select` and `input` are part of the same UI contract and are
- * what a non-terminal host (a browser front end, for one) can actually
- * present, so the questionnaire degrades onto them instead of disappearing.
- * The auditor toggle has no place in these primitives, so the caller's
- * default carries through untouched.
- */
+/** Sequential native dialogs for hosts that cannot render terminal components. */
 async function runQuestionnaireWithBasicDialogs(
 	ctx: ExtensionContext,
 	questions: GoalQuestionnaireQuestion[],
 	auditorToggleInit?: { defaultEnabled: boolean },
 ): Promise<GoalQuestionnaireResult> {
+	const unavailable = (): GoalQuestionnaireResult => ({ questions: [], answers: [], cancelled: true, unavailable: true, ...(auditorToggleInit ? { auditorEnabled: auditorToggleInit.defaultEnabled } : {}) });
+	// Require only the primitives this questionnaire can actually use.
+	if ((auditorToggleInit || questions.some(q => q.options.length > 0)) && typeof ctx.ui.select !== "function") return unavailable();
+	if (questions.some(q => q.options.length === 0 || q.allowCustom !== false) && typeof ctx.ui.input !== "function") return unavailable();
+	let auditorEnabled = auditorToggleInit?.defaultEnabled;
+	const cancelled = (): GoalQuestionnaireResult => ({ questions, answers: [], cancelled: true, auditorEnabled });
+	if (auditorToggleInit) {
+		const enabled = "Enabled — require independent approval";
+		const disabled = "Disabled — skip the completion audit";
+		const choices = auditorEnabled ? [enabled, disabled] : [disabled, enabled];
+		const picked = await ctx.ui.select(`Completion auditor (currently ${auditorEnabled ? "enabled" : "disabled"})`, choices);
+		if (picked === undefined) return cancelled();
+		if (!choices.includes(picked)) throw new Error("The host returned an unknown auditor choice");
+		auditorEnabled = picked === enabled;
+	}
 	const answers: GoalQuestionnaireAnswer[] = [];
 	for (const question of questions) {
-		// Context is the substance of a proposal, not decoration, so it has to
-		// travel with the question the host displays.
-		const prompt = question.context === undefined || question.context === "" ? question.question : `${question.question}\n\n${question.context}`;
-		const options = question.allowCustom === false ? question.options : [...question.options, CUSTOM_ANSWER_LABEL];
+		let prompt = question.context ? `${question.question}\n\n${question.context}` : question.question;
+		if (auditorToggleInit) prompt += `\n\nAuditor for this goal: ${auditorEnabled ? "enabled (independent approval required)" : "disabled (completion skips the audit)"}.`;
 		let answer: string | undefined;
-		let wasCustom = false;
-		if (options.length === 0) {
-			answer = await ctx.ui.input(prompt, undefined);
-			wasCustom = true;
-		} else {
+		let wasCustom = question.options.length === 0;
+		if (!wasCustom) {
+			// Numbered labels keep duplicate/reserved option text unambiguous.
+			const labels = question.options.map((option, i) => `${i + 1}. ${option}${question.recommended === i ? " (Recommended)" : ""}`);
+			const customLabel = `${labels.length + 1}. ${CUSTOM_ANSWER_LABEL}`;
+			const options = question.allowCustom === false ? labels : [...labels, customLabel];
 			const picked = await ctx.ui.select(prompt, options);
-			if (picked === CUSTOM_ANSWER_LABEL) {
-				answer = await ctx.ui.input(question.question, undefined);
-				wasCustom = true;
-			} else {
-				answer = picked;
-			}
+			if (picked === undefined) return cancelled();
+			if (!options.includes(picked)) throw new Error("The host returned an unknown questionnaire choice");
+			wasCustom = picked === customLabel && question.allowCustom !== false;
+			if (!wasCustom) answer = question.options[labels.indexOf(picked)];
 		}
-		// A dismissed dialog is a cancelled questionnaire: partial answers would
-		// be presented as if the user had finished.
-		if (answer === undefined || answer === "") return { questions, answers: [], cancelled: true, auditorEnabled: auditorToggleInit?.defaultEnabled };
+		if (wasCustom) {
+			// Match the terminal editor: whitespace alone is not a submitted answer.
+			do {
+				answer = (await ctx.ui.input(prompt, "Write your answer"))?.trim();
+			} while (answer === "");
+		}
+		if (answer === undefined) return cancelled();
 		answers.push({ id: question.id, question: question.question, answer, wasCustom });
 	}
-	return { questions, answers, cancelled: false, auditorEnabled: auditorToggleInit?.defaultEnabled };
+	return { questions, answers, cancelled: false, auditorEnabled };
 }
 
-export const DIALOG_UNAVAILABLE_HINT = "This host cannot display goal-drafting dialogs (ui.custom is unavailable outside pi's terminal UI). Set PI_GOAL_AUTO_CONFIRM=1 to confirm proposals without a dialog, or run the draft from the pi TUI.";
+export const DIALOG_UNAVAILABLE_HINT = "This host cannot display the required goal-drafting dialogs. Use a host with select/input support or the pi TUI, or explicitly restart with PI_GOAL_AUTO_CONFIRM=1 to confirm proposals without a dialog.";
 
 export function proposalDialogFailureMessage(error: unknown): string {
 	const detail = error instanceof Error ? error.message : String(error);
@@ -368,10 +375,18 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 	}
 
 	const questions = normalizeQuestionnaireQuestions(rawQuestions);
+	if (ctx.mode === "rpc" || typeof ctx.ui.custom !== "function") {
+		return runQuestionnaireWithBasicDialogs(ctx, questions, auditorToggleInit);
+	}
 	const isMulti = questions.length > 1;
 	const totalTabs = questions.length + 1;
 
-	const result = await ctx.ui.custom<GoalQuestionnaireResult>((tui, theme, _kb, done) => {
+	const result = await ctx.ui.custom<GoalQuestionnaireResult | undefined>((tui, theme, _kb, done) => {
+		// Some web hosts invoke the factory with a render callback in place of a TUI.
+		if (!tui || typeof tui.getShowHardwareCursor !== "function" || typeof tui.setShowHardwareCursor !== "function" || typeof tui.requestRender !== "function") {
+			done(undefined);
+			return { render: () => [], invalidate: () => {} };
+		}
 		// Suppress hardware cursor during dialog to reduce TUI auto-scroll
 		// (the TUI render loop runs at ~60fps and writes ANSI cursor positioning
 		// sequences every cycle, which can cause terminal viewport snapping).
@@ -1001,23 +1016,8 @@ function advanceAfterAnswer() {
 			},
 		};
 	});
-	// `ctx.hasUI` only reports that a UI context is installed, not that it can
-	// render a TUI component. Hosts embedding pi behind a non-terminal UI (a
-	// browser, for one) install a real UI context - so `hasUI` is true - while
-	// `ui.custom` remains the SDK's headless default and resolves to undefined.
-	// Reading `.cancelled` off that crashed every drafting tool on those hosts.
 	if (result !== undefined) return result;
-	// `ctx.hasUI` only reports that a UI context is installed, not that it can
-	// render a TUI component, so a host with a non-terminal UI lands here with
-	// `hasUI === true` and an undefined result. Falling back keeps drafting
-	// usable there; hosts with no dialogs at all report `unavailable` so the
-	// caller can explain itself instead of claiming the user cancelled.
-	if (!hostSupportsBasicDialogs(ctx)) return { questions: [], answers: [], cancelled: true, unavailable: true };
-	return await runQuestionnaireWithBasicDialogs(ctx, questions, auditorToggleInit);
-}
-
-function hostSupportsBasicDialogs(ctx: ExtensionContext): boolean {
-	return typeof ctx.ui.select === "function" && typeof ctx.ui.input === "function";
+	return runQuestionnaireWithBasicDialogs(ctx, questions, auditorToggleInit);
 }
 
 /**

@@ -898,7 +898,7 @@ function browserLikeUiContext(script: { picks?: (string | undefined)[]; typed?: 
 }
 
 test("drafting degrades onto select/input where only ui.custom is missing", async () => {
-	const { ctx, prompts } = browserLikeUiContext({ picks: ["B"] });
+	const { ctx, prompts } = browserLikeUiContext({ picks: ["2. B"] });
 	const result = await runGoalQuestionnaire(ctx, [{ id: "scope", question: "Scope?", context: "Pick one", options: ["A", "B"] }]);
 	assert.equal(result.cancelled, false);
 	assert.equal(result.unavailable, undefined);
@@ -909,9 +909,9 @@ test("drafting degrades onto select/input where only ui.custom is missing", asyn
 });
 
 test("the proposal dialog is answerable through plain select on such a host", async () => {
-	const { ctx, prompts } = browserLikeUiContext({ picks: ["Confirm — create this goal now"] });
+	const { ctx, prompts } = browserLikeUiContext({ picks: ["Enabled — require independent approval", "1. Confirm — create this goal now (Recommended)"] });
 	assert.deepEqual(await showProposalDialog(ctx, "OBJECTIVE\n\nTasks:\n1. one", "goal", true), { decision: "confirm", auditorEnabled: true, unavailable: false });
-	assert.match(prompts[0] ?? "", /Confirm Goal Draft[\s\S]*OBJECTIVE[\s\S]*1\. one/);
+	assert.match(prompts[1] ?? "", /Confirm Goal Draft[\s\S]*OBJECTIVE[\s\S]*1\. one/);
 });
 
 test("a free-text question falls back to input, and a dismissed dialog cancels", async () => {
