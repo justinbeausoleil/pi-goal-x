@@ -7,3 +7,7 @@
 5. Update README/changelog and root package/lock metadata to 0.31.1 without dependency-range changes. Push changes, verify exact-commit CI, pack once and verify contents, tag, publish that tarball, create GitHub release via gh, verify integrity/tag/latest and close resolved issues with evidence.
 
 Additive interfaces: GoalQuestionnaireResult.unavailable and proposal-result unavailable; internal session-scoped audit queue. No public tool schema or persisted format changes.
+
+## GitHub fork permission fallback
+
+GitHub reports maintainerCanModify=true but rejects HTTPS and SSH pushes to VincentHanxiaoDu/pi-goal as tmonk (403/permission denied). Carry the checked amendments on a maintainer release PR retaining both contributor commits. Validate that combined head, merge original #46 with its exact unchanged head, then merge main into the release branch and integrate the amendments plus remaining fixes. Require exact final-head CI before tagging/publishing. Update #46 with a link to the companion and explain the restriction. No contributor history is rewritten.

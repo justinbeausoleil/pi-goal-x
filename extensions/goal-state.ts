@@ -32,6 +32,7 @@ import { GoalService } from "./goal-service.ts";
 import { goalActivityEvents } from "./goal-ledger.ts";
 import { GoalAccounting } from "./goal-accounting.ts";
 import { GoalRuntime } from "./goal-runtime.ts";
+import { GoalAuditMessages } from "./goal-session-safety.ts";
 import {
 	focusedGoalFromPool,
 	openGoalsFromPool,
@@ -78,6 +79,7 @@ export interface GoalCore {
 	goalWidgetComponentRef: { current: GoalWidgetComponent | null };
 	goalService: GoalService;
 	runtime: GoalRuntime;
+	auditMessages: GoalAuditMessages;
 	accounting: GoalAccounting;
 
 	assignFocusedGoalId(goalId: string | null): void;
@@ -1000,6 +1002,7 @@ export function createGoalCore(
 		goalWidgetComponentRef,
 		goalService,
 		runtime,
+		auditMessages: new GoalAuditMessages(),
 		accounting,
 		assignFocusedGoalId,
 		focusedOperationToken,

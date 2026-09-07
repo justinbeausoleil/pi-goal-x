@@ -2,6 +2,14 @@
 
 All notable changes to pi-goal-x are documented here.
 
+## [0.31.1] — 2026-09-08
+
+### Fixed
+
+- **Guided drafting on RPC and browser hosts (#45, #47, PR #46)** — native select/input dialogs retain question and proposal context, recommendations, custom answers, and auditor selection. Missing or incompatible terminal UI no longer crashes drafting or flashes a spurious web-host error. Cancelled, unavailable, and failed dialogs never confirm unseen proposals; errors preserve the draft and explain the next step.
+- **Audit tool-result pairing (#48)** — audit transcript messages wait until the agent settles and never trigger a model turn. Display-only audit events are excluded from provider context, including events already stored in affected histories, preventing duplicate or unpaired tool results without editing session files. Live audit progress and ledger evidence remain available.
+- **Forked subagent prompt collisions (#49)** — delegated children no longer initialize goal tools, state, accounting, or continuation loops. Fresh, forked, resumed, and nested children retain ordinary conversation while leaving parent goal ownership untouched.
+
 ## [0.31.0] — 2026-09-07
 
 ### Performance and token overhead since 0.30.5

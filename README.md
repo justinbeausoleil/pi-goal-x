@@ -37,6 +37,10 @@ The `/goal` and `/sisyphus` commands start a guided drafting process. The agent 
 
 RPC and browser hosts use native select/input dialogs when the terminal overlay is unavailable. Questions retain their context, and proposal confirmation includes a choice of completion auditor. Cancelling or losing a dialog never confirms an unseen proposal; the draft stays available.
 
+When used with `pi-subagents`, goal mode stays in the parent session. Fresh, forked, resumed, and nested children inherit their assignment context without goal tools, goal state writes, or automatic goal continuations. Ordinary interactive forks retain goal mode.
+
+Audit progress remains visible in the dashboard. Audit transcript messages appear after the agent settles and are excluded from model input; existing sessions containing interleaved audit events can resume after loading the updated extension, without rewriting their history.
+
 The proposal is written to the conversation as a durable summary (objective, plan, verification, automatic continuation, auditor state); confirming it creates and focuses the goal and starts working automatically.
 
 ### Direct goal creation
