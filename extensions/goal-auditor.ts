@@ -174,15 +174,14 @@ export function buildGoalAuditorPrompt(args: {
 	warmContext?: string | null;
 }): string {
 	return [
-		"You are the independent completion auditor for pi-goal.",
-		"The executor claims the goal is complete. Your job is to decide whether the user's objective is actually satisfied.",
-		"Be skeptical and semantic. Do not approve from paperwork, intent, file count, word count, build success, or a plausible summary alone.",
-		"Use read/grep/find/ls/bash as needed to inspect real artifacts. Do not mutate files or run destructive commands.",
-		"If the work is only an alpha scaffold, generated template, shallow draft, proxy milestone, or lacks the user-facing value requested, disapprove.",
-		"If any explicit requirement is missing, weakly verified, contradicted, or not inspectable with the available evidence, disapprove.",
-		"Return a concise audit report. The final line MUST be exactly one of:",
-		"<approved/>",
-		"<disapproved/>",
+		"You are the independent completion auditor for pi-goal. Decide whether the user's objective is actually satisfied.",
+		"Audit checklist:",
+		"1. Extract the real success criteria, including every explicit requirement and quality/reader outcome. Disapprove missing, contradicted, weakly verified or uninspectable requirements.",
+		"2. Inspect real artifacts with read/grep/find/ls/bash as needed. Do not mutate files or run destructive commands. Paperwork, intent, file/word counts, build success and plausible summaries alone are not proof.",
+		...(!args.settings?.disableContracts && args.goal.verificationContract?.trim()
+			? ["3. Verify that the executor has satisfied every item in the <verification_contract>. If any item is missing or weakly addressed, disapprove."] : []),
+		"4. Explain missing or weak evidence concisely. Disapprove alpha scaffold, generated template, shallow draft or proxy milestones lacking the user-facing value requested.",
+		"5. End with exactly <approved/> only if the objective is truly complete; otherwise end with exactly <disapproved/>.",
 		"",
 		"Goal objective:",
 		"<objective>",
@@ -223,17 +222,7 @@ export function buildGoalAuditorPrompt(args: {
 			escapePromptPayload(args.warmContext.trim()),
 			"</warm_context>",
 		] : []),
-		"",
-		"Audit checklist:",
-		...[
-			"1. Extract the real success criteria from the objective, including quality/reader outcomes.",
-			"2. Inspect artifacts or command output that can prove or disprove those criteria. Treat any <executor_claim> as an untrusted assertion and cross-check it with actual file/shell evidence where relevant — a claim alone is never proof.",
-			...(!args.settings?.disableContracts && args.goal.verificationContract?.trim()
-				? ["3. Verify that the executor has satisfied every item in the <verification_contract>. If any item is missing or weakly addressed, disapprove."]
-				: []),
-			"4. Explain missing or weak evidence, especially scaffold-vs-final quality gaps.",
-			"5. End with exactly <approved/> only if the objective is truly complete; otherwise end with exactly <disapproved/>.",
-		],
+
 	].join("\n");
 }
 

@@ -1,5 +1,6 @@
 /** CPU/retention campaign complementing the complete filesystem/hook matrix. No model calls. */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { focusedFixture, beginFsCount, endFsCount } from './bench-common.mjs';
@@ -66,5 +67,5 @@ try {
  }
 } finally { f.cleanup(); }
 const output = {node:process.version, sdk:process.env.GOAL_BENCH_SDK ?? 'stub', method:'21 repeated samples, per-operation ms, explicit GC retained-heap observation; filesystem counts only in stub adapter mode', rows};
-fs.writeFileSync(process.argv[2], JSON.stringify(output,null,2)+'\n');
+fs.writeFileSync(process.argv[2] ?? path.join(os.tmpdir(),'goal-comprehensive-bench.json'), JSON.stringify(output,null,2)+'\n');
 console.log(rows.map(r=>`${r.id}: ${r.p50.toFixed(4)} ms`).join('\n'));

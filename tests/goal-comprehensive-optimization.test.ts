@@ -9,6 +9,7 @@ import { taskIndex } from "../extensions/goal-task-index.ts";
 import { goalPrompt } from "../extensions/prompts/goal-prompts.ts";
 import { goalDetailPage } from "../extensions/goal-detail.ts";
 import { readGoalLedger, appendGoalEvents, invalidateGoalLedgerCache, loadLedgerState, LEDGER_CHECKPOINT_FILE, type GoalLedgerEvent } from "../extensions/goal-ledger.ts";
+import { buildPostCompactionGoalDelta } from "../extensions/goal-compaction.ts";
 import { recentNonEmptyLines } from "../extensions/goal-auditor.ts";
 import { readActiveGoalPool, readActiveGoalPoolAsync, invalidateGoalPoolCache, writeActiveGoalFile, archiveGoalFile } from "../extensions/storage/goal-files.ts";
 import { compactGoalCheckpointContext } from "../extensions/goal-events.ts";
@@ -158,3 +159,11 @@ test("Oracle state survives checkpoint reload and corrupt derived state rebuilds
  } finally {f.cleanup();invalidateGoalLedgerCache();}
 });
 
+test("compaction resync bounds oversized task text and points to lossless requirements", () => {
+ const f=fixture(); try {
+  const goal={...f.goal,currentTaskId:"task",taskList:{tasks:[{id:"task",title:"Long title ".repeat(1000),status:"pending" as const,verificationContract:"Verify 🧭 ".repeat(10000)}],proposedAt:"today",blockCompletion:true}};
+  const delta=buildPostCompactionGoalDelta({goal,ledgerEvents:[],otherOpenCount:0});
+  assert.ok(delta.length<1500); assert.match(delta,/get_goal\(section="tasks"\)/);
+  const detail=goalDetailPage(goal,{section:"tasks",task_id:"task"}); assert.ok(detail.ok && detail.nextCursor && detail.totalChars>goal.taskList.tasks[0]!.verificationContract.length);
+ } finally {f.cleanup();}
+});
