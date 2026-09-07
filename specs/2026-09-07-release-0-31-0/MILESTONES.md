@@ -8,3 +8,5 @@
 - Release self-check found one newly added test missing from the discovery manifest. Regenerated the manifest; self-check and its 888 unit tests passed. Production dependency audit reports zero vulnerabilities.
 - GitHub authentication succeeds. npm rejected the saved login (E401); started the ordinary browser login, which requires user sign-in. No authentication material was printed or changed manually.
 - Final release validation passed: 923/923 full-suite tests, TypeScript, lint, 24 context fixtures, comprehensive performance gate and NAF gate. No production source changes since the already validated SDK compatibility runs.
+- Pushed release commit `c3f282d` to main. GitHub CI run `34166666567` passed; tagged and published v0.31.0 with the reviewed notes and matching tarball asset.
+- npm required one-time publishing authorization even with the new valid token. Completed the passkey flow in Safari at the user’s request, published the exact checked tarball, and verified registry latest/version/SHA-512/SHA-1. Temporary authentication files were removed; no credentials are stored in the repository. `PUBLISHED.json` records the verified release receipt.
