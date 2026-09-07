@@ -35,6 +35,8 @@ Sisyphus goals work well for migrations, staged refactors, release procedures, d
 
 The `/goal` and `/sisyphus` commands start a guided drafting process. The agent can ask focused questions, clarify the objective, and propose a task plan for confirmation.
 
+RPC and browser hosts use native select/input dialogs when the terminal overlay is unavailable. Questions retain their context, and proposal confirmation includes a choice of completion auditor. Cancelling or losing a dialog never confirms an unseen proposal; the draft stays available.
+
 The proposal is written to the conversation as a durable summary (objective, plan, verification, automatic continuation, auditor state); confirming it creates and focuses the goal and starts working automatically.
 
 ### Direct goal creation
