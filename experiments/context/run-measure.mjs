@@ -35,6 +35,9 @@ const baseline = {
 	totals: {
 		totalSerializedChars: rows.reduce((sum, r) => sum + r.breakdown.totalSerializedChars, 0),
 		estimatedTokens: rows.reduce((sum, r) => sum + r.breakdown.estimatedTokens, 0),
+		childRequestChars: rows.reduce((sum, r) => sum + r.breakdown.childRequestChars, 0),
+		combinedSerializedChars: rows.reduce((sum, r) => sum + r.breakdown.totalSerializedChars + r.breakdown.childRequestChars, 0),
+		extensionAttributableChars: rows.reduce((sum, r) => sum + r.breakdown.extensionAttributableChars, 0),
 	},
 };
 

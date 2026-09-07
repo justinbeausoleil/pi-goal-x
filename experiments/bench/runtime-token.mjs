@@ -31,7 +31,7 @@ async function measure(id, fn, n=30) {
  const heapDeltaBytes=process.memoryUsage().heapUsed-heap;
  rows.push({id,n,fsOps:operations[Math.floor(n*.5)],p50:samples[Math.floor(n*.5)],p95:samples[Math.min(n-1,Math.floor(n*.95))],heapDeltaBytes,sampledAllocationBytesPerOp:await allocationSample(fn)});
 }
-for(const count of [1000,10000,100000]) {
+for(const count of (process.env.GOAL_BENCH_EVENT_COUNTS?.split(',').map(Number) ?? [1000,10000,100000])) {
  const f=focusedFixture();
  try {
   const events=Array.from({length:count},(_,i)=>({type:'task_complete',goalId:i%2?f.goal.id:'other',taskId:`t${i}`,evidence:'verified',at:new Date(1700000000000+i*1000).toISOString()}));
@@ -54,7 +54,7 @@ for(const count of [1000,10000,100000]) {
   await h.handlers.get('session_shutdown')({},h.ctx);
  } finally {f.cleanup();}
 }
-for(const count of [10,100]) {
+for(const count of (process.env.GOAL_BENCH_HISTORY_ONLY ? [] : [10,100])) {
  const f=focusedFixture();
  try {
   writeActiveGoalFile({cwd:f.cwd},{...f.goal,taskList:{tasks:Array.from({length:count},(_,i)=>({id:`t${i}`,title:`Task ${i}`,status:'pending'})),blockCompletion:true,proposedAt:'2026-09-07'}});
@@ -71,7 +71,7 @@ for(const count of [10,100]) {
   await h.handlers.get('session_shutdown')({},h.ctx);
  } finally {f.cleanup();}
 }
-for(const goals of [1,10,50]) {
+for(const goals of (process.env.GOAL_BENCH_HISTORY_ONLY ? [] : [1,10,50])) {
  const f=focusedFixture();
  try {
   if(goals>1)makeGoalFiles(f.cwd,goals-1);
