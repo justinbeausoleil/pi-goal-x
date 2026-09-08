@@ -1,5 +1,7 @@
 /** S1/S2: real dispatch boundaries and ordinary user work after a goal stop. */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import {syncBuiltinESMExports} from "node:module";
 import {existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs";
 import http from "node:http";
 import {tmpdir} from "node:os";
@@ -25,6 +27,8 @@ process.env.PI_GOAL_AUTO_CONFIRM = "1";
 const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: {enabled: false}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [];
+const bills = [];
+let billedRunOwner;
 const timeline = [];
 const serialOrder = [];
 let pauseDispatches = 0;
@@ -41,6 +45,16 @@ let dialogSeen = false;
 let triggerGoalId, testing = false, secondaryDone = false, replaying = false, forbiddenOffered = false;
 let queuedUserSeen = false, queuedUserDone = false;
 let agentResumed = false, agentResumeCheckpoint = 0;
+let faultGoalId, failedUsageWrites = 0;
+const originalRename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (faultGoalId && String(to).endsWith(".md") && String(to).includes(faultGoalId)) {
+    failedUsageWrites++;
+    throw Object.assign(new Error("Synthetic unpaid-usage write failure"), {code: "EACCES"});
+  }
+  return originalRename(from, to);
+};
+syncBuiltinESMExports();
 const pause = {name: "update_goal", args: {status: "paused", reason: "Fixture requested a deliberate stop.", suggested_action: "Wait for explicit user instructions."}};
 const write = path => ({name: "write", args: {path, content: path}});
 const currentGoal = () => results.findLast(result => result.details?.goal)?.details.goal;
@@ -79,6 +93,7 @@ async function stop() {
   else if (switching) { selectId = secondary.id; await session.prompt("/goal-focus"); }
   else if (control === "clear") await session.prompt("/goal-clear");
   else throw new Error(`Unsupported user stop: ${control}`);
+  if (process.argv.includes("--usage-fault")) faultGoalId = primary.id;
 }
 async function bind() {
   await session.bindExtensions({mode: "rpc", onError: error => errors.push(error), uiContext: {
@@ -99,7 +114,14 @@ async function create({sessionManager, sessionStartEvent}) {
   const loader = new DefaultResourceLoader({cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
     systemPrompt: "Perform only the explicitly authorized fixture work.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
     extensionFactories: [pi => {
-      pi.on("tool_result", event => { results.push(event); });
+      pi.on("agent_start", () => { billedRunOwner = undefined; });
+      pi.on("tool_result", event => {
+        results.push(event);
+        if (event.toolName === "create_goal" && event.details?.goal && bills.at(-1)?.goalId === null) {
+          billedRunOwner = event.details.goal.id;
+          bills.at(-1).goalId = billedRunOwner;
+        }
+      });
       pi.on("turn_end", async () => {
         if (testing && control === "agent-resume" && !agentResumed && currentGoal()?.status === "paused") {
           agentResumed = true;
@@ -109,6 +131,7 @@ async function create({sessionManager, sessionStartEvent}) {
       });
       pi.on("message_start", event => {
         if (event.message.role === "user") {
+          billedRunOwner = undefined;
           triggerGoalId = null;
           if (JSON.stringify(event.message.content).includes("queued-user-sentinel")) queuedUserSeen = true;
         }
@@ -132,6 +155,8 @@ async function create({sessionManager, sessionStartEvent}) {
   });
   session.agent.streamFunction = (requestedModel, context, options) => {
     requests.push(context);
+    if (billedRunOwner === undefined) billedRunOwner = JSON.stringify(context.messages.at(-1)?.content).match(/\[PI GOAL ACTIVE goalId=([^\]]+)\]/)?.[1] ?? null;
+    bills.push({goalId: billedRunOwner, tokens: 110});
     timeline.push({event: "request", count: requests.length});
     if (requests.length > 30) failure = new Error("Unbounded stop fixture continuation");
     const startSecondary = testing && !replaying && successor && !secondaryDone
@@ -171,6 +196,22 @@ async function run(prompt, calls) {
   responses = calls.map(call => [call]);
   await session.prompt(prompt);
   await settled();
+}
+function assertBilling() {
+  const records = new Map();
+  for (const directory of [".pi/goals/archived", ".pi/goals"]) {
+    const full = join(cwd, directory);
+    if (!existsSync(full)) continue;
+    for (const file of readdirSync(full).filter(file => file.endsWith(".md"))) {
+      const record = parseGoalFile(join(full, file));
+      if (record) records.set(record.id, record);
+    }
+  }
+  for (const [id, record] of records) {
+    const expected = bills.filter(bill => bill.goalId === id).reduce((sum, bill) => sum + bill.tokens, 0);
+    assert.equal(record.usage.tokensUsed, expected, `executor usage belongs to the goal selected for its run: ${id}; bills=${JSON.stringify(bills)}`);
+  }
+  for (const bill of bills) if (bill.goalId) assert(records.has(bill.goalId), "the billed goal remains observable in active or archived storage");
 }
 try {
   if (reviewing) {
@@ -334,17 +375,21 @@ try {
     assert(existsSync(join(cwd, "secondary-proof.txt")), "the old abort cannot pause the user's newly authorized successor");
   }
   assert.deepEqual(errors, []);
-  const ownedTokens = requests.length * 110;
-  if (process.argv.includes("--accounting")) {
-    const saved = parseGoalFile(resolve(cwd, primary.activePath));
-    assert.equal(saved.usage.tokensUsed, ownedTokens, "all executor responses, including final paused responses, are charged once");
+  if (process.argv.includes("--usage-fault")) {
+    assert(failedUsageWrites > 0, "the original goal's late usage reaches the actual storage boundary");
+    assert(notices.some(notice => /has not been saved|Could not save/.test(notice)), "unpaid usage is diagnosed");
+    faultGoalId = undefined;
+    const priorRequests = requests.length;
+    await session.prompt("/goal-refresh");
+    assert.equal(requests.length, priorRequests, "retrying usage does not start goal work");
   }
+  if (process.argv.includes("--accounting")) assertBilling();
   responses = [];
   await run("Write ordinary-user.txt as a new, explicit ordinary user request.", [write("ordinary-user.txt")]);
   assert.equal(readFileSync(join(cwd, "ordinary-user.txt"), "utf8"), "ordinary-user.txt", "fresh user work remains available after a goal stop");
   await run("Inspect the focused goal without resuming work.", [{name: "get_goal", args: {}}]);
   const focused = results.at(-1).details.goal;
-  if (process.argv.includes("--accounting")) assert.equal(focused.usage.tokensUsed, ownedTokens, "fresh ordinary work and inspection do not bill the paused goal");
+  if (process.argv.includes("--accounting")) assertBilling();
   if (["unfocus", "clear"].includes(control) && boundary !== "agent") assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, "paused");
@@ -357,6 +402,8 @@ try {
   console.error(JSON.stringify({testing, responses, notices, timeline, results: results.map(result => ({tool: result.toolName, content: result.content}))}));
   throw error;
 } finally {
+  fs.renameSync = originalRename;
+  syncBuiltinESMExports();
   clearTimeout(deadline);
   await session?.abort();
   await host?.dispose();

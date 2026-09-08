@@ -4,6 +4,7 @@ import { appendGoalEvent, appendGoalEvents, type GoalLedgerEvent } from "./goal-
 import { findTaskInTree, updateTaskInTree } from "./goal-policy.ts";
 import {
 	GOALS_DIR,
+	ARCHIVED_GOALS_DIR,
 	archiveGoalFile,
 	atomicWriteGoalFile,
 	ensureDirectory,
@@ -15,6 +16,7 @@ import {
 	resolveGoalPath,
 	safeUnlinkGoalFile,
 	sanitizeGoalPaths,
+	serializeGoalFile,
 	writeActiveGoalFile,
 	type GoalFileContext,
 } from "./storage/goal-files.ts";
@@ -178,6 +180,50 @@ export class GoalService {
 	 * local usage being dropped.
 	 */
 	private lastPersistedUsage: { goalId: string; tokensUsed: number; activeSeconds: number } | null = null;
+	private pendingUsage = new Map<string, {goal: GoalRecord; usage: GoalUsage}>();
+
+	/** Add an incurred delta to its original owner, independently of current focus. */
+	chargeUsage(ctx: GoalServiceContext, goal: GoalRecord, usage: GoalUsage): boolean {
+		const pending = this.pendingUsage.get(goal.id);
+		this.pendingUsage.set(goal.id, {goal, usage: {
+			tokensUsed: (pending?.usage.tokensUsed ?? 0) + usage.tokensUsed,
+			activeSeconds: (pending?.usage.activeSeconds ?? 0) + usage.activeSeconds,
+		}});
+		this.flushUsage(ctx);
+		return !this.pendingUsage.has(goal.id);
+	}
+
+	/** Retry unpaid deltas after storage becomes available; never change session focus. */
+	flushUsage(ctx: GoalServiceContext): void {
+		if (!this.pendingUsage.size) return;
+		this.flushTurn(ctx);
+		if (this.turn.active) return;
+		for (const [id, pending] of this.pendingUsage) {
+			let lock: GoalLock | undefined;
+			try {
+				lock = acquireGoalLock(ctx, id, {attempts: 4, retryMs: 25});
+				const active = this.readFreshDiskGoal(ctx, pending.goal);
+				const archivedPath = pending.goal.archivedPath;
+				const disk = active ?? (archivedPath ? parseGoalFile(resolveGoalPath(ctx, ARCHIVED_GOALS_DIR, archivedPath), true) : null);
+				if (!disk || disk.id !== id) throw new Error("The original goal record is unavailable; usage remains unpaid.");
+				const next = {...disk, usage: {
+					tokensUsed: disk.usage.tokensUsed + pending.usage.tokensUsed,
+					activeSeconds: disk.usage.activeSeconds + pending.usage.activeSeconds,
+				}, revision: (disk.revision ?? 0) + 1, updatedAt: nowIso()};
+				const written = active ? writeActiveGoalFile(ctx, next) : next;
+				if (!active) atomicWriteGoalFile(ctx, ARCHIVED_GOALS_DIR, archivedPath!, serializeGoalFile(next));
+				this.pendingUsage.delete(id);
+				if (this.ref.getFocusedGoalId() === id) {
+					this.ref.setFocused(written);
+					this.trackBaseline(id, written.usage);
+				} else if (active && this.ref.getPool().has(id)) this.ref.getPool().set(id, written);
+			} catch (error) {
+				this.ref.onDiagnostic({severity: "warning", source: "storage", goalId: id, message: `Usage for goal ${id} has not been saved and will retry after storage is restored: ${String(error)}`});
+			} finally {
+				lock?.release();
+			}
+		}
+	}
 
 	/**
 	 * Per-turn transaction buffer (P1-3): task/status/usage mutations and
@@ -896,6 +942,8 @@ export class GoalService {
 
 	/** Create a goal: write active file → ledger → memory/focus commit. */
 	create(ctx: GoalServiceContext, spec: { goal: GoalRecord; ledger?: GoalLedgerEvent[] }): GoalMutationResult {
+		this.flushTurn(ctx);
+		if (this.turn.active) throw new Error("Previous goal changes are still awaiting persistence; creation was not applied.");
 		const previousGoalId = this.ref.getFocused()?.id ?? null;
 		const written = writeActiveGoalFile(ctx, retainGoalScope(spec.goal));
 		if (spec.ledger && spec.ledger.length > 0) {

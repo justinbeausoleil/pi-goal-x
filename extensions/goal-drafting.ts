@@ -421,6 +421,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				core.replaceGoal({ objective: extracted.objective, autoContinue: params.auto_continue !== false, sisyphus: expectedSisyphus, taskList: effectiveTaskList, skipAuditor }, ctx, true, extracted.verificationContract);
 				clearGoalDrafting(core, ctx);
 				const created = core.state.goal;
+				if (created) core.runningGoalId ??= created.id;
 				return { content: [{ type: "text", text: `${summary}\n\n${buildGoalCreatedReport({
 					objective: extracted.objective,
 					detailedSummary: qaEcho,

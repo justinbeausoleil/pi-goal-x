@@ -101,10 +101,12 @@ export function registerGoalEvents(core: GoalCore): void {
 	let userTriggerPending = false;
 	let stopListeningForAbort: (() => void) | undefined;
 	let runningFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
+	let runOriginBound = false;
 	const accountedResponses = new WeakSet<object>();
 	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
 	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
 	pi.on("agent_start", (_event, ctx) => {
+		runOriginBound = false;
 		userTriggerPending = false;
 		stopListeningForAbort?.();
 		const signal = ctx.signal;
@@ -121,6 +123,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			// nextTurn attachments and queued old markers cannot replace a user trigger.
 			if (userTriggerPending) return;
 			core.runningGoalId = null;
+			runOriginBound = false;
 			runningFocus = null;
 			const goalId = goalEventMessageId(message);
 			const markerId = typeof message.content === "string" ? extractGoalIdFromInjectedMessage(message.content) : null;
@@ -132,6 +135,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		} else if (message.role === "user") {
 			userTriggerPending = true;
 			core.runningGoalId = null;
+			runOriginBound = false;
 			runningFocus = null;
 			draftingRun = hasActiveDraft(core);
 			core.runtime.setCheckpoint(null);
@@ -147,7 +151,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		const checkpoint = core.runtime.getCheckpointGoalId();
 		const stale = checkpoint !== null && (!core.runtime.isCheckpointCurrent() || !core.isActionableContinuationGoal(checkpoint));
 		// A focus change during a response cannot retarget its eventual abort.
-		core.runningGoalId ??= !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
+		if (!runOriginBound) {
+			core.runningGoalId = !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
+			runOriginBound = true;
+		}
 		if (core.runningGoalId) runningFocus ??= core.focusedOperationToken(core.runningGoalId);
 		const filtered = filterGoalSessionContext(event.messages);
 		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered ?? event.messages;
@@ -172,7 +179,8 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Per-turn flag resets (#4 + C9 fix).
 		core.advanceTurnSeq();
 		core.goalWorkToolCalledThisTurn = false;
-		core.beginAccounting();
+		if (runOriginBound && core.runningGoalId !== core.state.goal?.id) core.clearActiveAccounting();
+		else core.beginAccounting();
 		core.goalService.beginTurn(ctx, core.focusedGoalId); // P1-3 transaction buffer
 		core.touchGoalActivity(); // F5
 		core.updateUI(ctx);
@@ -239,7 +247,7 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	pi.on("tool_execution_end", async (_event, ctx) => {
 		core.touchGoalActivity(); // F5
-		core.accountProgress(ctx);
+		core.accountProgress(ctx, {goalId: core.runningGoalId});
 	});
 
 	pi.on("turn_end", async (event, ctx) => {
@@ -247,7 +255,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		const tokens = accountedResponses.has(message) ? 0 : assistantTurnTokens(message);
 		accountedResponses.add(message);
 		core.touchGoalActivity(); // F5
-		core.accountProgress(ctx, { completedTurnTokens: tokens });
+		core.accountProgress(ctx, { completedTurnTokens: tokens, goalId: core.runningGoalId });
 
 		if (isAbortedAssistantMessage(message)) {
 			// Pause only on a genuine user abort (signal fired). A provider- or

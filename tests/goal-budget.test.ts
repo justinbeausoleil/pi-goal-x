@@ -98,6 +98,7 @@ test("budget reached marks the goal budget_limited exactly once with ledger + on
 	try {
 		const { handlers, ctx } = createHarness(f.cwd, f.sessionEntries);
 		await handlers.get("session_start")?.({ reason: "start" }, ctx);
+		await handlers.get("before_agent_start")?.({prompt: "Continue the active goal."}, ctx);
 
 		// First turn_end charges 30 tokens: 80 + 30 = 110 >= budget 100 → transition.
 		await handlers.get("turn_end")?.({ message: turnEndMessage(30) }, ctx);
@@ -145,6 +146,7 @@ test("goal without a budget never transitions", async () => {
 		const sessionEntries = [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(goal.id, "created") }];
 		const { handlers, ctx } = createHarness(cwd, sessionEntries);
 		await handlers.get("session_start")?.({ reason: "start" }, ctx);
+		await handlers.get("before_agent_start")?.({prompt: "Continue the active goal."}, ctx);
 		const response = { message: turnEndMessage(5000) };
 		await handlers.get("turn_end")?.(response, ctx);
 		await handlers.get("turn_end")?.(response, ctx);

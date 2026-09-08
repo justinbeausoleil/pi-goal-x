@@ -1491,3 +1491,46 @@
   reopen and supported metadata changes, exact/overshoot budgets and one wrap-up.
   Full qualification and independent008 review remain pending. 007 closure
   35a1093 is pushed; no live package changes.
+
+### Ticket 008 original-owner usage and unpaid retry checkpoint
+
+- Both reviews clear2606473 for its claimed first slice; Standards independently
+  passes17 helper checks plus native pause, Spec15 native plus17 helper checks.
+  Their evidence is Data008/review-2606473-*. The first slice is not a claim of
+  full008 completion.
+- Public per-run billing observations reproduced five remaining failures:
+  unfocus/switch/replacement/clear left original usage330 rather than550; an
+  ordinary request during replacement charged the new goal550 rather than220.
+  The first observation fixture treated Pi's content array as a string and
+  incorrectly assigned null owners; origin-native-red.log is retained. After
+  JSON text extraction, origin-native-corrected-red.log has3 passes/5 genuine
+  failures. The original terminal-pause assertion still passes.
+- Runs now bind even a null ordinary-work origin once, so a later response cannot
+  adopt newly focused work. Explicit tool/draft creation binds the newly created
+  goal when the run had no goal owner. The core keeps the original record and
+  updates its locator after successful clear; goal creation flushes the previous
+  buffered transaction. GoalService charges explicit token/time deltas under
+  the existing per-goal lock against fresh active/archive records and updates
+  memory only for matching focus. Existing task/scope fields remain authoritative.
+- Unpaid deltas remain in memory for retry after storage is restored. The native
+  fault cases fail actual goal-file renames after the public control, observe
+  unpaid-usage diagnostics, then use /goal-refresh and assert the exact original
+  total with no new executor request or changed focus. All4 pass (pause,
+  unfocus, switch, clear). Pinned2606473 remains red after the same paused write
+  fault and refresh:330 versus550. Logs: usage-fault-first.log and
+  usage-fault-paused-red-2606473.log; origin-pin-2606473.mjs pins only runtime
+  source for that reproduction. No claim is made that unsaved in-memory deltas
+  survive process termination while storage remains unavailable.
+- origin-first-green.log passes8 public origin cases. origin-targeted.log
+  passes153 regressions; origin-broad-native.log passes115 native origin,
+  stop and startup checks. This broad run began before the extra4 fault cases
+  were registered; they ran separately. Type/lint pass in origin-first-*;
+  final type/lint results are in origin-final-*. Frozen full suite/re-review
+  is next, followed by the remaining008 budget qualification.
+- Still open: exact/overshoot and one-wrap-up matrix, retries/compaction/auxiliary
+  usage, reopen and supported budget metadata/refresh/resume, controlled time
+  across the broader native ownership paths. In particular inspect budget
+  exhaustion after an old owner's late charge when that goal is unfocused,
+  and budget transition after a previously unpaid delta is retried on refresh:
+  the existing limiter currently runs in focused accountProgress, so these need
+  explicit evidence/repair. All008 acceptance checkboxes remain open.

@@ -217,6 +217,7 @@ pi.registerTool(defineTool({
 			tokenBudget,
 		);
 		const created = core.state.goal;
+		if (created) core.runningGoalId ??= created.id;
 		const otherCount = otherOpenGoalCount(core.goalsById, core.focusedGoalId);
 		const otherLine = otherCount > 0
 			? `\n${otherCount} other open goal${otherCount === 1 ? "" : "s"} remain in .pi/goals — this goal is now the session focus.`

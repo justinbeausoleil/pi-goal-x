@@ -121,7 +121,7 @@ export interface GoalCore {
 	removeFocusedGoal(ctx: ExtensionContext, reason: GoalFocusReason): void;
 	beginAccounting(): void;
 	goalForDisplay(): GoalRecord | null;
-	accountProgress(ctx: ExtensionContext, opts?: { completedTurnTokens?: number }): void;
+	accountProgress(ctx: ExtensionContext, opts?: { completedTurnTokens?: number; goalId?: string | null }): void;
 	syncGoalPromptFromDisk(ctx: ExtensionContext): boolean;
 	persist(ctx?: ExtensionContext): void;
 	refreshGoalDisplayFromDisk(ctx: ExtensionContext): void;
@@ -151,6 +151,7 @@ export function createGoalCore(
 	let focusedGoalId: string | null = null;
 	let focusRevision = 0;
 	let hasExplicitSessionFocus = false;
+	let runningGoal: GoalRecord | null = null;
 
 	function invalidateFocusedOperations(): void { focusRevision += 1; }
 
@@ -188,6 +189,7 @@ export function createGoalCore(
 				// A lifecycle stop invalidates the whole run, including later responses.
 				if (state.goal?.id === next.id && state.goal.status === "active" && next.status !== "active") invalidateFocusedOperations();
 				goalsById.set(next.id, next);
+				if (runningGoal?.id === next.id) runningGoal = next;
 				assignFocusedGoalId(next.id);
 				return;
 			}
@@ -411,6 +413,7 @@ export function createGoalCore(
 
 	function cancelFocusedWork(ctx: ExtensionContext, goalId: string): void {
 		const ownsRun = runningGoalId === goalId || (state.goal?.id === goalId && state.goal.status === "active");
+		if (ownsRun) accountProgress(ctx, {goalId});
 		invalidateFocusedOperations();
 		clearContinuationState();
 		auditAbortController?.abort();
@@ -425,6 +428,7 @@ export function createGoalCore(
 	}
 
 	function reconcileFocusedGoalFromDisk(ctx: ExtensionContext, opts: { preserveMemoryUsage?: boolean } = {}): boolean {
+		goalService.flushUsage(ctx);
 		return goalService.reconcileFocused(ctx, opts);
 	}
 
@@ -501,32 +505,21 @@ export function createGoalCore(
 		return liveDisplayGoal(state.goal, accounting);
 	}
 
-	function accountProgress(ctx: ExtensionContext, opts: { completedTurnTokens?: number } = {}): void {
+	function accountProgress(ctx: ExtensionContext, opts: { completedTurnTokens?: number; goalId?: string | null } = {}): void {
+		goalService.flushUsage(ctx);
 		// Skip disk reconciliation for complete goals — they are pending archival at turn_end.
-		if (state.goal?.activePath && state.goal?.status !== "complete" && !reconcileFocusedGoalFromDisk(ctx, { preserveMemoryUsage: true })) return;
-		if (!state.goal || state.goal.status !== "active" || !accounting.isActiveFor(state.goal.id)) {
-			// Lifecycle controls stop elapsed time, but the owning response still owes tokens.
-			const tokens = usageChannelTokens(opts.completedTurnTokens);
-			if (state.goal && runningGoalId === state.goal.id && tokens > 0) {
-				const charged = goalService.apply(ctx, {reconcile: false, mutate: goal => ({...goal,
-					usage: {...goal.usage, tokensUsed: goal.usage.tokensUsed + tokens}, updatedAt: nowIso(),
-				})});
-				if (!charged.ok) ctx.ui.notify(`Could not save ${tokens} executor tokens for goal ${state.goal.id}: ${charged.message}`, "warning");
-			}
-			beginAccounting();
+		if (state.goal?.activePath && state.goal.status !== "complete") reconcileFocusedGoalFromDisk(ctx, { preserveMemoryUsage: true });
+		const tokens = usageChannelTokens(opts.completedTurnTokens);
+		const owner = opts.goalId === undefined ? (tokens > 0 ? runningGoal ?? state.goal : state.goal)
+			: opts.goalId === null ? null : runningGoal?.id === opts.goalId ? runningGoal : goalsById.get(opts.goalId);
+		if (!owner) return;
+		const active = state.goal?.id === owner.id && owner.status === "active" && accounting.isActiveFor(owner.id);
+		const seconds = active ? accounting.charge().seconds : 0;
+		if (tokens === 0 && seconds === 0) return;
+		if (!goalService.chargeUsage(ctx, owner, {tokensUsed: tokens, activeSeconds: seconds})) {
+			ctx.ui.notify(`Usage for goal ${owner.id} has not been saved. Restore storage access and run /goal-refresh to retry.`, "warning");
 			return;
 		}
-
-		// Serialized idempotent charge: never double-charges the same interval.
-		const { tokens, seconds } = accounting.charge({ completedTurnTokens: opts.completedTurnTokens });
-		if (tokens === 0 && seconds === 0) return;
-
-		const next = cloneGoal(state.goal);
-		next.usage.tokensUsed += tokens;
-		next.usage.activeSeconds += seconds;
-		next.updatedAt = nowIso();
-		state.goal = next;
-		persist(ctx);
 
 		// F6: threshold alerts at 50/75/90% — one ledger event + notification each.
 		const budgetGoal = state.goal;
@@ -861,6 +854,7 @@ export function createGoalCore(
 			},
 		});
 		if (!result.ok) ctx.ui.notify("Goal archive failed; the goal remains focused. " + result.message, "warning");
+		if (result.ok && runningGoal?.id === result.goal.id) runningGoal = result.goal;
 		return result.ok ? result.goal : null;
 	}
 
@@ -953,6 +947,7 @@ export function createGoalCore(
 	}
 
 	function replaceGoal(config: GoalCreationConfig, ctx: ExtensionContext, startNow = true, verificationContract?: string, tokenBudget?: number): void {
+		accountProgress(ctx);
 		const goal = createGoal(config);
 		if (verificationContract) goal.verificationContract = verificationContract;
 		if (config.taskList) goal.taskList = config.taskList;
@@ -980,7 +975,7 @@ export function createGoalCore(
 		if (result.focusChanged && result.previousGoalId) cancelFocusedWork(ctx, result.previousGoalId);
 		core.continuationHeld = false;
 		if (result.focusChanged) appendFocusEntry(result.goalId, "created");
-		beginAccounting();
+		if (ctx.isIdle()) beginAccounting();
 		ctx.ui.notify(buildGoalRunningNotification(config), "info");
 		if (startNow && state.goal?.autoContinue) queueContinuation(ctx, true);
 	}
@@ -1012,6 +1007,7 @@ export function createGoalCore(
 		},
 		set runningGoalId(value: string | null) {
 			runningGoalId = value;
+			runningGoal = value ? goalsById.get(value) ?? (runningGoal?.id === value ? runningGoal : null) : null;
 		},
 		get auditProgress() {
 			return auditProgress;

@@ -468,8 +468,13 @@ turn is no longer actionable (stale checkpoint).
 retains sub-second remainders across charges and response starts for the same
 goal. Pi emits turn_end for final and aborted responses; the event handler
 deduplicates response objects there instead of charging aborted messages again
-at agent_end. A stopped, still-focused goal accepts its owning run's final
-tokens without restarting its active clock. Fresh ordinary work stays separate.
+at agent_end. A run retains its original goal record through pause, focus
+changes and clear, including its resulting archive locator. Each incurred
+delta goes through GoalService's per-goal lock and a fresh record read. Saving
+old-goal usage updates that record without changing current focus. Unpaid
+deltas remain in the service for retry on refresh/reconciliation and emit a
+storage diagnostic. They are in-memory until a write succeeds. Fresh ordinary
+work stays separate, including when a new goal is selected before it ends.
 `GoalRuntime` (goal-runtime.ts) owns continuation scheduling, the stale
 checkpoint state, the turn-stop guard, and one-shot steering reminders.
 
