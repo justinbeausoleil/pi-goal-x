@@ -24,6 +24,9 @@ All notable changes to pi-goal-x are documented here.
 - Task evidence is retained in full. Task and draft confirmations can scroll
   complete 200-node proposals; the bounded expanded dashboard can scroll all
   rows and long current-task details while keeping its dock height stable.
+- Cancelling a proposal keeps its draft for refinement. Explicit `/goal-cancel`
+  persists a cancellation tombstone; tree navigation restores the selected
+  branch's discussion. Late dialog answers cannot revive a cancelled draft.
 
 These changes are under implementation and qualification. They are not a
 published package or a live-install recommendation.

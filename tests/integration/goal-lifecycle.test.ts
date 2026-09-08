@@ -6,6 +6,14 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+for (const mode of ["goal", "sisyphus"]) for (const scenario of ["cancel", "branches", "stale"]) {
+	test(`S1/S2: ${mode} draft ${scenario} uses native dialogs and branch state`, { timeout: 15000 }, async () => {
+		const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-draft-worker.mjs", import.meta.url)), scenario, mode], {
+			timeout: 12000, env: { ...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: "" },
+		});
+		assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+	});
+}
 test("S1: native TUI compositor keeps large-plan overlay and confirmation reachable", { timeout: 15000 }, async () => {
 	const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-task-overlay-host-worker.mjs", import.meta.url))], { timeout: 12000 });
 	assert.match(stdout, /PASS: native host overlay and confirmation/);

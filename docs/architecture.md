@@ -206,6 +206,12 @@ draft profile exposes only question/questionnaire/proposal tools. The agent
 clarifies intent, proposes the full objective and an optional task tree, and
 the user explicitly confirms or continues refining. `/goal-direct` and
 `/sisyphus-direct` bypass this only when the objective is already final.
+Cancelling a question or proposal retains the discussion; `/goal-cancel`
+writes a branch-local cancellation tombstone. On tree navigation/reopen, the
+selected branch's latest draft entry replaces memory, including its auditor
+choice and questionnaire answers. Awaited drafting decisions are bound to the
+draft object, session/focus generation and content-based work revision; late
+answers cannot recreate a cancelled/replaced draft or apply to changed work.
 
 `/goal-tweak <change>` starts the same guided-confirmation process for the
 focused goal. It preserves the task list when no replacement is proposed and

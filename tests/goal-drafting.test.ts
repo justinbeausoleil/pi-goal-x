@@ -128,7 +128,7 @@ function firstGoal(cwd: string) {
 
 const CONFIRM_ANSWER = "Confirm — create this goal now";
 const CONTINUE_ANSWER = "Continue chatting — keep refining";
-const CANCEL_ANSWER = "Cancel — discard this draft";
+const CANCEL_ANSWER = "Cancel proposal — keep this draft";
 
 function proposalParams(objective: string, extra: Record<string, unknown> = {}) {
 	return { objective, sisyphus: false, ...extra };
@@ -142,7 +142,7 @@ async function runProposal(h: Harness, params: Record<string, unknown>): Promise
 
 // ── Confirmation decisions ────────────────────────────────────────────────
 
-test("dialog cancel is a durable no-op and clears the draft", async () => {
+test("dialog cancel preserves the draft without creating a goal", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-cancel-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	try {
@@ -153,13 +153,12 @@ test("dialog cancel is a durable no-op and clears the draft", async () => {
 		assert.ok(h.hasDialog(), "confirmation dialog must open");
 		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CANCEL_ANSWER, wasCustom: false }], cancelled: false });
 		const result = await pending;
-		assert.match(result.content[0].text, /Draft cancelled/);
+		assert.match(result.content[0].text, /Proposal cancelled; the draft remains active/);
 		assert.equal(activeGoalFiles(cwd).length, 0, "cancel must not create a goal");
 		assert.deepEqual(ledgerEvents(cwd).filter((e) => e.type === "goal_created"), [], "cancel must not write a goal_created event");
-		// Drafting tools removed; execution profile restored.
 		const tools = h.activeTools();
-		assert.ok(tools.includes("create_goal") && tools.includes("get_goal") && !tools.includes("update_goal"), "unfocused execution profile restored");
-		assert.equal(tools.includes("goal_questionnaire"), false, "drafting tools removed");
+		assert.ok(tools.includes("goal_questionnaire") && tools.includes("propose_goal_draft"), "draft remains available for refinement");
+		assert.equal((h.entries().filter((e: any) => e.customType === DRAFT_ENTRY).at(-1) as any).data.clearedAt, undefined);
 	} finally {
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}
@@ -1159,7 +1158,7 @@ test("cancel and refine outcomes still carry the durable proposal summary", asyn
 		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CANCEL_ANSWER, wasCustom: false }], cancelled: false });
 		const cancelled = await pendingCancel;
 		assert.match(cancelled.content[0].text, /Proposed objective:/);
-		assert.match(cancelled.content[0].text, /Draft cancelled/);
+		assert.match(cancelled.content[0].text, /Proposal cancelled; the draft remains active/);
 		assert.equal(activeGoalFiles(cwd).length, 0, "cancel must not create a goal");
 		// Refine carries the summary and keeps the draft.
 		await h.commands.get("goal")!.handler("Ship a feature", h.ctx);

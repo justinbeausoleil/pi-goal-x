@@ -456,3 +456,32 @@
   then add retained scope and human-bound revisions through GoalService.
   The approved D3 lifecycle and all 005 criteria remain authoritative; 006
   remains independently eligible. No new approval or planning gate is needed.
+
+### Ticket 005 draft lifecycle checkpoint (partial implementation)
+
+- 004 is pushed at a73ecb1. Current 005 work traces existing draft commands,
+  basic/terminal questionnaires, draft entries, session-tree loading and the
+  shared focus/work-revision boundaries. No 005 criterion is marked complete.
+- New native goal-draft-worker uses the actual loader, public commands/tools,
+  RPC user dialogs, manual compaction, session reopen and navigateTree. It
+  reproduced proposal cancellation removing the draft, navigation retaining
+  the other branch's live draft, and a returning human confirmation creating
+  a goal after /goal-cancel. Red logs: reliability/005/draft-*-red.log under Data.
+- Rehydration now replaces memory from the selected branch's latest valid
+  entry/tombstone. Question/proposal cancellation retains the discussion;
+  explicit cancellation remains a tombstone. Questionnaire answers now travel
+  with the durable draft alongside auditor choice. Every awaited drafting
+  decision uses the existing focus generation plus work revision and captured
+  draft identity, preventing stale confirmation or answer application.
+- Six native cases pass (cancel/branches/stale in regular and Sisyphus modes):
+  cancellation through real compaction/reopen; two live branches and a tombstone;
+  selected-branch confirmation; preserved auditor choice; read-only research;
+  no unconfirmed goal file. Type/lint and 82 drafting/questionnaire checks pass.
+  The first targeted run retained one old expected 'Draft cancelled' string;
+  it now asserts the approved proposal-cancel/keep-draft behavior and passes.
+- Remaining 005 work includes active-draft continuation characterization,
+  detached-fork behavior, full work/generation race coverage, retained-scope
+  schema/migration and receipts, public scope pages, deterministic reopening,
+  human-only 200-node before/after revisions, external-edit proposals, all
+  lifecycle/setting preservation and qualification/review. Scope completion
+  judgment remains 011. No package, Qwen or adoption acceptance is claimed.

@@ -1046,7 +1046,7 @@ export async function showProposalDialog(
 		id: "confirm",
 		question: headerTitle,
 		context: confirmationText,
-		options: ["Confirm — create this goal now", "Continue chatting — keep refining", "Cancel — discard this draft"],
+		options: ["Confirm — create this goal now", "Continue chatting — keep refining", "Cancel proposal — keep this draft"],
 		recommended: 0,
 		allowCustom: false,
 	}], defaultAuditorEnabled !== undefined ? { defaultEnabled: defaultAuditorEnabled } : undefined);

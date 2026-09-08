@@ -9,7 +9,7 @@ import { goalDetails, renderGoalResult } from "./goal-format.ts";
 import { buildGoalCreatedReport } from "./goal-policy.ts";
 import { loadGoalSettings } from "./goal-settings.ts";
 import { DIALOG_UNAVAILABLE_HINT, proposalDialogFailureMessage, formatQuestionnaireAnswers, runGoalQuestionnaire, shouldAutoConfirmProposal, showProposalDialog, type GoalQuestionnaireQuestion, type ProposalDecision } from "./goal-questionnaire.ts";
-import { currentTaskIdIsPending, nowIso, type GoalRecord, type GoalTaskList } from "./goal-record.ts";
+import { currentTaskIdIsPending, goalWorkRevision, nowIso, type GoalRecord, type GoalTaskList } from "./goal-record.ts";
 import type { GoalCore } from "./goal-state.ts";
 import { convertFlatTasks, countTasks, mergeTasksWithExisting, type FlatTaskInput } from "./goal-task-tools.ts";
 import { PROPOSE_DRAFT_TOOL_NAME, QUESTIONNAIRE_TOOL_NAME, QUESTION_TOOL_NAME } from "./goal-tool-names.ts";
@@ -31,6 +31,7 @@ export interface GoalDraftSession {
 	targetGoalId?: string;
 	startedAt: string;
 	auditorEnabled: boolean;
+	questionnaireEcho?: string;
 	/** Tombstone marker: set when the draft is cancelled, confirmed, or replaced. */
 	clearedAt?: string;
 }
@@ -48,6 +49,20 @@ export interface ActiveGoalDraft {
 const activeDrafts = new WeakMap<GoalCore, ActiveGoalDraft>();
 
 function activeDraft(core: GoalCore): ActiveGoalDraft | undefined { return activeDrafts.get(core); }
+
+const STALE_DRAFT_DECISION = "Draft decision is stale: the draft, session, focused goal, or work changed. Review the current discussion and propose again.";
+
+/** Bind every awaited drafting dialog to its discussion and current work. */
+function draftDecisionGuard(core: GoalCore, ctx: ExtensionContext, draft: ActiveGoalDraft, signal?: AbortSignal): () => boolean {
+	core.reconcileFocusedGoalFromDisk(ctx);
+	const revision = core.focusRevision;
+	const work = core.state.goal ? goalWorkRevision(core.state.goal) : undefined;
+	return () => {
+		core.reconcileFocusedGoalFromDisk(ctx);
+		return !signal?.aborted && activeDraft(core) === draft && core.focusRevision === revision
+			&& work === (core.state.goal ? goalWorkRevision(core.state.goal) : undefined);
+	};
+}
 
 export function hasActiveDraft(core: GoalCore): boolean { return activeDraft(core) !== undefined; }
 
@@ -73,19 +88,8 @@ export function clearGoalDrafting(core: GoalCore, ctx: ExtensionContext): void {
  * target still matches the focused goal; stale tweak drafts are tombstoned.
  */
 export function rehydrateDraft(core: GoalCore, ctx: ExtensionContext): void {
-	// Validate any live memory draft against the reloaded world first: a tweak
-	// draft whose target is no longer focused is stale and must not survive.
-	if (activeDraft(core)) {
-		const live = activeDraft(core)!;
-		if (live.mode === "tweak") {
-			core.reconcileFocusedGoalFromDisk(ctx);
-			if (!core.state.goal || core.state.goal.id !== live.targetGoalId) {
-				clearGoalDrafting(core, ctx);
-				ctx.ui.notify("The goal tweak draft is stale (its target goal changed); it was discarded.", "warning");
-			}
-		}
-		return;
-	}
+	// The selected branch's latest entry/tombstone replaces memory unconditionally.
+	activeDrafts.delete(core);
 	let session: GoalDraftSession | null = null;
 	try {
 		const entries = ctx.sessionManager.getBranch();
@@ -99,7 +103,9 @@ export function rehydrateDraft(core: GoalCore, ctx: ExtensionContext): void {
 	} catch {
 		session = null;
 	}
-	if (!session || session.version !== DRAFT_ENTRY_VERSION || session.clearedAt) {
+	if (!session || session.version !== DRAFT_ENTRY_VERSION || session.clearedAt
+		|| !["goal", "sisyphus", "tweak"].includes(session.mode) || typeof session.seed !== "string"
+		|| typeof session.startedAt !== "string" || typeof session.auditorEnabled !== "boolean") {
 		// No durable draft: make sure a previous drafting profile is not left
 		// installed (e.g. after a stale entry or an interrupted session).
 		core.installGoalToolProfile(core.tasksEnabled);
@@ -115,7 +121,8 @@ export function rehydrateDraft(core: GoalCore, ctx: ExtensionContext): void {
 			return;
 		}
 	}
-	activeDrafts.set(core, { mode: session.mode, originalTopic: session.seed, targetGoalId: session.targetGoalId, startedAt: session.startedAt, auditorEnabled: session.auditorEnabled });
+	activeDrafts.set(core, { mode: session.mode, originalTopic: session.seed, targetGoalId: session.targetGoalId, startedAt: session.startedAt, auditorEnabled: session.auditorEnabled,
+		questionnaireEcho: typeof session.questionnaireEcho === "string" ? session.questionnaireEcho : undefined });
 	core.installDraftingToolProfile();
 }
 
@@ -138,9 +145,11 @@ export async function startGoalDrafting(core: GoalCore, ctx: ExtensionContext, m
 	const label = mode === "sisyphus" ? "Sisyphus draft" : mode === "tweak" ? "Goal tweak draft" : "Goal draft";
 	// A second draft must never silently discard the first.
 	if (activeDraft(core)) {
+		const decisionIsCurrent = draftDecisionGuard(core, ctx, activeDraft(core)!);
 		const choice = ctx.hasUI
 			? await awaitDraftChoice(core, ctx, label)
 			: "replace"; // headless: explicit new intent wins, but not silently (notified)
+		if (!decisionIsCurrent()) { ctx.ui.notify(STALE_DRAFT_DECISION, "warning"); return; }
 		if (choice === "resume") {
 			ctx.ui.notify("A draft is already active; resuming it. Use /goal-cancel to discard it.", "info");
 			return;
@@ -246,10 +255,13 @@ export function registerDraftingTools(core: GoalCore): void {
 			allow_custom: Type.Optional(Type.Boolean({ description: "Allow a custom answer; defaults to true." })),
 		}, { additionalProperties: false }),
 		async execute(_id, params, _signal, _update, ctx) {
-			if (!activeDraft(core)) return { content: [{ type: "text", text: "No guided goal draft is active. Ask the user to run /goal or /sisyphus." }], details: goalDetails(core.state.goal) };
+			const draft = activeDraft(core);
+			if (!draft) return { content: [{ type: "text", text: "No guided goal draft is active. Ask the user to run /goal or /sisyphus." }], details: goalDetails(core.state.goal) };
+			const decisionIsCurrent = draftDecisionGuard(core, ctx, draft, _signal);
 			core.enterGoalModal();
 			try {
 				const result = await runGoalQuestionnaire(ctx, [{ id: "question", question: params.question, options: params.options ?? [], recommended: params.recommended, allowCustom: params.allow_custom }]);
+				if (!decisionIsCurrent()) return { content: [{ type: "text", text: STALE_DRAFT_DECISION }], details: goalDetails(core.state.goal) };
 				if (result.unavailable === true) return { content: [{ type: "text", text: `${DIALOG_UNAVAILABLE_HINT} Ask the question in chat instead.` }], details: goalDetails(core.state.goal) };
 				return { content: [{ type: "text", text: result.cancelled ? "The user cancelled the question. Continue drafting conversationally." : formatQuestionnaireAnswers(result) }], details: goalDetails(core.state.goal) };
 			} catch (error) {
@@ -278,14 +290,17 @@ export function registerDraftingTools(core: GoalCore): void {
 			})),
 		}, { additionalProperties: false }),
 		async execute(_id, params, _signal, _update, ctx) {
-			if (!activeDraft(core)) return { content: [{ type: "text", text: "No guided goal draft is active." }], details: goalDetails(core.state.goal) };
+			const draft = activeDraft(core);
+			if (!draft) return { content: [{ type: "text", text: "No guided goal draft is active." }], details: goalDetails(core.state.goal) };
+			const decisionIsCurrent = draftDecisionGuard(core, ctx, draft, _signal);
 			const questions: GoalQuestionnaireQuestion[] = params.questions.map((q: GoalQuestionnaireQuestion & { allow_custom?: boolean }) => ({ ...q, allowCustom: q.allow_custom }));
 			core.enterGoalModal();
 			try {
 				const result = await runGoalQuestionnaire(ctx, questions);
+				if (!decisionIsCurrent()) return { content: [{ type: "text", text: STALE_DRAFT_DECISION }], details: goalDetails(core.state.goal) };
 				if (!result.cancelled) {
-					const active = activeDraft(core);
-					if (active) active.questionnaireEcho = formatQuestionnaireAnswers(result); // E5
+					draft.questionnaireEcho = formatQuestionnaireAnswers(result);
+					draftSessionEntry(core, { version: 1, mode: draft.mode, seed: draft.originalTopic, targetGoalId: draft.targetGoalId, startedAt: draft.startedAt, auditorEnabled: draft.auditorEnabled, questionnaireEcho: draft.questionnaireEcho });
 				}
 				if (result.unavailable === true) return { content: [{ type: "text", text: `${DIALOG_UNAVAILABLE_HINT} Ask the questions in chat instead.` }], details: goalDetails(core.state.goal) };
 				return { content: [{ type: "text", text: result.cancelled ? "The user cancelled the questionnaire. Continue drafting conversationally." : formatQuestionnaireAnswers(result) }], details: goalDetails(core.state.goal) };
@@ -332,6 +347,7 @@ export function registerDraftingTools(core: GoalCore): void {
 			const target = draft.mode === "tweak" ? core.state.goal : undefined;
 			if (draft.mode === "tweak" && (!target || target.id !== draft.targetGoalId)) return { content: [{ type: "text", text: "The goal changed while drafting; review it and start /goal-tweak again." }], details: goalDetails(core.state.goal) };
 			if (draft.mode === "sisyphus" && !sisyphusObjectiveSufficient(objective)) return { content: [{ type: "text", text: "A Sisyphus goal needs ordered steps with explicit per-step done criteria. Refine the objective with numbered steps (1) ..., 2) ...) or Step N: blocks before proposing again." }], details: goalDetails(core.state.goal) };
+			const decisionIsCurrent = draftDecisionGuard(core, ctx, draft, _signal);
 			let confirmation: { decision: ProposalDecision; auditorEnabled: boolean; unavailable: boolean };
 			if (shouldAutoConfirmProposal({ hasUI: ctx.hasUI, autoConfirmEnv: process.env.PI_GOAL_AUTO_CONFIRM })) {
 				confirmation = { decision: "confirm" as const, auditorEnabled: draft.auditorEnabled, unavailable: false };
@@ -345,6 +361,7 @@ export function registerDraftingTools(core: GoalCore): void {
 					core.exitGoalModal();
 				}
 			}
+			if (!decisionIsCurrent()) return { content: [{ type: "text", text: STALE_DRAFT_DECISION }], details: goalDetails(core.state.goal) };
 			const settings = loadGoalSettings(ctx.cwd);
 			const extracted = settings.disableContracts ? { objective, verificationContract: undefined } : extractVerificationContract(objective);
 			// §14: the durable proposal summary is part of the transcript for
@@ -357,10 +374,6 @@ export function registerDraftingTools(core: GoalCore): void {
 				autoContinue: params.auto_continue !== false,
 				auditorEnabled: confirmation.auditorEnabled,
 			});
-			if (confirmation.decision === "cancel") {
-				clearGoalDrafting(core, ctx);
-				return { content: [{ type: "text", text: `${summary}\n\nDraft cancelled; no goal was created. Run /goal or /sisyphus to start a new draft.` }], details: goalDetails(core.state.goal) };
-			}
 			if (confirmation.unavailable) {
 				return { content: [{ type: "text", text: `${summary}\n\n${DIALOG_UNAVAILABLE_HINT} The goal was NOT created and drafting remains active; do not retry the dialog until the host supports it or the user explicitly restarts with PI_GOAL_AUTO_CONFIRM=1.` }], details: goalDetails(core.state.goal) };
 			}
@@ -370,8 +383,9 @@ export function registerDraftingTools(core: GoalCore): void {
 				if (confirmation.auditorEnabled !== draft.auditorEnabled) {
 					const next = { ...draft, auditorEnabled: confirmation.auditorEnabled };
 					activeDrafts.set(core, next);
-					draftSessionEntry(core, { version: 1, mode: next.mode, seed: next.originalTopic, targetGoalId: next.targetGoalId, startedAt: next.startedAt, auditorEnabled: next.auditorEnabled });
+					draftSessionEntry(core, { version: 1, mode: next.mode, seed: next.originalTopic, targetGoalId: next.targetGoalId, startedAt: next.startedAt, auditorEnabled: next.auditorEnabled, questionnaireEcho: next.questionnaireEcho });
 				}
+				if (confirmation.decision === "cancel") return { content: [{ type: "text", text: `${summary}\n\nProposal cancelled; the draft remains active for refinement. Use /goal-cancel to discard the discussion.` }], details: goalDetails(core.state.goal) };
 				return { content: [{ type: "text", text: `${summary}\n\nGoal draft refinement requested. The goal was not changed; ask what the user wants revised before proposing again.` }], details: goalDetails(core.state.goal) };
 			}
 			const skipAuditor = confirmation.auditorEnabled === false;
