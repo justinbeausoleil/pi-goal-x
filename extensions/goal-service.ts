@@ -246,7 +246,7 @@ export class GoalService {
    // excludes lifecycle/budget controls, which must still reject stale writes.
    const accountingOnly = revisionChanged && freshDisk && isDeepStrictEqual(
     {...freshDisk, retainedScope: retainedGoalScope(freshDisk), usage: undefined, revision: undefined, updatedAt: undefined},
-    {...normalizeGoalRecord(expected), retainedScope: retainedGoalScope(expected), usage: undefined, revision: undefined, updatedAt: undefined},
+    {...normalizeGoalRecord(expected), retainedScope: retainedGoalScope(normalizeGoalRecord(expected)!), usage: undefined, revision: undefined, updatedAt: undefined},
    );
    if (!freshDisk || (revisionChanged && !accountingOnly)) {
     this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
