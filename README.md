@@ -1,3 +1,5 @@
+> Maintainer fork: see [FORK.md](FORK.md) for the goal-reliability design, status, and development records. Runtime repairs are not implemented yet.
+
 <div align="center">
   <img src="pi-goal-x.png" alt="pi-goal-x logo" width="560">
 </div>
