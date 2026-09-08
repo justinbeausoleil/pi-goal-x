@@ -106,3 +106,9 @@ now pass through the shared guidance and compaction additions with an explicit
 hold reminder; the compaction size calculation reserves room for that reminder.
 The new guidance deliberately changes those pending-fixture semantic counts;
 the original 24 remain unchanged. No limits were raised.
+
+The approved-auditor-input subset adds a separate retained-audit fixture with
+removed tasks and disabled task/contract presentation. It verifies full retained
+requirements and evidence in the isolated child request and adds a seventh
+actual SDK provider-payload cross-check. All prior 27 fixture measurements and
+semantic counts stay unchanged. Existing legacy auditor fixtures remain intact.

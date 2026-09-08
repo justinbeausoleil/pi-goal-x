@@ -161,7 +161,7 @@ export async function captureOne(fixtureId) {
 
 	const actualSystem = turn.systemPrompt ?? capture.ctx.getSystemPrompt();
  const childRequests = [];
- if (fixtureId === "completion-audit" || fixtureId === "audit-rejection-and-rework" || fixtureId === "oracle-consultation") {
+ if (fixtureId.startsWith("completion-audit") || fixtureId === "audit-rejection-and-rework" || fixtureId === "oracle-consultation") {
   const createSession = async options => ({ session: {
    subscribe: () => () => {}, abort: () => {},
    prompt: async text => {
@@ -171,7 +171,7 @@ export async function captureOne(fixtureId) {
   } });
   const ctx = { ...capture.ctx, modelRegistry: { getAvailable: () => [], find: () => ({ id: "fixture", provider: "fixture" }) } };
   if (fixtureId === "oracle-consultation") await runBlockerOracle({ ctx, goal: scenario.goal, reason: "Missing dependency", attemptedActions: ["Inspect configuration"], recentEvidence: "Dependency is absent", settings: { enabled: true, provider: "fixture", model: "fixture", maxFailedAttemptsPerBlocker: 2 }, createSession });
-  else await runGoalCompletionAuditor({ ctx, goal: scenario.goal, detailedSummary: "fixture", completionSummary: "Implemented and tested", warmContext: "Recent test evidence", createSession });
+  else await runGoalCompletionAuditor({ ctx, goal: scenario.goal, settings: scenario.settings, detailedSummary: "fixture", completionSummary: "Implemented and tested", warmContext: "Recent test evidence", createSession });
  }
  if (fixtureId === "get-goal-default-and-verbose") {
   for (const params of [{}, {verbose: true}]) {

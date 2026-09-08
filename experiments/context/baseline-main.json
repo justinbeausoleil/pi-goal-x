@@ -1,5 +1,5 @@
 {
-  "generatedAtCommit": "ticket-005-pending-review-guidance",
+  "generatedAtCommit": "ticket-005-approved-audit-scope",
   "measuredAt": "2026-09-08",
   "fixtures": [
     {
@@ -199,6 +199,42 @@
         "messageChars": 669,
         "totalSerializedChars": 7205,
         "estimatedTokens": 1802
+      },
+      "semantic": {
+        "objective": 0,
+        "verificationContract": 0,
+        "currentTask": 0,
+        "lifecyclePolicyThirdBlocker": 0,
+        "independentAuditor": 0,
+        "neverEditObjective": 0,
+        "blockerPolicyUpdateGoal": 0,
+        "completionPolicyUpdateGoal": 0,
+        "goalActiveMarker": 0,
+        "checkpointMarker": 1,
+        "unfocusedSafety": 0,
+        "pausedMarker": 0,
+        "budgetLimitedMarker": 0,
+        "staleMarker": 0,
+        "postCompactionMarker": 0
+      }
+    },
+    {
+      "fixture": "completion-audit-retained",
+      "breakdown": {
+        "sdkGuidanceChars": 407,
+        "hostToolSchemaChars": 2555,
+        "childRequestChars": 6188,
+        "extensionMessageChars": 290,
+        "extensionAttributableChars": 8053,
+        "baseSystemChars": 2810,
+        "extensionSystemChars": 0,
+        "goalStateChars": 0,
+        "checkpointChars": 87,
+        "historicalCheckpointChars": 0,
+        "toolSchemaChars": 1168,
+        "messageChars": 687,
+        "totalSerializedChars": 7223,
+        "estimatedTokens": 1806
       },
       "semantic": {
         "objective": 0,
@@ -976,10 +1012,10 @@
     }
   ],
   "totals": {
-    "totalSerializedChars": 317182,
-    "estimatedTokens": 79307,
-    "childRequestChars": 15230,
-    "combinedSerializedChars": 332412,
-    "extensionAttributableChars": 188964
+    "totalSerializedChars": 324405,
+    "estimatedTokens": 81113,
+    "childRequestChars": 21418,
+    "combinedSerializedChars": 345823,
+    "extensionAttributableChars": 197017
   }
 }

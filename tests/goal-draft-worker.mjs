@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import http from "node:http";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
@@ -21,6 +22,16 @@ process.env.PI_GOAL_AUTO_CONFIRM = "0";
 const settings = SettingsManager.inMemory({ compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 100 }, retry: { enabled: false } });
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const results = [], errors = [], dialogs = [], notices = [];
+const auditRequests = [];
+const auditServer = scenario === "scope-audit" ? http.createServer(async (req, res) => {
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  auditRequests.push(JSON.parse(body));
+  res.writeHead(200, {"content-type": "text/event-stream"});
+  for (const [delta, finish_reason] of [[{role: "assistant", content: "Retained scope inspected; additional verification is required.\n<disapproved/>"}, null], [{}, "stop"]])
+    res.write(`data: ${JSON.stringify({id: "audit-fixture", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta, finish_reason}]})}\n\n`);
+  res.end("data: [DONE]\n\n");
+}) : undefined;
 const warnings = [], warn = console.warn;
 console.warn = (...args) => { warnings.push(args.join(" ")); warn(...args); };
 let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles, settingsChoices = [], providerFailure;
@@ -46,6 +57,7 @@ async function open(manager, sessionStartEvent) {
   assert.deepEqual(loader.getExtensions().errors, []);
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
   await runtime.setRuntimeApiKey("openai", "synthetic-unused");
+  if (auditServer) runtime.registerProvider("fixture", {baseUrl: `http://127.0.0.1:${auditServer.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: model.cost}]});
   const created = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager: settings, sessionStartEvent });
   session = created.session;
   await session.bindExtensions({ mode: "rpc", onError: error => errors.push(error), uiContext: {
@@ -94,7 +106,7 @@ async function open(manager, sessionStartEvent) {
 async function run(prompt, nextSteps) {
   steps = [...nextSteps];
   let settled, timeout;
-  const done = new Promise((resolve, reject) => { settled = resolve; timeout = setTimeout(() => reject(new Error("Draft fixture did not settle")), 8000); });
+  const done = new Promise((resolve, reject) => { settled = resolve; timeout = setTimeout(() => reject(new Error(`Draft fixture did not settle: ${prompt.slice(0, 160)}; pending tools=${steps.map(s => s.name)}; audits=${auditRequests.length}; errors=${JSON.stringify(errors).slice(0, 500)}`)), 8000); });
   const unsubscribe = session.subscribe(event => { if (event.type === "agent_settled" && steps.length === 0) settled(); });
   try { await session.prompt(prompt); await done; if (providerFailure) throw providerFailure; assert.deepEqual(errors, []); }
   finally { clearTimeout(timeout); unsubscribe(); }
@@ -111,6 +123,11 @@ async function checkProposal(selectedMode, label) {
   assert.equal(latestDraft().data.mode, selectedMode);
 }
 try {
+  if (auditServer) {
+    await new Promise(resolve => auditServer.listen(0, "127.0.0.1", resolve));
+    writeFileSync(process.env.PI_GOAL_GLOBAL_SETTINGS_FILE, JSON.stringify({provider: "fixture", model: "reviewer", disabled: false}));
+    auditor = "Enabled";
+  }
   host = await createAgentSessionRuntime(({ sessionManager, sessionStartEvent }) => open(sessionManager, sessionStartEvent), { cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions")) });
   await run(`/${mode} First discussion`, [
     { name: "read", args: { path: "reference.txt" } },
@@ -118,9 +135,43 @@ try {
     { name: "goal_questionnaire", args: { questions: [{ id: "output", question: "Output?", options: ["Report", "Chart"], allow_custom: false }] } },
     proposal(mode, "First discussion"),
   ]);
-  assert.equal(latestDraft().data.auditorEnabled, false, "per-draft auditor choice survives refinement");
+  assert.equal(latestDraft().data.auditorEnabled, !!auditServer, "per-draft auditor choice survives refinement");
   assert.deepEqual(files(), [], "discussion creates no approved goal");
-  if (scenario.startsWith("scope-external")) {
+  if (scenario === "scope-audit") {
+    decision = "Confirm";
+    const proposed = proposal(mode, "Audited approved requirements");
+    const goalContract = "Verify the exact content of scope-audit-proof.txt.";
+    const taskContract = `Retained contract: scope-audit-proof.txt must contain verified-output. ${"验🧪".repeat(2000)}`;
+    const evidence = `scope-audit-proof.txt contains verified-output. ${"证🧪".repeat(3000)}`;
+    proposed.args.objective += `\nVerification contract: ${goalContract}`;
+    proposed.args.tasks = [{id: "required", title: "Original required task", verification_contract: taskContract}];
+    await run("Confirm this goal with its independent auditor enabled.", [proposed]);
+    assert.notEqual(results.at(-1).details.goal.skipAuditor, true, "the approved per-goal auditor is enabled");
+    await run("Create and verify the approved artifact.", [
+      {name: "write", args: {path: "scope-audit-proof.txt", content: "verified-output"}},
+      {name: "update_goal_task", args: {expected_work_revision: "$current", task_id: "required", status: "complete", evidence}},
+    ]);
+    assert.equal(readFileSync(join(cwd, "scope-audit-proof.txt"), "utf8"), "verified-output");
+    const approved = JSON.parse(JSON.stringify(results.at(-1).details.goal));
+    process.env.PI_GOAL_AUTO_CONFIRM = "1";
+    await run("Remove the completed planning node while retaining the requirement.", [{name: "set_goal_tasks", args: {mode: "replace", expected_work_revision: "$current", tasks: []}}]);
+    assert.equal(results.at(-1).details.goal.taskList.tasks.length, 0);
+    settingsChoices = ["disableTasks:", "Set project override to true", "disableContracts:", "Set project override to true", "Done"];
+    await session.prompt("/goal-settings");
+    assert.deepEqual(settingsChoices, []);
+    await session.compact(); await reopen();
+    await run("Request independent review of every approved requirement.", [{name: "update_goal", args: {status: "complete"}}]);
+    assert.equal(results.at(-1).details.goal.status, "active");
+    assert.equal(auditRequests.length, 1, "the actual child auditor receives one request");
+    const payload = auditRequests[0];
+    const prompt = payload.messages.filter(m => m.role === "user").map(m => typeof m.content === "string" ? m.content : m.content.map(c => c.text ?? "").join("\n")).join("\n");
+    assert(prompt.includes(approved.objective));
+    assert(prompt.includes(goalContract), "hidden approved goal contract reaches the native auditor");
+    assert(prompt.includes(taskContract), "removed full task contract reaches the native auditor");
+    assert(prompt.includes(evidence), "removed full evidence reaches the native auditor");
+    assert(!prompt.includes("PI GOAL ACTIVE"));
+    assert(!payload.tools.some(t => ["get_goal", "update_goal", "set_goal_tasks", "update_goal_task"].includes(t.function.name)));
+  } else if (scenario.startsWith("scope-external")) {
     const kind = scenario.slice("scope-external".length + 1) || "objective";
     decision = "Confirm";
     const proposed = proposal(mode, "Approved external-edit fixture");
@@ -409,6 +460,55 @@ try {
     assert.equal(results.at(-1).details.goal.sisyphus, secondMode === "sisyphus");
     assert.match(results.at(-1).details.goal.objective, /Second branch after reopen/);
     assert.equal(results.at(-1).details.goal.skipAuditor, true);
+  } else if (scenario.startsWith("tweak-lifecycle-")) {
+    const status = scenario.slice("tweak-lifecycle-".length);
+    const stalled = status === "paused" || status === "blocked";
+    const checkpoints = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length;
+    const events = () => readFileSync(join(cwd, ".pi", "goals", "goal_events.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    decision = "Confirm";
+    if (status === "budget_limited") {
+      await session.prompt("/goal-cancel");
+      await run(`Create the ${mode} goal with a one-token budget.`, [{name: "create_goal", args: {objective: objective("Existing budget-limited goal"), mode: mode === "sisyphus" ? "sisyphus" : "regular", token_budget: 1}}]);
+    } else {
+      await run("Confirm the goal before discussing its revision.", [proposal(mode, "Existing lifecycle goal")]);
+      if (stalled) await run("Record the concrete stop.", [{name: "update_goal", args: {status, reason: "Fixture dependency unavailable.", suggested_action: "Restore the fixture dependency."}}]);
+    }
+    await run("Inspect the starting lifecycle.", [{name: "get_goal", args: {}}]);
+    const original = JSON.parse(JSON.stringify(results.at(-1).details.goal));
+    assert.equal(original.status, status);
+    assert.equal(original.sisyphus, mode === "sisyphus");
+    const checkpointCount = checkpoints(), eventCount = events().length;
+    const revised = proposal(mode, "Human-confirmed lifecycle revision");
+    for (const choice of ["Continue", "Cancel"]) {
+      decision = choice;
+      await run(choice === "Continue" ? "/goal-tweak Revise the lifecycle fixture." : "Cancel only this proposal.", [revised]);
+      assert.equal(results.at(-1).details.goal.status, status);
+      assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), original.retainedScope);
+      await delay(150);
+      assert.equal(checkpoints(), checkpointCount, "refinement and cancellation do not resume work");
+      assert.equal(events().length, eventCount, "refinement and cancellation append no project lifecycle event");
+    }
+    decision = "Confirm";
+    await run("Confirm the exact revised goal.", [revised, ...(stalled ? [{name: "update_goal", args: {status: "paused", reason: "One resumed checkpoint observed."}, contextIncludes: ["Human-confirmed lifecycle revision"]}] : [])]);
+    const confirmed = results.findLast(r => r.toolName === "propose_goal_draft").details.goal;
+    assert.equal(confirmed.status, stalled ? "active" : status);
+    assert.equal(confirmed.autoContinue, stalled ? true : original.autoContinue);
+    assert.equal(confirmed.retainedScope.objective, revised.args.objective);
+    if (stalled) for (const field of ["stopReason", "pauseReason", "pauseSuggestedAction"]) assert.equal(confirmed[field], undefined, `${field} is cleared by confirmation`);
+    await delay(150);
+    assert.equal(checkpoints() - checkpointCount, stalled ? 1 : 0, "confirmed tweak queues exactly one resumed checkpoint only when stalled");
+    const resumed = events().slice(eventCount).filter(e => e.type === "goal_resumed");
+    assert.equal(resumed.length, stalled ? 1 : 0);
+    if (stalled) assert.equal(resumed[0].reason, "tweak");
+    if (status === "budget_limited") {
+      await session.prompt("/goal-resume");
+      await delay(150);
+      assert.equal(checkpoints(), checkpointCount, "an exhausted budget cannot restart work after a tweak");
+    }
+    await reopen();
+    await run("Inspect the persisted scope revision.", [{name: "get_goal", args: {}}]);
+    assert.equal(results.at(-1).details.goal.retainedScope.objective, revised.args.objective);
+    assert.equal(results.at(-1).details.goal.status, stalled ? "paused" : status);
   } else if (["paused-refine", "blocked-refine"].includes(scenario)) {
     decision = "Confirm";
     await run("Confirm this goal before discussing a revision.", [proposal(mode, "Existing stopped goal")]);
@@ -514,11 +614,12 @@ try {
     assert(!session.getActiveToolNames().includes("propose_goal_draft"));
   } else throw new Error(`Unknown scenario ${scenario}`);
   assert.deepEqual(results.filter(r => r.isError), []);
-  assert(!results.some(r => ["write", "edit", "bash"].includes(r.toolName) && r.input?.path !== "ordinary.txt"), "no unconfirmed implementation work");
+  assert(!results.some(r => ["write", "edit", "bash"].includes(r.toolName) && r.input?.path !== "ordinary.txt" && !(scenario === "scope-audit" && r.input?.path === "scope-audit-proof.txt")), "no unconfirmed implementation work");
   console.log(JSON.stringify({ passed: true, scenario, mode, requests, summaries, dialogs: dialogs.length }));
 } finally {
   if (session) await session.abort();
   if (host) await host.dispose();
   else session?.dispose();
+  if (auditServer) { auditServer.closeAllConnections(); await new Promise(resolve => auditServer.close(resolve)); }
   rmSync(work, { recursive: true, force: true });
 }

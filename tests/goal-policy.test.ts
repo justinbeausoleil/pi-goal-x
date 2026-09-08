@@ -129,6 +129,15 @@ test("resume and clear policy preserve human-owned lifecycle affordances", () =>
 	assert.ok(!skipPrecedence.includes("<approved/>"), "auditorReport must be ignored when auditSkippedReason is present");
 });
 
+test("resume requires available budget regardless of the stopped status", () => {
+	for (const status of ["paused", "blocked", "budget_limited"] as const) {
+		const limited = goal({status, tokenBudget: 100, usage: {tokensUsed: 100, activeSeconds: 0}});
+		assert.match(rejectedMessage(validateResumeGoal(limited)), /budget.*exhausted.*raise.*remove.*goal-refresh/i);
+		assert.deepEqual(validateResumeGoal({...limited, tokenBudget: 101}), {ok: true});
+		assert.deepEqual(validateResumeGoal({...limited, tokenBudget: undefined}), {ok: true});
+	}
+});
+
 test("continuation and compaction policies are deterministic", () => {
 	assert.equal(shouldQueueContinuation(goal({ status: "active", autoContinue: true })), true);
 	assert.equal(shouldQueueContinuation(goal({ status: "paused", autoContinue: true })), false);

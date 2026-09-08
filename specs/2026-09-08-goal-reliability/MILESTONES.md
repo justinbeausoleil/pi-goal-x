@@ -813,3 +813,60 @@
   implementation writer works in the main checkout. It is not a package install
   or live Pi selection. Auditor input implementation/fixture work in the main
   checkout remains uncommitted and outside the external-scope repair review.
+
+### Ticket 005 approved auditor input checkpoint
+
+- Both independent axes clear e0d0cb4. The isolated frozen checkout passes
+  1069/1069 tests across 76 files (103.3s), type and lint; external-scope commits
+  are pushed to origin/feat/goal-reliability. A checkout command first named an
+  invalid reference and changed nothing; the successful qualification explicitly
+  used e0d0cb4925864623f2530cb0159b808d17170db9.
+- New auditor-input red proves raw external objective/settings could replace
+  or hide approved authority. The existing prompt builder now uses the retained
+  objective/goal contract and includes complete retained task contracts/evidence,
+  including removed tasks, as claims to verify. Legacy prompts remain unchanged;
+  existing current task tree is labeled as planning/proposal material. The
+  permanent escaped-delimiter/hidden-settings test and prior payload checks pass
+  24/24. No new approval service or completion judgment is introduced.
+- Both native scope-audit modes pass 12 requests and two summaries: actual UI
+  chooses the enabled auditor, public tools create the artifact and task evidence,
+  remove its planning node, disable task/contract presentation, compact/reopen,
+  then invoke the actual isolated child auditor. The intercepted request retains
+  full Unicode contract/evidence and no parent mutation tools or executor context.
+  Root independently checks the artifact. The controlled rejection verifies the
+  context/transport boundary, not semantic model quality (011/013 remain owners).
+- Initial native attempts assumed an enabled auditor stored explicit false
+  (it uses absent skipAuditor), then copied the executor's intentionally dead
+  baseUrl into the child descriptor. The timeout with zero child requests exposed
+  that fixture error; using the established provider descriptor shape passes.
+  All attempts remain in scope-audit-native-*.log. Context28/provider7 pass with
+  only the new retained-audit row added; prior 27 measurements remain unchanged.
+  This auditor subset is still uncommitted/unreviewed. Large native compaction,
+  latest type/lint and the remaining confirmed-tweak lifecycle matrix are next.
+
+### Ticket 005 auditor and confirmed-tweak qualification
+
+- Large 200-task manual/long/advice native compaction passes with complete
+  retained auditor input: 30 executor requests, seven summaries, 200 completed
+  tasks, four effects, original three successive compactions plus final stopped
+  compaction. Type and lint pass (scope-audit-final-{type,lint}.log).
+- New native active/paused/blocked/budget_limited tweak cases pass in both modes:
+  public creation and stopping, refinement/cancel with no lifecycle events or
+  checkpoints, bound human confirmation, and receipt/state after reopen.
+  Paused/blocked clear pause metadata and emit one resume event/one checkpoint;
+  that checkpoint explicitly pauses after observing the revised objective.
+  Active manual-continuation remains active/manual. Budget stays exhausted.
+- The initial native comparison exposed absent-vs-undefined fixture data, fixed
+  by comparing serialized scope. A real exhausted /goal-resume defect then
+  queued another checkpoint after an otherwise correct budget-limited tweak.
+  The shared resume validator now reuses budgetReached, rejecting exhausted
+  resumes with metadata/refresh guidance. Permanent policy red/green includes
+  stopped status variants and raised/removed budget acceptance. This is the
+  minimal exhausted-resume repair needed here; 008 still owns full attribution,
+  budget refresh/restart, special focus paths, and wrap-up acceptance.
+- All eight native lifecycle variants and 55 existing policy/drafting/budget
+  checks pass. Failed attempts are preserved in tweak-lifecycle-*-first.log,
+  tweak-lifecycle-budget_limited-characterization.log, and
+  tweak-budget-policy-red.log. The auditor/lifecycle subset now proceeds to
+  frozen full qualification and independent fixed-base review against e0d0cb4.
+  Ticket 005 remains in progress until its evidence and review are complete.

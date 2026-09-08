@@ -320,6 +320,15 @@ Atomic mutations also inspect the fresh whole record, and buffered writes reject
 concurrent work changes even when an external edit leaves numeric revision
 unchanged. Accounting preserves proposed text/tree and explicit user controls.
 
+The isolated completion auditor receives the approved retained objective and
+goal contract, plus complete retained task contracts and evidence, including
+removed nodes. Task/contract presentation settings cannot hide this authority.
+Its current planning tree is separately labeled as planning/proposal material;
+stored evidence remains an untrusted claim to verify against real artifacts.
+The resume policy rejects exhausted budgets with guidance to raise/remove the
+budget in goal metadata and refresh before resuming. Tweak confirmation preserves
+active status, resumes paused/blocked once, and leaves budget-limited goals stopped.
+
 The existing flat-tree converter validates the complete resulting plan. Upsert
 edits supplied fields, preserving omitted values; new IDs require a title and
 start pending at the root. `parent_id=null` moves to a root. Existing siblings

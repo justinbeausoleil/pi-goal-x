@@ -1,6 +1,7 @@
 import { statusLabel, type GoalDisplayRecordLike } from "./goal-core.ts";
 import type { GoalTask, GoalTaskList, TaskStatus } from "./goal-record.ts";
 import { countTaskSubtree } from "./goal-task-count.ts";
+import { budgetReached } from "./goal-accounting.ts";
 
 export type GoalStatusLike = "active" | "paused" | "blocked" | "budget_limited" | "complete";
 export type StopReasonLike = "user" | "agent";
@@ -12,6 +13,7 @@ export interface GoalPolicyRecordLike extends GoalDisplayRecordLike {
 	pauseReason?: string;
 	pauseSuggestedAction?: string;
 	taskList?: GoalTaskList;
+	tokenBudget?: number;
 }
 
 export type PolicyValidation =
@@ -73,6 +75,7 @@ export function validateGoalAgentPause(args: {
 export function validateResumeGoal(goal: GoalPolicyRecordLike | null): PolicyValidation {
 	if (!goal) return { ok: false, message: "No goal is set. Use /goal to draft one, or /goal-direct <objective> to start immediately." };
 	if (goal.status === "complete") return { ok: false, message: "Goal is complete. Use /goal to draft a new one, or /goal-direct <objective> to start immediately." };
+	if (budgetReached(goal)) return {ok: false, message: "The token budget is exhausted. Raise or remove it in the goal file, run /goal-refresh, then /goal-resume."};
 	if (goal.status === "active" && goal.autoContinue) return { ok: false, message: "Goal is already running." };
 	return { ok: true };
 }

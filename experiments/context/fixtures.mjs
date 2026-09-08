@@ -117,6 +117,14 @@ export const FIXTURES = {
 	"guided-drafting-question": () => draftingFixture("drafting-question", "question"),
 	"guided-proposal": () => draftingFixture("drafting-proposal", "proposal"),
 	"completion-audit": () => auditFixture("completion-audit", "running"),
+	"completion-audit-retained": () => {
+		const scenario = auditFixture("completion-audit-retained", "running");
+		scenario.goal.verificationContract = "Approved retained goal contract: verify the artifact.";
+		for (const task of scenario.goal.taskList.tasks) Object.assign(task, {status: "complete", verificationContract: `Approved retained requirement ${task.id}.`, evidence: `Artifact proof for ${task.id}.`});
+		scenario.goal = retainGoalScope(scenario.goal);
+		scenario.goal.taskList.tasks = [];
+		return {...scenario, settings: {disableTasks: true, disableContracts: true}};
+	},
 	"audit-rejection-and-rework": () => auditFixture("audit-rework", "rejected"),
 	"oracle-consultation": () => ({goal: goalWith("oracle", {objective: "Resolve the missing dependency."}), trigger: "continue"}),
  "tasks-disabled": () => ({goal: goalWith("disabled", {objective: "Work without tracked tasks."}), settings: {disableTasks: true}, trigger: "continue"}),

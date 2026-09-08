@@ -46,7 +46,7 @@ try {
   }
   count++;
  }
- for(const id of ['completion-audit','oracle-consultation']) {
+ for(const id of ['completion-audit','completion-audit-retained','oracle-consultation']) {
   const expected=(await captureOne(id)).childRequests[0];
   const scenario=FIXTURES[id]();
   const cwd='/tmp/goal-context-capture';
@@ -59,7 +59,7 @@ try {
   const ctx={cwd,model,modelRegistry:{runtime,getAvailable:()=>[],find:()=>model}};
   const createSession=options=>createAgentSession({...options,model,modelRuntime:runtime});
   if(id==='oracle-consultation')await runBlockerOracle({ctx,goal:scenario.goal,reason:'Missing dependency',attemptedActions:['Inspect configuration'],recentEvidence:'Dependency is absent',settings:{enabled:true,provider:'capture',model:'fixture',maxFailedAttemptsPerBlocker:2},createSession});
-  else await runGoalCompletionAuditor({ctx,goal:scenario.goal,detailedSummary:'fixture',completionSummary:'Implemented and tested',warmContext:'Recent test evidence',createSession});
+  else await runGoalCompletionAuditor({ctx,goal:scenario.goal,settings:scenario.settings,detailedSummary:'fixture',completionSummary:'Implemented and tested',warmContext:'Recent test evidence',createSession});
   assert.ok(payload,`${id}: isolated child provider payload captured`);
   const actualSystem=payload.messages.filter(m=>m.role==='system'||m.role==='developer').map(m=>m.content).join('\n').replaceAll(cwd,'/fixture');
   assert.equal(actualSystem,expected.system,`${id}: isolated system matches`);

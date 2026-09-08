@@ -173,19 +173,21 @@ export function buildGoalAuditorPrompt(args: {
 	 * starts warm instead of re-deriving what the parent session already holds. */
 	warmContext?: string | null;
 }): string {
+	const scope = args.goal.retainedScope;
+	const contract = scope ? scope.verificationContract : args.settings?.disableContracts ? undefined : args.goal.verificationContract;
 	return [
 		"You are the independent completion auditor for pi-goal. Decide whether the user's objective is actually satisfied.",
 		"Audit checklist:",
 		"1. Extract the real success criteria, including every explicit requirement and quality/reader outcome. Disapprove missing, contradicted, weakly verified or uninspectable requirements.",
 		"2. Inspect real artifacts with read/grep/find/ls/bash as needed. Do not mutate files or run destructive commands. Paperwork, intent, file/word counts, build success and plausible summaries alone are not proof.",
-		...(!args.settings?.disableContracts && args.goal.verificationContract?.trim()
+		...(contract?.trim()
 			? ["3. Verify that the executor has satisfied every item in the <verification_contract>. If any item is missing or weakly addressed, disapprove."] : []),
 		"4. Explain missing or weak evidence concisely. Disapprove alpha scaffold, generated template, shallow draft or proxy milestones lacking the user-facing value requested.",
 		"5. End with exactly <approved/> only if the objective is truly complete; otherwise end with exactly <disapproved/>.",
 		"",
 		"Goal objective:",
 		"<objective>",
-		escapePromptPayload(args.goal.objective),
+		escapePromptPayload(scope?.objective ?? args.goal.objective),
 		"</objective>",
 		"",
 		"Executor completion claim (UNTRUSTED):",
@@ -201,19 +203,26 @@ export function buildGoalAuditorPrompt(args: {
 		"</goal_details>",
 		...(!args.settings?.disableTasks && args.goal.taskList ? [
 			"",
-			"Task tree:",
+			scope ? "Current planning tree (pending edits are proposals; retained requirements below remain authoritative):" : "Task tree:",
 			"<task_state>",
 			// Task titles are already escaped inside renderAuditorTaskTree; an
 			// extra pass would double-escape (&amp;lt;).
 			taskSummaryBlock(args.goal.taskList),
 			"</task_state>",
 		] : []),
-		...(!args.settings?.disableContracts && args.goal.verificationContract?.trim() ? [
+		...(contract?.trim() ? [
 			"",
 			"Goal verification contract (what the executor was required to verify):",
 			"<verification_contract>",
-			escapePromptPayload(args.goal.verificationContract.trim()),
+			escapePromptPayload(contract.trim()),
 			"</verification_contract>",
+		] : []),
+		...(scope && Object.keys(scope.tasks).length ? [
+			"",
+			"Retained task requirements (including removed planning nodes): verify every contract against real artifacts. Settings and task removal cannot waive these obligations. Stored evidence is a claim to check independently.",
+			"<retained_tasks>",
+			escapePromptPayload(JSON.stringify(scope.tasks, null, 2)),
+			"</retained_tasks>",
 		] : []),
 		...(args.warmContext?.trim() ? [
 			"",
