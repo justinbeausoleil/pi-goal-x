@@ -97,6 +97,19 @@ test("ordered batch completes child then parent and starts the next task in one 
  } finally {f.cleanup();}
 });
 
+for (const lightweight of [false, true]) test(`skipping a parent ${lightweight ? "preserves its lightweight" : "clears its skipped"} current child in the next buffered result`, async () => {
+	const f = await fixture();
+	try {
+		if (lightweight) await f.h.tools.get("set_goal_tasks").execute("lightweight", { mode: "upsert", tasks: [{ id: "parent", lightweight_subtasks: true }], expected_work_revision: await readWorkRevision(f.h) }, undefined, undefined, f.h.ctx);
+		await f.h.handlers.get("turn_start")({}, f.h.ctx);
+		await f.update({ task_id: "child", status: "start" });
+		const result = await f.update({ task_id: "parent", status: "skipped", reason: "The user requested this planning step be skipped." });
+		assert.equal(result.details.goal.taskList.tasks[0].subtasks[0].status, lightweight ? "pending" : "skipped");
+		assert.equal(result.details.goal.currentTaskId, lightweight ? "child" : undefined);
+		await f.h.handlers.get("turn_end")({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, f.h.ctx);
+	} finally { f.cleanup(); }
+});
+
 test("invalid batches reject all changes, including mixed forms and missing evidence", async () => {
  const f=await fixture(); try {
   const disk=()=>readFileSync(path.join(f.cwd,f.goal.activePath),"utf8"); const before=disk();

@@ -145,8 +145,8 @@ export type GoalTaskUpdateOutcome = { ok: true; goal: GoalRecord; task: GoalTask
  */
 function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string | undefined, updatedTask: GoalTask): string | undefined {
 	if (spec.setCurrentTaskId !== undefined) return spec.setCurrentTaskId;
-	const terminal = updatedTask.status === "complete" || updatedTask.status === "skipped";
-	if (terminal && current === spec.taskId) return undefined;
+	const currentTask = current ? findTaskInTree([updatedTask], current) : undefined;
+	if (currentTask && currentTask.status !== "pending") return undefined;
 	return current;
 }
 

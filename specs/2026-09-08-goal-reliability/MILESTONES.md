@@ -303,3 +303,8 @@
   child-request measurements and the 10,000-character cap remain unchanged.
   Sequential context gate and six-payload provider check pass. Final current
   checks are running in reliability/003/review-0 through review-6.log.
+- During review, local preservation tracing found parent-skip cascades left a
+  skipped descendant selected as current in buffered public results. Added a
+  red/green test through public progress tools in an open turn, plus passing
+  lightweight-child preservation. The shared current-task resolver now clears
+  terminal descendants too, so immediate, single, and ordered batch paths agree.
