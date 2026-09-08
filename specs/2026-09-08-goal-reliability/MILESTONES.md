@@ -328,3 +328,22 @@
   Existing conflict characterization now also covers pause and budget changes;
   41 targeted storage/transaction/progress checks pass. Full qualification and
   independent review of this repair are pending; 003 remains in progress.
+
+### Ticket 003 complete; ticket 004 frontier
+
+- Final follow-ups at 4b900f7 clear Standards and Spec findings. The Spec
+  reviewer independently passed the two-session native accounting/200-node
+  worker. Separate reports: docs/reviews/2026-09-08-ticket-003.md.
+- Qualification: 999/999 full tests across 76 files; self-check plus 925 unit
+  tests; check/lint; 41 targeted transaction/progress checks; NAF gate; dry
+  package and production audit all passed. Context's 24 fixtures and six SDK
+  payloads passed at identical final payload code, sequentially. Exact commands
+  and commit references: ~/Data/pi-goal-x/reliability/003/review-checks.json.
+- All 003/G3 criteria now have evidence. Required pending scope-revision rules
+  remain explicit interim rejection until 005. No installed package, full
+  200-node compaction, real-Qwen or live adoption result is claimed.
+- These records and implementation are being pushed on feat/goal-reliability;
+  main and live Pi selection remain unchanged. Ticket 004 is the current
+  frontier; 006 remains independently eligible. Next: exercise public page
+  reconstruction and existing confirmation/dashboard/task-overlay navigation,
+  then extend actual native compaction proof to 200 nodes with t142 selected.
