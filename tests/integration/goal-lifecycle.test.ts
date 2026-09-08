@@ -5,7 +5,20 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
+for (const control of ["text", "inspect", "echo", "ls", "work", "redirect", "clarify"]) test(`S1: native ${control}-only continuation preserves the no-progress boundary and explicit resume`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "idle", control], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+for (const outcome of ["disabled", "needs_human", "insufficient_context", "config", "provider", "malformed", "invalid-index"]) test(`S1: native Oracle ${outcome} retains its disposition and configured cap`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "oracle-outcome", outcome], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const control of ["plain", "reopen", "resources"]) test(`S1/S2: native Oracle ${control} advice requires a work attempt before re-blocking`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "oracle-followup", control], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const mode of ["manual", "threshold", "overflow"]) test(`S1: native ${mode} compaction separates executor and auxiliary usage`, {timeout: 20000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-compaction-worker.mjs", import.meta.url)), mode, "--accounting", ...(mode === "manual" ? ["--advice-review"] : [])], {timeout: 18000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);

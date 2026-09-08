@@ -24,7 +24,8 @@ import { defineTool, SessionManager, SettingsManager, type AgentToolResult, type
 import { makeAuditorResourceLoader, resolveAuditorSessionModelOptions } from "./goal-auditor.ts";
 import type { GoalLedgerEvent } from "./goal-ledger.ts";
 import type { ResolvedGoalOracleSettings } from "./goal-settings.ts";
-import { safeIdPart, type GoalRecord } from "./goal-record.ts";
+import { asRecord, safeIdPart, type GoalRecord } from "./goal-record.ts";
+import { isAbortedAssistantMessage, isErrorAssistantMessage } from "./goal-format.ts";
 
 function escapePromptPayload(value: string): string {
 	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -258,6 +259,14 @@ export async function runBlockerOracle(args: {
 		});
 
 		const abort = () => session.abort();
+		let providerError: string | undefined;
+		const unsubscribe = session.subscribe?.((event) => {
+			const raw = asRecord(event), message = asRecord(raw?.message);
+			if (raw?.type === "message_end" && message?.role === "assistant") {
+				providerError = isErrorAssistantMessage(message) || isAbortedAssistantMessage(message)
+					? String(message.errorMessage ?? "Oracle provider response failed.") : undefined;
+			}
+		});
 		args.signal?.addEventListener("abort", abort, { once: true });
 		try {
 			if (args.signal?.aborted) return { ok: false, errorCode: "aborted", message: "Oracle consultation aborted." };
@@ -269,10 +278,12 @@ export async function runBlockerOracle(args: {
 			}));
 		} finally {
 			args.signal?.removeEventListener("abort", abort);
+			unsubscribe?.();
 			session.dispose?.();
 		}
 
 		if (args.signal?.aborted) return { ok: false, errorCode: "aborted", message: "Oracle consultation aborted." };
+		if (providerError) return { ok: false, errorCode: "provider", message: providerError };
 		if (!submitted.settled || !submitted.advice) {
 			return { ok: false, errorCode: "invalid_output", message: "Oracle returned no structured advice." };
 		}
@@ -290,45 +301,8 @@ type OracleSessionFactory = {
 	subscribe?: (listener: (event: unknown) => void) => () => void;
 };
 
-// ── armed follow-up marker (session-scoped) ────────────────────────────────
-
-interface ArmedAdvice {
-	goalId: string;
-	fingerprint: string;
-	adviceId: string;
-	text: string;
-}
-
-const armedByGoalId = new Map<string, ArmedAdvice>();
-
-export function armOracleAdvice(goalId: string, fingerprint: string, advice: OracleAdvice): string {
-	const adviceId = `${fingerprint}-${safeIdPart(advice.alternatives[advice.recommendedIndex]?.title ?? "advice").slice(0, 24)}`;
-	const recommended = advice.alternatives[advice.recommendedIndex]!;
-	armedByGoalId.set(goalId, {
-		goalId,
-		fingerprint,
-		adviceId,
-		text: [
-			"Oracle suggested an alternative path:",
-			`${recommended.title} — ${recommended.rationale}`,
-			"Steps:",
-			...recommended.steps.map((s, i) => `  ${i + 1}. ${s}`),
-			recommended.expectedEvidence.length > 0 ? `Expected evidence: ${recommended.expectedEvidence.join("; ")}` : "",
-			"Attempt this path before reporting blocked again.",
-		].filter(Boolean).join("\n"),
-	});
-	return adviceId;
-}
-
-export function hasPendingOracleAdviceForFocusedGoal(goalId: string): boolean {
-	return armedByGoalId.has(goalId);
-}
-
-/** Consume the armed marker after a meaningful work attempt. */
-export function consumeOracleFollowupMarker(goalId: string): ArmedAdvice | undefined {
-	const armed = armedByGoalId.get(goalId);
-	armedByGoalId.delete(goalId);
-	return armed;
+export function oracleAdviceId(fingerprint: string, advice: OracleAdvice): string {
+	return `${fingerprint}-${safeIdPart(advice.alternatives[advice.recommendedIndex]?.title ?? "advice").slice(0, 24)}`;
 }
 
 export function renderActionableOracleAdvice(advice: OracleAdvice): string {
@@ -341,6 +315,6 @@ export function renderActionableOracleAdvice(advice: OracleAdvice): string {
 	].join("\n");
 }
 
-export function renderOracleAdviceReminder(armed: ArmedAdvice): string {
-	return `${armed.text}\n(The same blocker fingerprint already received Oracle advice; no new consultation will run until you attempt it.)`;
+export function renderOracleAdviceReminder(text: string): string {
+	return `${text}\n(The same blocker fingerprint already received Oracle advice; no new consultation will run until you attempt it.)`;
 }

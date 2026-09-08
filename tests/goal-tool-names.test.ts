@@ -79,10 +79,10 @@ test("no steady-state lifecycle tools or phase heuristics remain", async () => {
 });
 
 test("progress tool set excludes read-only surface tools and workhorse includes them", () => {
-	for (const name of ["get_goal", "create_goal"]) {
+	for (const name of ["get_goal", "create_goal", UPDATE_GOAL_TOOL_NAME, "read", "grep", "find", "ls"]) {
 		assert.equal(GOAL_PROGRESS_TOOL_NAMES.includes(name as typeof GOAL_PROGRESS_TOOL_NAMES[number]), false, name);
 	}
-	for (const name of [UPDATE_GOAL_TOOL_NAME, UPDATE_GOAL_TASK_TOOL_NAME, "write", "edit", "bash", "read"]) {
+	for (const name of [UPDATE_GOAL_TASK_TOOL_NAME, "write", "edit", "bash"]) {
 		assert.equal(GOAL_PROGRESS_TOOL_NAMES.includes(name as typeof GOAL_PROGRESS_TOOL_NAMES[number]), true, name);
 	}
 });

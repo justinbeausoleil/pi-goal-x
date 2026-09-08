@@ -67,6 +67,15 @@ Normal user prompts reset continuation bookkeeping. Dynamic goal instructions
 are no longer appended to the system prompt, and projections are not saved
 in the session or added to the separate summarizer request.
 
+Automatic continuation checks work across the whole agent run, so its final
+text response does not erase an earlier attempt. A run containing only text,
+goal inspection, directory/file reads, or plain echo yields without another
+automatic checkpoint. Successful task confirmation and explicitly requested
+continuations retain their handoff. The active goal can ask clarification;
+the user's reply or an explicit `/goal-resume` can continue an idle goal.
+The existing repeated-get_goal guidance stays soft and does not block reads.
+Shell classification recognizes plain echo; it is not semantic shell analysis.
+
 Checkpoint metadata and content must identify the same goal and carry the
 runtime UUID/sequence of its current, single-use issued receipt. Stops clear
 that receipt; replay or a previous runtime's marker cannot resume work.
@@ -419,6 +428,12 @@ Normal prompt/dashboard reads use per-goal ledger indexes: 12 recent events,
 64 activity candidates in stable timestamp order, pinned audit/lifecycle state,
 and blocker-fingerprint Oracle state plus the latest complete Oracle result.
 Pending advice is queried through that index until a recorded follow-up attempt;
+the ledger is the authority after both compaction and reopen, without a second
+in-memory advice gate. Only substantive write/edit/bash attempts discharge
+advice; inspection and lifecycle reports do not. Event-only turn transactions
+flush their ledger batch even when no goal record changed. Native child provider
+errors remain distinct from invalid structured advice, and aborted consultations
+record a diagnostic for the original goal without applying a stale result.
 the complete structured result is retained as JSON text in oracle_result.advice
 and is available through lossless history pages. Legacy summary-only advice is
 explicitly labeled incomplete. Derived checkpoints missing the latest-result

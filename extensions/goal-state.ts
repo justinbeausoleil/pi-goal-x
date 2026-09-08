@@ -272,9 +272,7 @@ export function createGoalCore(
 	// owned by the core so it survives host-side widget re-instantiation.
 	let dashboardExpanded = false;
 
-	// Per-turn flags reset in turn_start (#4, C9 fix).
-	// goalWorkToolCalledThisTurn: tracks whether a real goal-work tool was called.
-	//   If false at turn_end, we don't queue another autoContinue (empty chat turn).
+	// Work is tracked across the whole agent run, including its final text response.
 	// turn-stop guard, stale checkpoint, continuation scheduling, and one-time
 	// steering reminders live in `runtime` (extensions/goal-runtime.ts);
 	// token/time accounting lives in `accounting` (extensions/goal-accounting.ts).

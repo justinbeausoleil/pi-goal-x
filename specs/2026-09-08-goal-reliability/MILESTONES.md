@@ -1630,3 +1630,44 @@
   and reviews and avoid further process expansion.
 - Next009: trace blocker/Oracle and no-progress continuation paths; reuse existing
   native workers for required characterizations and root-cause reproductions.
+
+### Ticket 009 coherent blocker/continuation candidate
+
+- User reaffirmed that efficiency must not sacrifice quality. All approved
+  checks, independent reviews and six real-Qwen runs remain required.
+- Native text-only checkpoint reproduces unbounded requests at5500578 in
+  Data009/idle-red.log. The unconditional agent_end continuation bypassed the
+  empty-turn guard. Track work through the entire run; yield after no-work runs,
+  retain explicit/confirmed handoffs, and allow explicit resume of an idle active
+  goal. Inspection remains executable, and a real clarification reply resumes work.
+- Pi tool_call uses input, not args. The old lookup defeated the echo filter.
+  Inspection tools/lifecycle reports do not count as work; plain echo is excluded,
+  but redirected echo still counts as a work attempt (idle-work-red.log).
+  Shell classification is deliberately bounded, not a new semantic parser.
+- Oracle follow-up was lost because event-only turn buffers were discarded.
+  Shared flushTurn now appends those events. Follow-up eligibility comes from
+  durable advice, removing the obsolete in-memory marker. Inspection/re-blocking
+  cannot discharge advice; actual write/edit/bash can, including after reopen.
+  oracle-followup-red.log and oracle-corrected-fixture.log retain active-after-work
+  failures; oracle-ledger-green.log passes6 combined native cases.
+- Native401 Oracle errors were mislabeled invalid_output (oracle-outcomes-first.log).
+  Observe the child's final assistant error and retain provider classification.
+  Oracle abort diagnostics now persist before stale-focus rejection; results still
+  cannot mutate the superseding goal (oracle-abort-red.log → oracle-abort-green.log).
+- Native-combined.log passes27: seven no-progress/work/clarification cases, seven
+  Oracle outcomes, three advice/resource/reopen cases, ten existing Oracle stop
+  boundaries. Oracle-abort-green.log passes11 after the diagnostic repair.
+  Targeted-first.log passes53 helper checks; type/lint pass in check.log/lint.log.
+  Final candidate full suite and independent reviews remain pending.
+- Retained fixture corrections: idle-matrix-red.log expected4 instead of3 responses
+  in the terminating-pause work case; idle-first-green.log exposes a missing task
+  confirmation handoff, repaired before acceptance. Oracle-tools-red.log and
+  oracle-followup-green.log omitted goal tools from an explicit SDK allowlist;
+  fixed the fixture and asserted successful real ls execution. Oracle-reopen-resources.log
+  accidentally activated the stop worker's successor scenario; corrected boundary
+  selection passes three summaries plus reopen in oracle-reopen-corrected.log.
+- Exact test commands use node --experimental-strip-types --test with the
+  matching native test-name patterns in tests/integration/goal-lifecycle.test.ts.
+  Helpers use --import ./scripts/test-adapter-hooks.mjs for goal-oracle,
+  goal-tool-names, goal-turn-transaction and goal-service tests. Data009 logs
+  retain actual output; final qualification will record complete commands.

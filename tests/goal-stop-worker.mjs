@@ -23,8 +23,10 @@ let clockNow = originalNow();
 if (controlledClock) Date.now = () => clockNow;
 const switching = control.startsWith("switch");
 const replacing = control.startsWith("replace");
-const successor = replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control);
-const reviewing = boundary === "audit" || boundary === "oracle";
+const successor = boundary !== "oracle-followup" && (replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control));
+const oracleFollowup = boundary === "oracle-followup";
+const oracleOutcome = boundary === "oracle-outcome";
+const reviewing = boundary === "audit" || boundary === "oracle" || oracleFollowup || oracleOutcome;
 const agentStop = boundary === "agent" || boundary === "agent-block";
 let retryOffered = false, hostRetries = 0;
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
@@ -68,7 +70,8 @@ syncBuiltinESMExports();
 const pause = {name: "update_goal", args: {status: "paused", reason: "Fixture requested a deliberate stop.", suggested_action: "Wait for explicit user instructions."}};
 const write = path => ({name: "write", args: {path, content: path}});
 const currentGoal = () => results.findLast(result => result.details?.goal)?.details.goal;
-let childRequests = 0, transportAborted = false;
+let childRequests = 0, summaries = 0, transportAborted = false;
+const childPayloads = [];
 let resolveChildClosed;
 const childClosed = new Promise(resolve => { resolveChildClosed = resolve; });
 const advice = {diagnosis: "Late Oracle advice", alternatives: [{title: "Inspect evidence", rationale: "Use actual files", steps: ["Read proof.txt"], expectedEvidence: ["proof"]}], recommendedIndex: 0, unresolvedQuestions: [], disposition: "actionable"};
@@ -76,13 +79,16 @@ const server = http.createServer(async (req, res) => {
   let body = "";
   for await (const chunk of req) body += chunk;
   const payload = JSON.parse(body);
+  childPayloads.push(payload);
   childRequests++;
   res.on("close", () => { if (!res.writableEnded) transportAborted = true; resolveChildClosed(); });
-  if (childRequests === 1) { await stop(); await delay(30); }
+  if (childRequests === 1 && !oracleFollowup && !oracleOutcome) { await stop(); await delay(30); }
   if (res.destroyed) return;
+  if (oracleOutcome && control === "provider") { res.writeHead(401); res.end(JSON.stringify({error: {message: "Synthetic Oracle provider failure"}})); return; }
   res.writeHead(200, {"content-type": "text/event-stream"});
-  const submit = boundary === "oracle" && !payload.messages.some(message => message.role === "tool");
-  const delta = submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(advice)}}]} : {role: "assistant", content: boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
+  const submit = boundary.startsWith("oracle") && control !== "malformed" && !payload.messages.some(message => message.role === "tool");
+  const offered = {...advice, ...(["needs_human", "insufficient_context"].includes(control) ? {disposition: control} : {}), ...(control === "invalid-index" ? {recommendedIndex: 3} : {})};
+  const delta = submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(offered)}}]} : {role: "assistant", content: boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
   for (const [d, finish_reason] of [[delta, null], [{}, submit ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({id: "stop-review", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta: d, finish_reason}]})}\n\n`);
   res.end("data: [DONE]\n\n");
 });
@@ -161,7 +167,9 @@ async function create({sessionManager, sessionStartEvent}) {
   const runtime = await ModelRuntime.create({authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false});
   await runtime.setRuntimeApiKey("openai", "synthetic-unused");
   if (reviewing) runtime.registerProvider("fixture", {baseUrl: `http://127.0.0.1:${server.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: model.cost}]});
-  const created = await createAgentSession({cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager, settingsManager: settings, sessionStartEvent});
+  const created = await createAgentSession({cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager, settingsManager: settings, sessionStartEvent,
+    ...(boundary === "idle" || oracleFollowup ? {tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "create_goal", "get_goal", "update_goal", "set_goal_tasks", "update_goal_task"]} : {}),
+  });
   session = created.session;
   session.subscribe(event => {
     if (event.type === "auto_retry_start") hostRetries++;
@@ -169,6 +177,16 @@ async function create({sessionManager, sessionStartEvent}) {
     if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason});
   });
   session.agent.streamFunction = (requestedModel, context, options) => {
+    if (!context.tools?.length) {
+      summaries++;
+      assert(!JSON.stringify(context).includes("[PI GOAL ACTIVE"), "summarization has no executor projection");
+      const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id,
+        content: [{type: "text", text: "Earlier fixture discussion occurred. Goal and Oracle details were omitted."}],
+        usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: model.cost}, stopReason: "stop", timestamp: Date.now()};
+      const stream = new AssistantMessageEventStream();
+      stream.push({type: "done", reason: "stop", message});
+      return stream;
+    }
     requests.push(context);
     if (billedRunOwner === undefined) billedRunOwner = JSON.stringify(context.messages.at(-1)?.content).match(/\[PI GOAL ACTIVE goalId=([^\]]+)\]/)?.[1] ?? null;
     bills.push({goalId: billedRunOwner, tokens: 110});
@@ -186,7 +204,7 @@ async function create({sessionManager, sessionStartEvent}) {
     const calls = failure || retryError ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     if (startSecondary) secondaryDone = true;
     if (controlledClock && boundary === "completion" && calls.some(call => call.name === "update_goal" && call.args.status === "complete")) clockNow += 8000;
-    const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: "Waiting for explicit authorization."}];
+    const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: control === "clarify" ? "Which output format should I use?" : "Waiting for explicit authorization."}];
     const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
       usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: retryError ? "error" : calls.length ? "toolUse" : "stop", ...(retryError ? {errorMessage: "503 Service Unavailable"} : {}), timestamp: Date.now()};
     const stream = new AssistantMessageEventStream();
@@ -246,7 +264,8 @@ try {
   if (reviewing) {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     mkdirSync(join(cwd, ".pi"));
-    writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({provider: "fixture", model: "reviewer", disabled: false, oracle: {enabled: boundary === "oracle", provider: "fixture", model: "reviewer"}}));
+    writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({provider: "fixture", model: "reviewer", disabled: false, oracle: {enabled: boundary.startsWith("oracle") && control !== "disabled", provider: "fixture", ...(control === "config" ? {} : {model: "reviewer"}), projectResources: control === "resources", maxFailedAttemptsPerBlocker: 2}}));
+    if (oracleFollowup) writeFileSync(join(cwd, "AGENTS.md"), "oracle-project-resource-sentinel");
   }
   host = await createAgentSessionRuntime(create, {cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
   host.setRebindSession(async current => { session = current; await bind(); });
@@ -274,7 +293,84 @@ try {
   const checkpointsBefore = checkpoints.length;
   testing = true;
   if (boundary !== "ordinary") await session.prompt("/goal-resume");
-  if (control === "serial") {
+  if (boundary === "idle") {
+    responses = control === "inspect" ? Array.from({length: 3}, () => [{name: "get_goal", args: {}}])
+      : control === "echo" ? [[{name: "bash", args: {command: "echo inspecting"}}]]
+      : control === "ls" ? [[{name: "ls", args: {path: "."}}]]
+      : control === "work" || control === "redirect" ? [[control === "redirect" ? {name: "bash", args: {command: "echo progress > progress.txt"}} : write("progress.txt")], [], [pause]] : [];
+    const worked = control === "work" || control === "redirect";
+    const expectedResponses = control === "inspect" ? 4 : worked ? 3 : ["text", "clarify"].includes(control) ? 1 : 2;
+    await delay(100);
+    await settled();
+    assert.equal(requests.length - before, expectedResponses, "only substantive work earns another automatic checkpoint; inspection remains allowed within the run");
+    if (control === "ls") assert(results.some(result => result.toolName === "ls" && !result.isError), "inspection actually executed");
+    if (control === "inspect") assert(requests.slice(before).every(request => JSON.stringify(request).includes("Do not call get_goal repeatedly")), "every inspection receives the existing soft guidance");
+    assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, worked ? "paused" : "active", "yielding for clarification does not mark the goal blocked or complete");
+    if (control === "work") assert.equal(readFileSync(join(cwd, "progress.txt"), "utf8"), "progress.txt");
+    if (control === "redirect") assert.equal(readFileSync(join(cwd, "progress.txt"), "utf8"), "progress\n");
+    if (control === "clarify") assert(JSON.stringify(session.messages.at(-1)).includes("Which output format"), "the active goal can ask a real clarification question");
+    responses = [[write("resumed-proof.txt"), pause]];
+    await session.prompt(control === "clarify" ? "Use JSON and continue the requested work." : "/goal-resume");
+    await delay(50);
+    await settled();
+    assert.equal(readFileSync(join(cwd, "resumed-proof.txt"), "utf8"), "resumed-proof.txt", "explicit resume can continue after a no-progress yield");
+  } else if (oracleOutcome) {
+    const block = {name: "update_goal", args: {status: "blocked", reason: "Fixture dependency remains unavailable."}};
+    const ledger = () => readFileSync(goalLedgerPath({cwd}), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    await run("Report this concrete recurring blocker.", [block]);
+    assert(JSON.stringify(requests[before]).includes("three consecutive goal turns"), "recurrence is delivered model guidance, not a runtime counter");
+    if (["config", "provider", "malformed", "invalid-index"].includes(control)) {
+      const errorCode = ["config", "provider"].includes(control) ? control : "invalid_output";
+      assert.equal(currentGoal().status, "active");
+      assert.equal(ledger().find(event => event.type === "oracle_failed").errorCode, errorCode);
+      await run("Retry the same blocker consultation.", [block]);
+      assert.equal(currentGoal().status, "active");
+      const requestsBeforeCap = childRequests;
+      await run("Report the blocker after the configured failure limit.", [block]);
+      assert.equal(childRequests, requestsBeforeCap, "the configured cap prevents another consultation");
+      assert.equal(ledger().filter(event => event.type === "oracle_started").length, 2);
+    } else if (control !== "disabled") {
+      assert.equal(ledger().find(event => event.type === "oracle_result").disposition, control);
+    }
+    assert.equal(currentGoal().status, "blocked");
+    assert.equal(currentGoal().pauseReason, block.args.reason);
+    if (["disabled", "config"].includes(control)) assert.equal(childRequests, 0, "no implicit fallback model is consulted");
+  } else if (oracleFollowup) {
+    const block = {name: "update_goal", args: {status: "blocked", reason: "Fixture dependency remains unavailable."}};
+    const ledger = () => readFileSync(goalLedgerPath({cwd}), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    await run("Consult the Oracle about the recurring dependency failure.", [block]);
+    await delay(50);
+    assert.equal(currentGoal().status, "active", "actionable advice preserves the active goal");
+    assert.equal(ledger().filter(event => event.type === "oracle_result").length, 1);
+    for (const payload of childPayloads) {
+      assert.deepEqual(payload.tools.map(tool => tool.function.name).sort(), ["read", "grep", "find", "ls", "submit_goal_oracle_advice"].sort(), "Oracle receives only its read-only tools");
+      assert.equal(JSON.stringify(payload).includes("oracle-project-resource-sentinel"), control === "resources", "Oracle respects the configured project-resource policy");
+      assert(!JSON.stringify(payload).includes("PI GOAL ACTIVE"), "Oracle cannot inherit the executor projection");
+    }
+    if (control === "reopen") {
+      await session.prompt("/goal-pause");
+      for (let i = 0; i < 3; i++) {
+        await session.sendCustomMessage({customType: "oracle-fixture-ballast", content: "00112233445566778899 ".repeat(5000), display: false}, {triggerTurn: false});
+        await session.compact();
+      }
+      assert.equal(summaries, 3, "three actual host summaries precede reopen");
+      await host.switchSession(session.sessionManager.getSessionFile());
+      await session.prompt("/goal-resume");
+    }
+    const inspectionStart = requests.length;
+    await run("Inspect state and report the same blocker without attempting the advice.", [
+      {name: "get_goal", args: {}}, {name: "bash", args: {command: "echo inspecting"}}, {name: "ls", args: {path: "."}}, block,
+    ]);
+    assert.equal(currentGoal().status, "active", "inspection and another block request do not execute Oracle advice");
+    assert(JSON.stringify(requests[inspectionStart].messages.at(-1)).includes("Late Oracle advice"), "durable advice is supplied before renewed work");
+    assert(results.some(result => result.toolName === "ls" && !result.isError), "the executor performed actual inspection");
+    assert.equal(ledger().filter(event => event.type === "oracle_followup_attempted").length, 0);
+    await run("Attempt the advice, then report the still-recurring blocker.", [write("oracle-attempt.txt"), block]);
+    assert.equal(readFileSync(join(cwd, "oracle-attempt.txt"), "utf8"), "oracle-attempt.txt");
+    assert.equal(currentGoal().status, "blocked");
+    assert.equal(ledger().filter(event => event.type === "oracle_started").length, 1, "same fingerprint reuses its advice");
+    assert.deepEqual(ledger().filter(event => event.type === "oracle_followup_attempted").map(event => event.firstToolName), ["write"]);
+  } else if (control === "serial") {
     const revision = results.findLast(result => result.details?.goal?.id === primary.id)?.details.work_revision;
     assert(revision);
     const pendingCall = boundary === "dialog"
@@ -327,6 +423,7 @@ try {
     assert(childRequests > 0, "the actual child transport reached the async boundary");
     const ledger = readFileSync(join(cwd, ".pi/goals/goal_events.jsonl"), "utf8");
     assert.doesNotMatch(ledger, /"type":"(?:audit_result|goal_completed|oracle_result)"/, "late child results cannot mutate or arm the stopped goal");
+    if (boundary === "oracle" && control === "abort") assert.match(ledger, /"type":"oracle_failed".*"errorCode":"aborted"/, "Oracle cancellation remains visible after the conversation is gone");
     await childClosed;
     assert(transportAborted, "supported child transport is aborted after a user stop");
   } else if (boundary.startsWith("steering")) {
@@ -456,7 +553,7 @@ try {
   if (exhaustedEdit) assert.equal(focused.status, "budget_limited");
   else if (boundary === "completion" || clearUnpaid || (["unfocus", "clear"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
-  else assert.equal(focused.status, boundary === "agent-block" ? "blocked" : "paused");
+  else assert.equal(focused.status, boundary === "agent-block" || oracleFollowup || oracleOutcome ? "blocked" : "paused");
   if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {
     assert.equal(focused.pauseReason, pause.args.reason);
     assert.equal(focused.pauseSuggestedAction, pause.args.suggested_action);

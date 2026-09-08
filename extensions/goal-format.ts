@@ -313,13 +313,10 @@ export function assistantTurnTokens(message: unknown): number {
 
 export function isMeaningfulProgressToolCall(toolName: string, args: unknown): boolean {
 	if (!GOAL_PROGRESS_TOOL_SET.has(toolName)) return false;
-	if (toolName === "read") {
-		const path = asRecord(args)?.path;
-		if (typeof path === "string" && (path === ".pi/goals" || path.startsWith(".pi/goals/"))) return false;
-	}
 	if (toolName === "bash") {
 		const command = asRecord(args)?.command;
-		if (typeof command === "string" && /^\s*echo\b/.test(command)) return false;
+		// ponytail: recognize plain echo only; full shell analysis needs a parser.
+		if (typeof command === "string" && /^\s*echo\b/.test(command) && !/[;&|<>`$()\r\n]/.test(command)) return false;
 	}
 	return true;
 }

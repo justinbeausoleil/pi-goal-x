@@ -285,6 +285,7 @@ export class GoalService {
 		const goal = this.turn.goal;
 		if (!goal) {
 			this.turn.active = false;
+			this.appendLedgerEventsBestEffort(ctx, this.turn.ledger);
 			return null;
 		}
 		let lock: GoalLock;

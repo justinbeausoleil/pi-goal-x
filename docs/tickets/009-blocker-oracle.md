@@ -34,3 +34,12 @@ Investigation input: Data007/replacement-ordered-trace.log shows the original
 active goal repeatedly continuing text-only responses after an invalid ordered
 replacement command was rejected. Preserve the failed attempt; diagnose the
 D5 no-progress/nudge boundary here. Other implementation evidence pending.
+
+Candidate evidence in `~/Data/pi-goal-x/reliability/009/`: `native-combined.log`
+passes27 native checks; `oracle-abort-green.log` passes11 outcome/cancellation
+checks. Public fixtures prove actual work, isolated Oracle tools/resources,
+three actual summaries and host reopen, fingerprint reuse, soft inspection
+guidance, active clarification and explicit resume. `targeted-first.log`
+passes53 helper regressions. Final full qualification and independent reviews
+remain pending; acceptance is not yet checked. Milestones retain all reds and
+fixture corrections, including prior logs whose names contain "green" but failed.

@@ -53,18 +53,13 @@ export const GOAL_WORK_TOOL_NAMES = [
 
 /**
  * The subset of GOAL_WORK_TOOL_NAMES that indicates actual progress (excludes
- * read-only surface tools such as get_goal and create_goal).
+ * inspection tools and goal creation).
  */
 export const GOAL_PROGRESS_TOOL_NAMES = [
-	UPDATE_GOAL_TOOL_NAME,
 	UPDATE_GOAL_TASK_TOOL_NAME,
 	"write",
 	"edit",
 	"bash",
-	"read",
-	"grep",
-	"find",
-	"ls",
 ] as const;
 
 /** Tools the model may still call on a stopped turn (state reads only). */

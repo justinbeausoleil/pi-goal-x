@@ -19,10 +19,8 @@ import { nowIso, goalWorkRevision, type GoalRecord, type GoalTask, validateToken
 import type { GoalCore } from "./goal-state.ts";
 import { promptProfile } from "./prompts/goal-prompts.ts";
 import {
-	armOracleAdvice,
+	oracleAdviceId,
 	buildBlockerFingerprint,
-	consumeOracleFollowupMarker,
-	hasPendingOracleAdviceForFocusedGoal,
 	renderActionableOracleAdvice,
 	renderOracleAdviceReminder,
 	runBlockerOracle,
@@ -325,14 +323,8 @@ pi.registerTool(defineTool({
 
 	// One actionable result already exists.
 	if (consult.result?.disposition === "actionable") {
-		if (!consult.followupAttempted && !hasPendingOracleAdviceForFocusedGoal(goalAtBlock.id)) {
-			// Re-arm without consulting again and refuse the block.
-			const adviceText = renderOracleAdviceReminder({
-				goalId: goalAtBlock.id,
-				fingerprint,
-				adviceId: consult.result.adviceId,
-				text: consult.result.summary,
-			});
+		if (!consult.followupAttempted) {
+			const adviceText = renderOracleAdviceReminder(consult.result.summary);
 			return {
 				content: [{ type: "text", text: `${adviceText}\n\nThe goal was NOT marked blocked.` }],
 				details: goalDetails(goalAtBlock),
@@ -383,29 +375,7 @@ pi.registerTool(defineTool({
 		recentEvidence: "",
 	});
 
-	if (!core.isFocusedOperationCurrent(focusToken)) {
-		return core.focusedOperationCancelledResult("Blocker Oracle", focusToken);
-	}
-
 	if (!run.ok) {
-		if (run.errorCode === "aborted") {
-			try {
-				core.goalService.appendEvents(ctx, [{
-					type: "oracle_failed",
-					goalId: goalAtBlock.id,
-					fingerprint,
-					attempt: consult.failedAttempts + 1,
-					errorCode: "aborted",
-					message: run.message.slice(0, 300),
-					at: nowIso(),
-				}]);
-			} catch { /* best effort */ }
-			return {
-				content: [{ type: "text", text: "Oracle consultation was aborted; the goal remains active." }],
-				details: goalDetails(goalAtBlock),
-				terminate: false,
-			};
-		}
 		try {
 			core.goalService.appendEvents(ctx, [{
 				type: "oracle_failed",
@@ -417,17 +387,23 @@ pi.registerTool(defineTool({
 				at: nowIso(),
 			}]);
 		} catch { /* best effort */ }
+		if (!core.isFocusedOperationCurrent(focusToken)) {
+			return core.focusedOperationCancelledResult("Blocker Oracle", focusToken);
+		}
 		const retryable = consult.failedAttempts + 1 < oracleSettings.maxFailedAttemptsPerBlocker;
 		return {
-			content: [{ type: "text", text: `Oracle consultation failed (${run.errorCode}): ${run.message.slice(0, 200)}${retryable ? " The goal remains active; try again or continue working." : ""}` }],
+			content: [{ type: "text", text: run.errorCode === "aborted" ? "Oracle consultation was aborted; the goal remains active." : `Oracle consultation failed (${run.errorCode}): ${run.message.slice(0, 200)}${retryable ? " The goal remains active; try again or continue working." : ""}` }],
 			details: goalDetails(goalAtBlock),
 			terminate: false,
 		};
 	}
+	if (!core.isFocusedOperationCurrent(focusToken)) {
+		return core.focusedOperationCancelledResult("Blocker Oracle", focusToken);
+	}
 
-	// Persist bounded result + arm/remind per disposition.
+	// Durable advice remains pending until the ledger records a work attempt.
 	const advice = run.advice;
-	const adviceId = armOracleAdvice(goalAtBlock.id, fingerprint, advice);
+	const adviceId = oracleAdviceId(fingerprint, advice);
 	const recommendedTitle = advice.alternatives[advice.recommendedIndex]?.title;
 	try {
 		core.goalService.appendEvents(ctx, [{
@@ -444,7 +420,6 @@ pi.registerTool(defineTool({
 	} catch { /* best effort */ }
 
 	if (advice.disposition === "needs_human" || advice.disposition === "insufficient_context") {
-		consumeOracleFollowupMarker(goalAtBlock.id);
 		return commitBlocked();
 	}
 

@@ -22,7 +22,6 @@ import { asRecord, nowIso, goalWorkRevision, type AssistantMessageLike, type Goa
 import { goalSelectorLabel, otherOpenGoalCount } from "./goal-pool.ts";
 import { invalidateGoalPoolCache } from "./storage/goal-files.ts";
 import { checkpointTriggerPrompt } from "./prompts/goal-prompts.ts";
-import { consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal } from "./goal-oracle.ts";
 import {
 	goalPrompt,
 	excerpt,
@@ -106,6 +105,8 @@ export function registerGoalEvents(core: GoalCore): void {
 	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
 	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
 	pi.on("agent_start", (_event, ctx) => {
+		// Track the whole run; its final text response must retain earlier work.
+		core.goalWorkToolCalledThisTurn = false;
 		runOriginBound = false;
 		userTriggerPending = false;
 		stopListeningForAbort?.();
@@ -176,9 +177,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Detect inactivity before this response resets the activity clock.
 		const stalled = core.checkStall(ctx);
 		pendingStall = stalled && core.state.goal ? { goalId: core.state.goal.id, text: stalled } : undefined;
-		// Per-turn flag resets (#4 + C9 fix).
 		core.advanceTurnSeq();
-		core.goalWorkToolCalledThisTurn = false;
 		if (runOriginBound && core.runningGoalId !== core.state.goal?.id) core.clearActiveAccounting();
 		else core.beginAccounting();
 		core.goalService.beginTurn(ctx, core.focusedGoalId); // P1-3 transaction buffer
@@ -220,14 +219,12 @@ export function registerGoalEvents(core: GoalCore): void {
 			};
 		}
 		// Track for #4 empty-turn gate.
-		if (isMeaningfulProgressToolCall(event.toolName, asRecord(event)?.args)) {
+		if (isMeaningfulProgressToolCall(event.toolName, event.input)) {
 			core.goalWorkToolCalledThisTurn = true;
-			// Issue #26: record a meaningful work attempt against armed Oracle
-			// advice. get_goal / echo-only reads are excluded upstream by
-			// isMeaningfulProgressToolCall.
+			// Follow-up authority comes from durable advice, including after reopen.
 			const focusedId = core.focusedGoalId;
-			if (focusedId && hasPendingOracleAdviceForFocusedGoal(focusedId)) {
-				const armed = consumeOracleFollowupMarker(focusedId);
+			if (focusedId && ["write", "edit", "bash"].includes(event.toolName)) {
+				const armed = goalPendingOracleAdvice(ctx, focusedId);
 				if (armed) {
 					try {
 						core.goalService.appendEvents(ctx, [{
@@ -580,9 +577,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		continuationAfterSettleFor = null;
 		networkErrorRecoveryAfterSettleFor = null;
 		const selectedGoalId = core.state.goal?.id;
+		const continuationRequested = !!selectedGoalId && core.runtime.continuationPendingFor(selectedGoalId);
 		const checkpoint = core.runtime.getCheckpointGoalId();
 		const staleCheckpoint = checkpoint !== null && (!core.runtime.isCheckpointCurrent() || !core.isActionableContinuationGoal(checkpoint));
-		if (selectedGoalId && (staleCheckpoint || superseded || (endedGoalId && selectedGoalId !== endedGoalId)) && core.runtime.continuationPendingFor(selectedGoalId)) {
+		if (selectedGoalId && (staleCheckpoint || superseded || (endedGoalId && selectedGoalId !== endedGoalId)) && continuationRequested) {
 			// A user-selected successor waits for the old run's abort to settle.
 			continuationAfterSettleFor = selectedGoalId;
 		}
@@ -622,6 +620,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.runtime.clearNetworkErrorBackoff();
 		core.persist(ctx);
 		core.updateUI(ctx);
+		if (!core.goalWorkToolCalledThisTurn && !continuationRequested && core.currentTurnStoppedGoalId() !== selectedGoalId) {
+			ctx.ui.notify("No goal work was attempted. Waiting for your reply or /goal-resume.", "info");
+			return;
+		}
 		// agent_end runs before pi finishes retries, compaction, terminating-tool
 		// settlement, and queued messages. Starting the continuation timer here
 		// can poll a stale busy context for minutes on pi 0.84. agent_settled is
