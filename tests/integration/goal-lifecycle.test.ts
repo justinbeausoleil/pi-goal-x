@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
-for (const scenario of ["recovery", "recovery-lock-race", "recovery-session-stale", "recovery-backup-failure", "recovery-item-failure", "recovery-snapshot-failure"]) test(`S2: native ${scenario} preserves storage and diagnoses repair outcomes`, {timeout: 15000}, async () => {
+for (const scenario of ["legacy-refresh", "recovery", "recovery-lock-race", "recovery-copy-race", "recovery-backup-race", "recovery-session-stale", "recovery-backup-failure", "recovery-item-failure", "recovery-snapshot-failure", "recovery-scan-failure", "recovery-read-failure"]) test(`S2: native ${scenario} preserves storage and diagnoses repair outcomes`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
 	});

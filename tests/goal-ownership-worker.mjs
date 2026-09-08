@@ -1,5 +1,7 @@
 /** S1/S2 project progress and execution authority through native session boundaries. */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import {syncBuiltinESMExports} from "node:module";
 import {appendFileSync, chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -20,6 +22,10 @@ const settings = SettingsManager.inMemory({compaction: {enabled: false, reserveT
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [], confirmations = [];
 let session, host, steps = [], earlyLeaf, failure, shutdownFile, summaries = 0, repairConfirmed = false, onRepairConfirm = async () => {};
+const originalCopy = fs.copyFileSync;
+let beforeBackup = () => {}, afterBackup = () => {};
+fs.copyFileSync = (...args) => { beforeBackup(args[0]); const result = originalCopy(...args); afterBackup(args[0]); return result; };
+syncBuiltinESMExports();
 const goalResult = () => results.findLast(r => r.details?.goal)?.details.goal;
 const checkpoints = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length;
 const readGoal = () => readFileSync(join(cwd, goalResult().activePath), "utf8");
@@ -88,7 +94,46 @@ try {
   assert.equal(approved.status, "paused");
   assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
   assert(earlyLeaf);
-  if (scenario.startsWith("recovery-")) {
+  if (scenario === "legacy-refresh") {
+    const sessionFile = session.sessionManager.getSessionFile(), activeFile = join(cwd, approved.activePath);
+    await host.dispose(); host = undefined; session = undefined;
+    const content = readFileSync(activeFile, "utf8"), split = content.indexOf("\n\n# Goal Prompt");
+    const legacy = JSON.parse(content.slice(0, split));
+    delete legacy.retainedScope;
+    legacy.version = 2;
+    writeFileSync(activeFile, JSON.stringify(legacy, null, 2) + content.slice(split));
+    rmSync(join(cwd, ".pi", ".goals-pool-snapshot.json"));
+    const historical = structuredClone(legacy);
+    historical.taskList.tasks[0].status = "pending";
+    delete historical.taskList.tasks[0].evidence;
+    const entries = readFileSync(sessionFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
+    for (const entry of entries) if (entry.customType === "pi-goal-focus") {
+      entry.customType = "pi-goal-state";
+      entry.data = {goal: historical};
+    }
+    writeFileSync(sessionFile, entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+    const before = requests.length;
+    host = await createAgentSessionRuntime(({sessionManager, sessionStartEvent}) => open(sessionManager, sessionStartEvent), {cwd, agentDir, sessionManager: SessionManager.open(sessionFile), sessionStartEvent: {type: "session_start", reason: "resume"}});
+    await delay(100);
+    assert.equal(requests.length, before, "legacy paused focus does not schedule work");
+    await run("Inspect the legacy goal without changing it.", [{name: "get_goal", args: {}}]);
+    assert.equal(goalResult().id, approved.id);
+    assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence, "current disk wins over legacy chat");
+    const revised = "Legacy user-edited objective preserves verified task evidence.";
+    const bodyBefore = readFileSync(activeFile, "utf8");
+    writeFileSync(activeFile, bodyBefore.replace("# Goal Prompt\n\n" + legacy.objective, "# Goal Prompt\n\n" + revised));
+    const editedFile = readFileSync(activeFile, "utf8");
+    await session.prompt("/goal-refresh");
+    assert.equal(readFileSync(activeFile, "utf8"), editedFile, "refresh does not rewrite legacy user content");
+    assert.doesNotMatch(notices.at(-1), /no changes detected/, "refresh reports an actual legacy prompt edit");
+    await run("Inspect the refreshed legacy objective.", [{name: "get_goal", args: {}}]);
+    assert.equal(goalResult().objective, revised, "explicit refresh adopts the legacy user-edited prompt");
+    assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
+    await host.switchSession(sessionFile);
+    await run("Inspect the legacy goal after another native reopen.", [{name: "get_goal", args: {}}]);
+    assert.equal(goalResult().objective, revised);
+    assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
+  } else if (scenario.startsWith("recovery-")) {
     const goals = join(cwd, ".pi", "goals"), lock = join(goals, ".locks", "fixture.lock");
     const backupRoot = join(goals, ".recovery-backup"), snapshotPath = join(cwd, ".pi", ".goals-pool-snapshot.json");
     mkdirSync(join(goals, ".locks"), {recursive: true});
@@ -101,15 +146,24 @@ try {
       liveLock = JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()});
       writeFileSync(lock, liveLock);
     };
+    if (["recovery-copy-race", "recovery-backup-race"].includes(scenario)) onRepairConfirm = async () => {
+      liveLock = JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()});
+      const replace = source => { if (source === lock) writeFileSync(lock, liveLock); };
+      if (scenario === "recovery-copy-race") beforeBackup = replace;
+      else afterBackup = replace;
+    };
     if (scenario === "recovery-session-stale") onRepairConfirm = async () => { await host.newSession(); };
     if (scenario === "recovery-backup-failure") writeFileSync(backupRoot, "User-owned backup path obstruction");
     if (scenario === "recovery-item-failure") onRepairConfirm = async () => { chmodSync(lock, 0); };
-    if (scenario === "recovery-snapshot-failure") {
+    if (["recovery-snapshot-failure", "recovery-scan-failure", "recovery-read-failure"].includes(scenario)) {
       rmSync(lock);
       const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
       snapshot.goals.push({goalId: "missing-fixture", activePath: ".pi/goals/active_goal_missing-fixture.md"});
       writeFileSync(snapshotPath, JSON.stringify(snapshot));
-      onRepairConfirm = async () => { chmodSync(join(cwd, ".pi"), 0o555); };
+      onRepairConfirm = async () => {
+        if (scenario === "recovery-snapshot-failure") chmodSync(join(cwd, ".pi"), 0o555);
+        else chmodSync(scenario === "recovery-scan-failure" ? goals : join(cwd, approved.activePath), scenario === "recovery-scan-failure" ? 0o300 : 0);
+      };
     }
     const noticesBefore = notices.length;
     try {
@@ -119,14 +173,17 @@ try {
         assert.equal(existsSync(backupRoot), false, "disposed-session confirmation cannot repair a replacement session");
         assert.equal(notices.length, noticesBefore, "no stale-context notification enters the replacement session");
       } else assert.match(notices.at(-1), /failed|changed|no longer stale/i, "repair must diagnose unsuccessful operations");
-      if (scenario !== "recovery-snapshot-failure") {
+      if (!["recovery-snapshot-failure", "recovery-scan-failure", "recovery-read-failure"].includes(scenario)) {
         if (scenario === "recovery-item-failure") chmodSync(lock, 0o600);
         assert.equal(readFileSync(lock, "utf8"), liveLock ?? originalLock, "failed or obsolete repairs retain the lock");
       } else assert(JSON.parse(readFileSync(snapshotPath, "utf8")).goals.some(g => g.goalId === "missing-fixture"));
+      chmodSync(join(cwd, approved.activePath), 0o600);
       assert.equal(readGoal(), scenario === "recovery-session-stale" ? shutdownFile : goalBefore, "repair preserves the settled authoritative goal");
       assert.equal(requests.length, requestsBefore);
     } finally {
       chmodSync(join(cwd, ".pi"), 0o755);
+      chmodSync(goals, 0o755);
+      chmodSync(join(cwd, approved.activePath), 0o600);
       if (existsSync(lock)) chmodSync(lock, 0o600);
     }
   } else if (scenario === "recovery") {
@@ -284,6 +341,8 @@ try {
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({passed: true, scenario, requests: requests.length, summaries, checkpoints: checkpoints(), effects: results.filter(r => r.toolName === "write").length}));
 } finally {
+  fs.copyFileSync = originalCopy;
+  syncBuiltinESMExports();
   if (session) await session.abort();
   if (host) await host.dispose();
   rmSync(work, {recursive: true, force: true});

@@ -175,9 +175,8 @@ function writePoolSnapshotSync(ctx: GoalFileContext, root: string, goals: GoalRe
 
 /** Explicit confirmed recovery requires a fresh scan and an observable write result. */
 export function refreshGoalPoolSnapshot(ctx: GoalFileContext): void {
-	invalidateGoalPoolCache();
 	const root = path.resolve(ctx.cwd, GOALS_DIR);
-	const goals = scanActiveGoalFiles(ctx, root);
+	const goals = scanActiveGoalFiles(ctx, root, true);
 	writePoolSnapshotSync(ctx, root, goals, true);
 	goalPoolCache.set(root, new Map(goals.map(goal => [goal.id, goal])));
 }
@@ -432,23 +431,25 @@ export function extractObjectiveFromBody(body: string): string | undefined {
 	return lines.slice(start + 1, end).join("\n").trim() || undefined;
 }
 
-export function parseGoalFile(filePath: string): GoalRecord | null {
+export function parseGoalFile(filePath: string, strict = false): GoalRecord | null {
 	let stat: fs.Stats;
 	try {
 		stat = fs.lstatSync(filePath);
-	} catch {
+	} catch (error) {
 		goalFileParseCache.delete(filePath);
+		if (strict) throw error;
 		return null;
 	}
 	if (stat.isSymbolicLink()) return null;
 	const cached = goalFileParseCache.get(filePath);
-	if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+	if (!strict && cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
 		return cached.parsed;
 	}
 	let content: string;
 	try {
 		content = fs.readFileSync(filePath, "utf8");
-	} catch {
+	} catch (error) {
+		if (strict) throw error;
 		return null;
 	}
 	return parseGoalContentCached(filePath, stat.mtimeMs, stat.size, content);
@@ -529,13 +530,16 @@ export function readActiveGoalFiles(ctx: GoalFileContext): GoalRecord[] {
 }
 
 /** Uncached full scan (used when the zero-op pool cache is empty). */
-function scanActiveGoalFiles(ctx: GoalFileContext, root: string): GoalRecord[] {
+function scanActiveGoalFiles(ctx: GoalFileContext, root: string, strict = false): GoalRecord[] {
 	let entries: string[];
 	try {
 		const rootStat = fs.lstatSync(root);
-		if (rootStat.isSymbolicLink()) return [];
+		if (rootStat.isSymbolicLink()) {
+			if (strict) throw new Error("Goal directory is a symlink.");
+			return [];
+		}
 		const cachedListing = goalDirListingCache.get(root);
-		if (cachedListing && cachedListing.mtimeMs === rootStat.mtimeMs) {
+		if (!strict && cachedListing && cachedListing.mtimeMs === rootStat.mtimeMs) {
 			entries = cachedListing.names;
 		} else {
 			entries = fs.readdirSync(root)
@@ -543,14 +547,15 @@ function scanActiveGoalFiles(ctx: GoalFileContext, root: string): GoalRecord[] {
 				.sort((a, b) => a.localeCompare(b));
 			goalDirListingCache.set(root, { mtimeMs: rootStat.mtimeMs, names: entries });
 		}
-	} catch {
+	} catch (error) {
+		if (strict && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		return [];
 	}
 	return entries
 		.map((name) => {
 			const relPath = `${GOALS_DIR}/${name}`;
 			if (!isSafeActivePath(ctx, relPath)) return null;
-			const parsed = parseGoalFile(resolveGoalPath(ctx, GOALS_DIR, relPath));
+			const parsed = parseGoalFile(resolveGoalPath(ctx, GOALS_DIR, relPath), strict);
 			if (!parsed || parsed.status === "complete") return null;
 			return sanitizeGoalPaths(ctx, { ...parsed, activePath: relPath });
 		})
@@ -566,7 +571,13 @@ export function readActiveGoalPoolView(ctx: GoalFileContext): ReadonlyMap<string
  return pool;
 }
 
-export function readActiveGoalPool(ctx: GoalFileContext): Map<string, GoalRecord> {
+export function readActiveGoalPool(ctx: GoalFileContext, refresh = false): Map<string, GoalRecord> {
+	if (refresh) {
+		const root = path.resolve(ctx.cwd, GOALS_DIR);
+		const pool = new Map(scanActiveGoalFiles(ctx, root, true).map(goal => [goal.id, goal]));
+		goalPoolCache.set(root, pool);
+		return new Map(pool);
+	}
 	return new Map(readActiveGoalPoolView(ctx));
 }
 

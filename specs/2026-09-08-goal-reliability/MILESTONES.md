@@ -1011,3 +1011,29 @@
   targeted recovery/unfocus/drafting checks pass. No payload changed. The slice
   proceeds to independent fixed-base review and full qualification; legacy
   reads/refresh, broader path/storage faults and child qualification remain.
+
+- Frozenb0e608a passes1104/1104 full checks (76files,124.1s). Both reviewers
+  reproduce a directory-read failure being mistaken for an empty scan, so a
+  strict write still replaced the snapshot and reported success. Spec also
+  replaces a lock immediately after its backup and reproduces deletion of the
+  new live owner. Independent pinned scripts/logs review-recovery-{scan,lock-copy}
+  -b0e608a and permanent recovery-{scan,read,backup,copy}-*-red.log retain these
+  and adjacent failure windows. b0e608a is not pushed while these are unresolved.
+- The existing scanner/parser now support explicit strict reads; recovery
+  bypasses listing/parse caches, propagates IO errors, and commits its pool
+  cache only after a successful snapshot write. Ordinary reads retain their
+  existing best-effort behavior. Repair compares the reported lock bytes,
+  backup bytes, current bytes and file identity before removal. Native denied
+  directory/file reads and replacements before/after the copy now preserve the
+  prior snapshot/lock and emit actionable diagnostics.
+- A public-created goal/session converted to the legacy file/full-state format
+  reopens paused, migrates focus and retains current completed evidence over
+  historical pending chat. Editing only its Goal Prompt body reproduces
+  /goal-refresh falsely reporting no change because it reused the pool snapshot.
+  Explicit refresh now scans current files with the same strict reader, reports
+  updated records, reconciles the focused view, and leaves user bytes unchanged.
+  Native legacy-refresh passes through another actual reopen. Scope discrepancy
+  rules for migrated records remain005's approved behavior, not a scope waiver.
+- Type/lint, targeted refresh/recovery/pool/drafting/unfocus checks and the
+  combined native recovery/legacy cases pass. The repaired slice proceeds to
+  fixed-base re-review and frozen full qualification.006 remains partial.

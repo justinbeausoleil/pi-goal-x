@@ -32,6 +32,7 @@ export interface MalformedGoalFileEntry {
 
 export interface StaleLockEntry {
 	fileName: string;
+	content: string | null;
 	pid: number;
 	startedAt: string;
 	ageMs: number;
@@ -116,18 +117,20 @@ function scanStaleLocks(cwd: string): StaleLockEntry[] {
 	const now = Date.now();
 	for (const name of names) {
 		if (!name.endsWith(".lock")) continue;
+		let content: string | null = null;
 		try {
-			const raw = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8")) as { pid?: unknown; startedAt?: unknown };
+			content = fs.readFileSync(path.join(dir, name), "utf8");
+			const raw = JSON.parse(content) as { pid?: unknown; startedAt?: unknown };
 			const pid = typeof raw.pid === "number" ? raw.pid : 0;
 			const startedAt = typeof raw.startedAt === "string" ? raw.startedAt : "";
 			const startedMs = new Date(startedAt).getTime();
 			const ageMs = Number.isFinite(startedMs) ? Math.max(0, now - startedMs) : now;
 			if (!pidAlive(pid) || ageMs > LOCK_STALE_TTL_MS) {
-				out.push({ fileName: name, pid, startedAt, ageMs });
+				out.push({ fileName: name, content, pid, startedAt, ageMs });
 			}
 		} catch {
 			// Unreadable lock body: report as stale (pid unknown).
-			out.push({ fileName: name, pid: 0, startedAt: "", ageMs: now });
+			out.push({ fileName: name, content, pid: 0, startedAt: "", ageMs: now });
 		}
 	}
 	return out;
@@ -211,10 +214,18 @@ export async function runRecoveryRepair(
 		const source = path.join(locksDir(ctx.cwd), lock.fileName);
 		try {
 			const current = currentLocks.find(item => item.fileName === lock.fileName);
-			if (!current || current.pid !== lock.pid || current.startedAt !== lock.startedAt) {
+			if (!current || current.content !== lock.content || current.pid !== lock.pid || current.startedAt !== lock.startedAt) {
 				throw new Error("Lock changed or is no longer stale; run /goal-recovery again.");
 			}
-			fs.copyFileSync(source, path.join(backupDir, `lock-${safeLockName(lock.fileName)}`));
+			const before = fs.lstatSync(source);
+			if (!before.isFile()) throw new Error("Lock is not a regular file; manual review required.");
+			const backup = path.join(backupDir, `lock-${safeLockName(lock.fileName)}`);
+			fs.copyFileSync(source, backup);
+			const after = fs.lstatSync(source);
+			const copied = fs.readFileSync(backup);
+			if (!after.isFile() || before.ino !== after.ino || before.dev !== after.dev || copied.toString("utf8") !== lock.content || !fs.readFileSync(source).equals(copied)) {
+				throw new Error("Lock changed during backup; run /goal-recovery again.");
+			}
 			fs.unlinkSync(source);
 			applied.push(`removed stale lock ${lock.fileName}`);
 		} catch (error) {

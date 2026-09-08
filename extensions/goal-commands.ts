@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { extractVerificationContract, sisyphusObjectiveSufficient } from "./goal-contract.ts";
@@ -25,7 +26,7 @@ import { clearGoalCommandMessage, validateResumeGoal } from "./goal-policy.ts";
 import { invalidateGoalLedgerCache, readGoalLedger } from "./goal-ledger.ts";
 import { buildGoalStatusText } from "./goal-status.ts";
 import { effectiveSettingsReport, invalidateGoalSettingsCache, loadGoalSettingsFileConfig } from "./goal-settings.ts";
-import { invalidateGoalPoolCache, mergeGoalPromptFromDisk, readActiveGoalPool } from "./storage/goal-files.ts";
+import { mergeGoalPromptFromDisk, readActiveGoalPool } from "./storage/goal-files.ts";
 import { nowIso, type GoalMode, type GoalRecord } from "./goal-record.ts";
 import { clearGoalDrafting, hasActiveDraft, startGoalDrafting } from "./goal-drafting.ts";
 import { formatRecoveryReport, runRecoveryReport, runRecoveryRepair } from "./goal-recovery.ts";
@@ -242,11 +243,15 @@ export function registerGoalCommands(core: GoalCore): void {
 		// up as a fingerprint difference.
 		const beforeSettings = settingsFingerprint(ctx);
 
-		invalidateGoalPoolCache();
 		invalidateGoalLedgerCache();
 		invalidateGoalSettingsCache();
 
-		const afterPool = readActiveGoalPool(ctx);
+		let afterPool: Map<string, GoalRecord>;
+		try { afterPool = readActiveGoalPool(ctx, true); }
+		catch (error) {
+			ctx.ui.notify("goal-refresh failed: " + String(error) + ". Check goal storage access and retry /goal-refresh.", "warning");
+			return;
+		}
 		const afterLedger = readGoalLedger(ctx);
 		const afterSettings = settingsFingerprint(ctx);
 
@@ -261,6 +266,9 @@ export function registerGoalCommands(core: GoalCore): void {
 			ledgerMalformed: afterLedger.malformed,
 			settings: afterSettings,
 		});
+		const updated = [...afterPool].filter(([id, goal]) => beforePool.has(id) && !isDeepStrictEqual(beforePool.get(id), goal)).map(([id]) => id);
+		if (updated.length) changes.push(`goal records: ${updated.length} updated — ${updated.join(", ")}`);
+		core.reconcileFocusedGoalFromDisk(ctx);
 
 		const text = changes.length > 0
 			? `goal-refresh: re-read caches from disk — ${changes.length} change(s):\n${changes.map((c) => `  - ${c}`).join("\n")}`
