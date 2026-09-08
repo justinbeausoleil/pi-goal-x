@@ -1289,3 +1289,38 @@
   Logs: Data007/{generation-*,ordinary-clear-registered-red.log}. 007 remains
   in progress; queue ownership, async result/dialog races and qualification
   are still required. No new acceptance checkbox has been closed.
+
+### Ticket 007 host-held checkpoint and steering receipts
+
+- Both independent reviews confirm fd11573 resolves the material run-generation
+  and ordinary-work findings. Spec identified a test timing gap: Pi ran the two
+  ordinary tools in one batch concurrently, so the second file already existed
+  at stop. The worker now puts that write in the next response and asserts its
+  absence at stop. All four corrected ordinary cases pass. Earlier logs/claims
+  remain traceable; the original ordinary-clear repro also independently passes.
+- Public replay of an issued checkpoint after pause/resume reproduced an
+  unauthorized file write. Runtime UUID plus sequence now validates and consumes
+  only the currently issued checkpoint. Stops invalidate its queued receipt;
+  reload cannot reuse another runtime's authority. The normal marker and
+  automatic projection remain bounded. A rejected old delivery preserves an
+  explicitly scheduled successor until native settlement.
+- Native nextTurn attachments initially displaced fresh user authority. Treat
+  a marker attached before that user's first context as context only. A later
+  queued follow-up remains a separate trigger and must validate its receipt;
+  the first broader whole-run ignore rule failed this case and was narrowed.
+  Both failed attempts and corrected native results are retained in Data007.
+- Actual autonomous checkpoints raced with ordinary steer/followUp messages and
+  six stop controls (pause, Esc, abort, unfocus, switch, clear): all12 pass. Pi
+  drains the user queue into a fresh run after cancellation. The first fixture
+  deliberately returned toolUse despite a signalled abort, causing queued tools
+  to inherit that aborted run; steering cases now implement the provider's
+  aborted-event contract. Non-steering dispatch tests still deliberately return
+  tool calls after stops to verify the extension's dispatch guard independently.
+- 47 native stop/queue cases plus14 startup regressions pass;59 targeted runtime,
+  context and ownership checks pass; type/lint and context28/provider7 pass.
+  Exact logs: Data007/{queues-steering-native,queues-check,queues-lint,
+  queues-context,queues-provider,receipt-targeted}. Native red traces are
+  replay-pause-resume-red, next-turn-pause-red, host-followup-pause-red and
+  steering-pause-{first,trace}; intermediate green logs are retained too.
+- 007 remains open for task-dialog and async audit/Oracle races, further controls
+  and full qualification. No ticket acceptance checkbox is closed by this slice.

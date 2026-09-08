@@ -9,6 +9,8 @@
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import { asRecord } from "./goal-record.ts";
 import type { GoalCheckpointDetailsV2, GoalRecord } from "./goal-record.ts";
 import { checkpointTriggerPrompt } from "./prompts/goal-prompts.ts";
 import { POST_STOP_ALLOWED_TOOLS } from "./goal-tool-names.ts";
@@ -42,6 +44,8 @@ export class GoalRuntime {
 
 	// ── stale checkpoint state ───────────────────────────────────────────
 	private checkpointGoalId: string | null = null;
+	private checkpointCurrent = true;
+	private readonly runtimeId = randomUUID();
 
 	/** Monotonic per-session counter persisted on v2 checkpoint details (issue #30). */
 	private checkpointSeq = 0;
@@ -181,6 +185,7 @@ export class GoalRuntime {
 			status: "active",
 			revision: goal.revision ?? 0,
 			checkpointSeq: this.checkpointSeq,
+			runtimeId: this.runtimeId,
 			timestamp: Date.now(),
 		};
 		this.hooks.sendFollowUp(checkpointTriggerPrompt(goal.id), details as unknown as Record<string, unknown>);
@@ -210,8 +215,20 @@ export class GoalRuntime {
 
 	// ── stale checkpoint state ───────────────────────────────────────────
 
-	setCheckpoint(goalId: string | null): void {
+	consumeCheckpoint(goalId: string, details: unknown): boolean {
+		const receipt = asRecord(details);
+		if (this.continuationQueuedFor !== goalId || receipt?.runtimeId !== this.runtimeId || receipt?.checkpointSeq !== this.checkpointSeq) return false;
+		this.continuationQueuedFor = null;
+		return true;
+	}
+
+	setCheckpoint(goalId: string | null, current = true): void {
 		this.checkpointGoalId = goalId;
+		this.checkpointCurrent = current;
+	}
+
+	isCheckpointCurrent(): boolean {
+		return this.checkpointCurrent;
 	}
 
 	getCheckpointGoalId(): string | null {

@@ -98,21 +98,28 @@ export function registerGoalEvents(core: GoalCore): void {
 	let networkErrorRecoveryAfterSettleFor: string | null = null;
 	let pendingStall: { goalId: string; text: string } | undefined;
 	let draftingRun = false;
+	let userTriggerPending = false;
 	let runningFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
 	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
 	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
+	pi.on("agent_start", () => { userTriggerPending = false; });
 
 	pi.on("message_start", async (event) => {
 		const message = event.message;
 		if (message.role === "custom" && message.customType === GOAL_EVENT_ENTRY) {
+			// nextTurn attachments and queued old markers cannot replace a user trigger.
+			if (userTriggerPending) return;
 			core.runningGoalId = null;
 			runningFocus = null;
 			const goalId = goalEventMessageId(message);
 			const markerId = typeof message.content === "string" ? extractGoalIdFromInjectedMessage(message.content) : null;
 			// Empty identity cannot pass isActionableContinuationGoal; null means user work.
-			core.runtime.setCheckpoint(goalId && goalId.length <= 80 && goalId === markerId ? goalId : "");
-			core.clearContinuationState(false);
+			const validId = goalId && goalId.length <= 80 && goalId === markerId ? goalId : "";
+			const current = !!validId && core.runtime.consumeCheckpoint(validId, message.details);
+			core.runtime.setCheckpoint(validId, current);
+			if (current) core.clearContinuationState(false);
 		} else if (message.role === "user") {
+			userTriggerPending = true;
 			core.runningGoalId = null;
 			runningFocus = null;
 			draftingRun = hasActiveDraft(core);
@@ -123,10 +130,11 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("context", async (event, ctx) => {
+		userTriggerPending = false;
 		if (hasActiveDraft(core)) draftingRun = true;
 		core.reconcileFocusedGoalFromDisk(ctx);
 		const checkpoint = core.runtime.getCheckpointGoalId();
-		const stale = checkpoint !== null && !core.isActionableContinuationGoal(checkpoint);
+		const stale = checkpoint !== null && (!core.runtime.isCheckpointCurrent() || !core.isActionableContinuationGoal(checkpoint));
 		// A focus change during a response cannot retarget its eventual abort.
 		core.runningGoalId ??= !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
 		if (core.runningGoalId) runningFocus ??= core.focusedOperationToken(core.runningGoalId);
@@ -180,7 +188,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Stale checkpoint guard: if the turn was triggered by a queued continuation
 		// for a goal that is no longer active/autoContinue, block work tools.
 		const checkpointGoalId = core.runtime.getCheckpointGoalId();
-		if (checkpointGoalId !== null && !core.isActionableContinuationGoal(checkpointGoalId) && core.isStaleCheckpointBlockedToolCall(event.toolName)) {
+		if (checkpointGoalId !== null && (!core.runtime.isCheckpointCurrent() || !core.isActionableContinuationGoal(checkpointGoalId)) && core.isStaleCheckpointBlockedToolCall(event.toolName)) {
 			// Block the tool call with a stale-checkpoint message.
 			return {
 				block: true,
@@ -547,7 +555,9 @@ export function registerGoalEvents(core: GoalCore): void {
 		continuationAfterSettleFor = null;
 		networkErrorRecoveryAfterSettleFor = null;
 		const selectedGoalId = core.state.goal?.id;
-		if (endedGoalId && selectedGoalId && (superseded || selectedGoalId !== endedGoalId) && core.runtime.continuationPendingFor(selectedGoalId)) {
+		const checkpoint = core.runtime.getCheckpointGoalId();
+		const staleCheckpoint = checkpoint !== null && (!core.runtime.isCheckpointCurrent() || !core.isActionableContinuationGoal(checkpoint));
+		if (selectedGoalId && (staleCheckpoint || superseded || (endedGoalId && selectedGoalId !== endedGoalId)) && core.runtime.continuationPendingFor(selectedGoalId)) {
 			// A user-selected successor waits for the old run's abort to settle.
 			continuationAfterSettleFor = selectedGoalId;
 		}
@@ -564,8 +574,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Keep any prior recovery attempt while Pi finishes its own automatic
 		// retries. A user-driven path resets it through the default argument.
 		core.runtime.clearContinuationState(false);
-		const checkpoint = core.runtime.getCheckpointGoalId();
-		if (checkpoint !== null && !core.isActionableContinuationGoal(checkpoint)) return;
+		if (staleCheckpoint) return;
 		if (!core.state.goal || core.state.goal.status !== "active" || !core.state.goal.autoContinue) return;
 		if (superseded || (endedGoalId && core.state.goal.id !== endedGoalId)) return;
 		if (!core.reconcileFocusedGoalFromDisk(ctx)) return;

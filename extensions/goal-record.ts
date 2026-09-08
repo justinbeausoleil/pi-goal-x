@@ -105,8 +105,8 @@ export interface GoalFocusEntry {
 /**
  * Issue #30 v2 checkpoint details: a tiny structured trigger record. Never
  * contains objective text, task text, verification contracts, budget strings,
- * or policy text — the authoritative state is injected once per turn by
- * before_agent_start from goal storage.
+ * or policy text — context injects authoritative state before each response.
+ * runtimeId and checkpointSeq identify one issued receipt; replay grants no authority.
  */
 export interface GoalCheckpointDetailsV2 {
 	version: 2;
@@ -115,6 +115,7 @@ export interface GoalCheckpointDetailsV2 {
 	status: "active";
 	revision: number;
 	checkpointSeq: number;
+	runtimeId: string;
 	timestamp: number;
 }
 

@@ -67,11 +67,24 @@ Normal user prompts reset continuation bookkeeping. Dynamic goal instructions
 are no longer appended to the system prompt, and projections are not saved
 in the session or added to the separate summarizer request.
 
-Checkpoint metadata and content must identify the same goal. Stale or malformed
+Checkpoint metadata and content must identify the same goal and carry the
+runtime UUID/sequence of its current, single-use issued receipt. Stops clear
+that receipt; replay or a previous runtime's marker cannot resume work.
+An old nextTurn attachment before a fresh user's first response is context
+only; a later follow-up must establish its own valid trigger. Stale or malformed
 checkpoints receive stop guidance; tool_call rechecks eligibility before work
 dispatch. Read-only inspection stays available, and a later ordinary user
 request can use normal work tools. agent_end cannot schedule another goal from
-a rejected checkpoint. Persisted checkpoints remain tiny v2 markers.
+a rejected checkpoint. An explicitly queued successor still runs after that
+old delivery settles. Persisted checkpoints remain tiny v2 markers.
+
+Runs retain their original goal and focus-generation token across responses.
+Pause, switch and clear cancel goal-owned work; unfocus uses the same boundary.
+Late aborts cannot pause a freshly resumed or newly selected goal. Ordinary
+user work begun while the goal is paused remains available through these
+controls. Already-dispatched effects are preserved; supported running tools
+are aborted. Native Pi settlement delivers queued user steering before any
+new automatic checkpoint.
 
 Automatic goal text, including the retained checkpoint, is capped at 10,000
 characters. Long data uses marked excerpts and detail/history retrieval links;
@@ -289,7 +302,7 @@ user confirms.
 - `/goal-list` prints all open goals with id, status, mode, usage, objective title, path, and a focus marker.
 - `/goal-status health` performs a read-only coherence check for focus, lifecycle, goal-file presence, malformed ledger entries, task progress, and token-budget pressure; it never acts as a completion verdict.
 - `/goal-focus` uses `ctx.ui.select` when multiple goals are open and updates only session focus.
-- `/goal-unfocus` writes a null session focus entry, clears continuation/runtime state, aborts in-flight work and audits for that session, and leaves the shared active goal file and project-global focus ledger unchanged. Focus revision tokens prevent pending completion and task-list results from mutating a goal after detachment.
+- `/goal-unfocus` writes a null session focus entry, clears continuation/runtime state, aborts goal-owned work and audits for that session, and leaves unrelated ordinary user work, the shared active goal file and project-global focus ledger unchanged. Focus revision tokens prevent pending completion and task-list results from mutating a goal after detachment.
 - `/goal-resume` resumes the focused paused goal; when unfocused with multiple open goals, it asks the user to choose. Choosing an already active goal only focuses it.
 - `/goal-clear` asks for confirmation (with the goal's one-line summary) and archives only the focused/selected goal; cancelling is a byte-for-byte no-op with no file, focus, or ledger change, and headless runs return guidance without mutating anything.
 - `/goal-pause` pauses the focused active goal; it asks the user to choose when unfocused with open goals.

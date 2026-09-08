@@ -9,6 +9,10 @@ const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta
 for (const [boundary, control] of [
 	...["response", "dispatched"].flatMap(boundary => ["pause", "pause-resume", "esc", "abort", "unfocus", "switch", "switch-active", "clear"].map(control => [boundary, control])),
 	...["pause", "unfocus", "switch", "clear"].map(control => ["ordinary", control]),
+	...["pause", "unfocus", "switch", "clear"].map(control => ["next-turn", control]),
+	...["pause", "unfocus", "switch", "clear"].map(control => ["host-followup", control]),
+	["replay", "pause-resume"],
+	...["steering", "steering-followup"].flatMap(boundary => ["pause", "esc", "abort", "unfocus", "switch", "clear"].map(control => [boundary, control])),
 	...["pause", "esc", "unfocus", "switch", "clear"].map(control => ["queued", control]),
 	["agent", "pause"],
 ]) test(`S1/S2: native stop ${boundary}/${control} prevents later work and preserves fresh user intent`, {timeout: 15000}, async () => {

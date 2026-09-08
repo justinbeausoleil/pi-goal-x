@@ -22,8 +22,10 @@ const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: 
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [];
 const timeline = [];
+const checkpoints = [];
 let session, host, terminalInput, selectId, primary, secondary, responses = [], beforeResponse, failure, deadline;
-let triggerGoalId, testing = false, secondaryDone = false;
+let triggerGoalId, testing = false, secondaryDone = false, replaying = false, forbiddenOffered = false;
+let queuedUserSeen = false, queuedUserDone = false;
 const pause = {name: "update_goal", args: {status: "paused", reason: "Fixture requested a deliberate stop.", suggested_action: "Wait for explicit user instructions."}};
 const write = path => ({name: "write", args: {path, content: path}});
 const currentGoal = () => results.findLast(result => result.details?.goal)?.details.goal;
@@ -52,8 +54,14 @@ async function create({sessionManager, sessionStartEvent}) {
     extensionFactories: [pi => {
       pi.on("tool_result", event => { results.push(event); });
       pi.on("message_start", event => {
-        if (event.message.role === "user") triggerGoalId = null;
-        else if (event.message.role === "custom" && event.message.customType === "pi-goal-event") triggerGoalId = event.message.details?.goalId;
+        if (event.message.role === "user") {
+          triggerGoalId = null;
+          if (JSON.stringify(event.message.content).includes("queued-user-sentinel")) queuedUserSeen = true;
+        }
+        else if (event.message.role === "custom" && event.message.customType === "pi-goal-event") {
+          triggerGoalId = event.message.details?.goalId;
+          checkpoints.push(structuredClone(event.message));
+        }
       });
     }],
   });
@@ -64,12 +72,16 @@ async function create({sessionManager, sessionStartEvent}) {
   const created = await createAgentSession({cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager, settingsManager: settings, sessionStartEvent});
   session = created.session;
   session.subscribe(event => { if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason}); });
-  session.agent.streamFunction = (requestedModel, context) => {
+  session.agent.streamFunction = (requestedModel, context, options) => {
     requests.push(context);
     timeline.push({event: "request", count: requests.length});
     if (requests.length > 30) failure = new Error("Unbounded stop fixture continuation");
-    const startSecondary = testing && successor && triggerGoalId === (switching ? secondary.id : primary.id) && !secondaryDone;
-    const calls = failure ? [] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
+    const startSecondary = testing && !replaying && successor && triggerGoalId === (switching ? secondary.id : primary.id) && !secondaryDone;
+    const staleFollowup = testing && boundary === "host-followup" && triggerGoalId === primary.id && !forbiddenOffered;
+    if (staleFollowup) forbiddenOffered = true;
+    const userWork = queuedUserSeen && !queuedUserDone;
+    if (userWork) queuedUserDone = true;
+    const calls = failure ? [] : userWork ? [write("queued-user.txt")] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     if (startSecondary) secondaryDone = true;
     const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: "Waiting for explicit authorization."}];
     const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
@@ -79,7 +91,8 @@ async function create({sessionManager, sessionStartEvent}) {
     const intervene = beforeResponse; beforeResponse = undefined;
     void (async () => {
       try { await intervene?.(); } catch (error) { failure = error; }
-      stream.push({type: "done", reason: message.stopReason, message});
+      if (boundary.startsWith("steering") && options.signal?.aborted) stream.push({type: "error", reason: "aborted", error: {...message, content: [], stopReason: "aborted"}});
+      else stream.push({type: "done", reason: message.stopReason, message});
     })();
     return stream;
   };
@@ -124,15 +137,51 @@ try {
   testing = true;
   if (boundary !== "ordinary") await session.prompt("/goal-resume");
   if (boundary === "ordinary") {
-    responses = [[{name: "bash", args: {command: "printf started > ordinary-started.txt; sleep 0.2; printf complete > ordinary-finished.txt"}}, write("ordinary-later.txt")]];
+    responses = [[{name: "bash", args: {command: "printf started > ordinary-started.txt; sleep 0.2; printf complete > ordinary-finished.txt"}}], [write("ordinary-later.txt")]];
     const pending = session.prompt("Run this unrelated ordinary request while the goal stays paused.");
     for (let i = 0; i < 300 && !existsSync(join(cwd, "ordinary-started.txt")); i++) await delay(10);
     assert(existsSync(join(cwd, "ordinary-started.txt")));
+    assert.equal(existsSync(join(cwd, "ordinary-later.txt")), false, "the later dispatch must follow the control");
     await stop();
     await pending;
     await settled();
     assert.equal(readFileSync(join(cwd, "ordinary-finished.txt"), "utf8"), "complete", "a paused goal does not own this running ordinary tool");
     assert(existsSync(join(cwd, "ordinary-later.txt")), "goal controls preserve subsequent ordinary dispatches");
+  } else if (boundary.startsWith("steering")) {
+    beforeResponse = async () => {
+      assert.equal(triggerGoalId, primary.id, "steering races an actual autonomous checkpoint");
+      await session.sendUserMessage("queued-user-sentinel: write queued-user.txt as my next ordinary request.", {deliverAs: boundary === "steering-followup" ? "followUp" : "steer"});
+      await stop();
+    };
+    responses = [[write("forbidden.txt")]];
+    await settled();
+    if (!existsSync(join(cwd, "queued-user.txt"))) console.error(JSON.stringify({queuedUserSeen, queuedUserDone, timeline, notices, results: results.slice(-5), pending: session.pendingMessageCount}));
+    assert(existsSync(join(cwd, "queued-user.txt")), "the user's queued request survives the goal stop");
+  } else if (boundary === "host-followup") {
+    const old = checkpoints.find(message => message.details.goalId === primary.id);
+    assert(old);
+    await stop();
+    beforeResponse = () => session.sendCustomMessage(old, {triggerTurn: true, deliverAs: "followUp"});
+    await run("Write the explicit ordinary request and honor the stopped goal.", [write("host-user.txt")]);
+    assert(existsSync(join(cwd, "host-user.txt")));
+    assert(forbiddenOffered, "the host actually consumed its queued old checkpoint");
+  } else if (boundary === "next-turn") {
+    const old = checkpoints.find(message => message.details.goalId === primary.id);
+    assert(old);
+    await stop();
+    await session.sendCustomMessage(old, {deliverAs: "nextTurn"});
+    await run("Write this fresh user request; the attached historical checkpoint grants no work authority.", [write("next-turn-user.txt")]);
+    assert(existsSync(join(cwd, "next-turn-user.txt")), "a historical next-turn attachment cannot override fresh user intent");
+  } else if (boundary === "replay") {
+    const old = checkpoints.find(message => message.details.goalId === primary.id);
+    assert(old, "public startup issued the checkpoint being replayed");
+    await stop();
+    responses = [[write("forbidden.txt")]];
+    replaying = true;
+    await session.sendCustomMessage(old, {triggerTurn: true});
+    replaying = false;
+    assert.equal(existsSync(join(cwd, "forbidden.txt")), false, "a host-held old checkpoint cannot regain authority after resume");
+    await settled();
   } else if (boundary === "queued") {
     responses = [[write("forbidden.txt")]];
     await stop();
