@@ -1,0 +1,14 @@
+{
+  "package": "pi-goal-x",
+  "source": "https://pi.dev/packages?type=extension",
+  "observations": [
+    {
+      "release": "v0.31.2",
+      "date": "2026-09-08",
+      "source": "https://pi.dev/packages?type=extension",
+      "rank": 7,
+      "extensions": 3216,
+      "downloads": 57237
+    }
+  ]
+}
