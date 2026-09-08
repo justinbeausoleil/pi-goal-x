@@ -220,7 +220,9 @@ settings cannot end the discussion. The event boundary remembers a drafting
 run through cancellation and blocks new work-tool dispatch before settlement;
 read-only reconnaissance and drafting tools remain available. A fresh ordinary
 user message can use normal tools after cancellation. The approved goal can
-remain active while its user discusses a revision. The native
+remain active while its user discusses a revision. Discussion context preserves
+current pause/block reasons, budget gates, and audit/Oracle/compaction guidance;
+any suggested implementation waits for confirmation or explicit resumption. The native
 host's fork start detaches focus before restoring drafts or scheduling work;
 a normal discussion can survive, while a detached tweak is tombstoned.
 

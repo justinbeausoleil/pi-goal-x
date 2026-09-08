@@ -67,12 +67,15 @@ async function open(manager, sessionStartEvent) {
     if (summary) summaries++;
     else assert(++requests <= 100, "bounded draft fixture");
     const step = summary ? undefined : steps.shift();
-    if (step?.args.path === "cancelled-work.txt") {
+    if (step?.args.path === "cancelled-work.txt" || step?.contextIncludes) {
       const content = context.messages.at(-1)?.content;
       const projection = typeof content === "string" ? content : (content ?? []).map(c => c.text ?? "").join("\n");
       try {
-        assert.match(projection, /DISCUSSION|DRAFT/);
-        assert.doesNotMatch(projection, /Use work tools directly/);
+        if (step.args.path === "cancelled-work.txt") {
+          assert.match(projection, /DISCUSSION|DRAFT/);
+          assert.doesNotMatch(projection, /Use work tools directly/);
+        }
+        for (const required of step.contextIncludes ?? []) assert(projection.includes(required), `current projection includes ${required}`);
       } catch (error) { providerFailure = error; }
     }
     const content = step ? [{ type: "toolCall", id: `draft-${requests}`, name: step.name, arguments: step.args }]
@@ -155,6 +158,20 @@ try {
     assert.equal(results.at(-1).details.goal.sisyphus, secondMode === "sisyphus");
     assert.match(results.at(-1).details.goal.objective, /Second branch after reopen/);
     assert.equal(results.at(-1).details.goal.skipAuditor, true);
+  } else if (["paused-refine", "blocked-refine"].includes(scenario)) {
+    decision = "Confirm";
+    await run("Confirm this goal before discussing a revision.", [proposal(mode, "Existing stopped goal")]);
+    const status = scenario.split("-")[0];
+    const reason = "Dependency unavailable: fresh stopped-state context.";
+    const suggested = "Restore the missing local fixture.";
+    await run("Record the concrete stop.", [{ name: "update_goal", args: { status, reason, suggested_action: suggested } }]);
+    assert.equal(results.at(-1).details.goal.status, status);
+    decision = "Continue";
+    const proposed = proposal(mode, "Possible change while stopped");
+    proposed.contextIncludes = [reason, ...(status === "paused" ? [suggested] : [])];
+    await run("/goal-tweak Discuss the dependency before revising the goal", [proposed]);
+    assert.equal(results.at(-1).details.goal.status, status, "refinement preserves the stopped lifecycle");
+    assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 0);
   } else if (scenario === "fork" || scenario === "fork-tweak") {
     if (scenario === "fork-tweak") {
       decision = "Confirm";

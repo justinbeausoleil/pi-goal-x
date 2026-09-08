@@ -558,3 +558,12 @@
   context baselines gain only the 226-character no-goal discussion instruction;
   the rationale and a new drafting invariant are in experiments/context/.
   Semantic counts and all ceilings are unchanged. Qualification/review pending.
+
+- Full ac75921 qualification passed 1033/1033 tests across 76 files; Standards
+  cleared the dispatch repair. Spec independently passed cancellation in both
+  modes, then found the early discussion return omitted current pause/block
+  reasons. Native paused-refine and blocked-refine fail on that omission.
+  Discussion is now the active prompt's base, preserving shared Oracle/stall/
+  compaction additions; stopped goals retain their existing lifecycle branches
+  plus the discussion hold. Native tests require current reasons and the paused
+  suggested action, with lifecycle unchanged and zero autonomous checkpoints.

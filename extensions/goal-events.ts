@@ -426,6 +426,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			`work_revision: ${goalWorkRevision(core.state.goal)}`,
 			untrustedObjectiveBlock(core.state.goal), taskListBlock(core.state.goal, settings, 0),
 			verificationContractBlock(core.state.goal, settings), budgetLine(core.state.goal),
+			discussionHeld ? "Draft discussion is active or cancelled; automatic goal work is held. Confirm the revision or use /goal-resume after cancellation to continue when the lifecycle and budget allow it." : "",
 		].filter(Boolean).join("\n");
 		let auditorExtra = "";
 		try {
@@ -434,7 +435,6 @@ export function registerGoalEvents(core: GoalCore): void {
 		} catch {
 			auditorExtra = '\n\n[AUDIT STATE UNAVAILABLE]\nRetrieve get_goal(section="history") before requesting completion. Do not assume a missing audit approved the work.';
 		}
-		if (discussionHeld) return `[PI GOAL DISCUSSION goalId=${core.state.goal.id}]\nApproved lifecycle: ${core.state.goal.status}. Automatic goal work is held.\n${stoppedContext}${auditorExtra}\n${hasActiveDraft(core) || draftingRun ? "Continue clarification or read-only reconnaissance; do not start implementation. After cancellation, yield for fresh user intent." : "Respond only to the user's fresh request; automatic goal work remains held."} Confirm the draft or use /goal-resume after cancellation to continue goal work.`;
 		if (core.state.goal.status === "paused") {
 			const current = core.state.goal;
 			const pauseExtras: string[] = [];
@@ -467,7 +467,9 @@ export function registerGoalEvents(core: GoalCore): void {
    return `[PI GOAL BLOCKED goalId=${blocked.id}]\n${stoppedContext}\nBlocker: ${excerpt(blocked.pauseReason ?? "unspecified", 600, "history")}${auditorExtra}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`;
   }
 		const activeGoal = core.state.goal;
-		let prompt = goalPrompt(activeGoal, settings) + auditorExtra;
+		let prompt = (discussionHeld
+			? `[PI GOAL DISCUSSION goalId=${activeGoal.id}]\nApproved lifecycle: active.\n${stoppedContext}\n${hasActiveDraft(core) || draftingRun ? "Continue clarification or read-only reconnaissance; do not start implementation. After cancellation, yield for fresh user intent." : "Respond only to the user's fresh request; automatic goal work remains held."}`
+			: goalPrompt(activeGoal, settings)) + auditorExtra;
 		// F5: [GOAL STALLED] steering note when the detector fired.
 		if (pendingStall?.goalId === activeGoal.id) prompt += pendingStall.text;
 		pendingStall = undefined;
@@ -496,7 +498,7 @@ export function registerGoalEvents(core: GoalCore): void {
 				prompt = `${prompt}\n\n[POST-COMPACTION RESYNC goalId=${core.state.goal.id}]\nThe conversation was just compacted. Re-read the objective and continue from the actual artifacts/state; do not rely on memory of the prior chat.`;
 			}
 		}
-		return `${prompt}`;
+		return discussionHeld ? `${prompt}\n\nAny work described above waits for confirmation or explicit resumption. This discussion grants no new implementation authority.` : prompt;
 	}
 
 	pi.on("agent_end", async (event, ctx) => {
