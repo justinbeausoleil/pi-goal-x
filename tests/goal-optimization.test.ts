@@ -21,6 +21,38 @@ async function fixture() {
  return {...f, goal, h, update: (input: unknown) => h.tools.get("update_goal_task").execute("test", input, new AbortController().signal, undefined, h.ctx)};
 }
 
+test("automatic context bounds audit and pending Oracle advice with lossless history retrieval", async () => {
+ const f = await fixture();
+ try {
+  writeFileSync(path.join(f.cwd, ".pi/pi-goal-x-settings.json"), JSON.stringify({ oracle: { enabled: true } }));
+  await startHarness(f.h);
+  const advice = `oracle-step-sentinel ${"preserve this recovery step ".repeat(2000)}`;
+  appendGoalEvents(f, [
+   { type: "completion_requested", goalId: f.goal.id, at: "2026-09-08T00:00:00Z" },
+   { type: "audit_result", goalId: f.goal.id, verdict: "disapproved", report: `audit-objection-sentinel ${"required evidence ".repeat(2000)}`, at: "2026-09-08T00:00:01Z" },
+   { type: "oracle_result", goalId: f.goal.id, fingerprint: "blocker", adviceId: "advice-1", disposition: "actionable", summary: "diagnosis", advice, at: "2026-09-08T00:00:02Z" } as GoalLedgerEvent,
+   ...Array.from({ length: 20 }, (_, i) => ({ type: "task_started" as const, goalId: f.goal.id, taskId: "child", at: `2026-09-08T00:01:${String(i).padStart(2, "0")}Z` })),
+  ]);
+  invalidateGoalLedgerCache();
+  const context = await f.h.handlers.get("context")({ messages: [] }, f.h.ctx);
+  const text = context.messages.at(-1).content;
+  assert(text.length <= 9840);
+  assert.match(text, /audit-objection-sentinel/);
+  assert.match(text, /oracle-step-sentinel/);
+  assert.match(text, /\[excerpt; more: get_goal\(section="history"\)\]/);
+  let cursor: string | undefined; let history = "";
+  do {
+   const result = await f.h.tools.get("get_goal").execute("detail", { section: "history", ...(cursor ? { cursor } : {}) }, new AbortController().signal, undefined, f.h.ctx);
+   assert(result.details.page.content.length <= 4000);
+   history += result.details.page.content; cursor = result.details.page.nextCursor;
+  } while (cursor);
+  assert.equal(history.split("\n").map(line => JSON.parse(line)).find(event => event.type === "oracle_result").advice, advice);
+  appendGoalEvent(f, { type: "oracle_followup_attempted", goalId: f.goal.id, fingerprint: "blocker", adviceId: "advice-1", firstToolName: "write", at: "2026-09-08T00:02:00Z" });
+  const afterWork = await f.h.handlers.get("context")({ messages: [] }, f.h.ctx);
+  assert.doesNotMatch(afterWork.messages.at(-1).content, /ORACLE ADVICE/);
+ } finally { f.cleanup(); }
+});
+
 test("detail pagination is lossless, Unicode-safe, bounded, and rejects changed-source cursors", () => {
  const goal = createGoal({objective: "a".repeat(3999)+"🧪"+"b".repeat(6200), autoContinue: true, sisyphus: false});
  goal.verificationContract = "C".repeat(4500);

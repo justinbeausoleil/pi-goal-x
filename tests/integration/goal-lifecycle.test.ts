@@ -15,3 +15,14 @@ test(`S1: actual Pi ${mode} startup and second checkpoint`, { timeout: 15000 }, 
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });
 }
+
+for (const args of [["manual"], ["threshold"], ["overflow"], ["manual", "--long"], ["manual", "--long", "--advice-review"], ["manual", "--stall"], ...["blocked", "budget_limited", "unfocused", "complete"].map(state => ["manual", `--stopped=${state}`])]) {
+	test(`S1: three real ${args.join(" ")} compactions retain public task progress`, { timeout: 25000 }, async () => {
+		const compactionWorker = fileURLToPath(new URL("../goal-compaction-worker.mjs", import.meta.url));
+		const { stdout } = await run(process.execPath, ["--experimental-strip-types", compactionWorker, ...args], {
+			timeout: 22000,
+			env: { ...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: "" },
+		});
+		assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+	});
+}

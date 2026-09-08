@@ -156,3 +156,53 @@
   and public task/compaction paths. First step is a public-tool off-preview
   task reproduction and three actual manual/threshold/overflow compactions,
   then aggregate text bounds and state/pairing/duplicate-continuation proof.
+
+### Ticket 002 implementation checkpoint (verification/review pending)
+
+- Added a real-loader compaction worker using public set_goal_tasks and
+  update_goal_task, actual write/read effects, native session.compact and Pi's
+  threshold/overflow paths. Three completed transitions survive; execution
+  advances through off-preview tasks t40/t41/t42 and their t39 ancestor.
+- Baseline fe430b25 source loaded by the current Pi host loses t40 after native
+  compaction while the public result still reports currentTaskId=t40. The
+  red is retained in reliability/002/baseline-off-preview.log outside Git.
+- Manual, threshold and overflow scenarios each crossed three compactions;
+  threshold occurs three times within the same agent run. Expected persisted
+  checkpoints are five/manual and two/threshold or overflow, with exactly
+  three writes. Native summaries deliberately omit task identity/status;
+  tool-call/result pairing and unrelated extension context are checked.
+- Fixture failures retained: oversized trailing ballast gave Pi no valid cut
+  point, so threshold initially did not run. Use reported provider usage and
+  a tail below keepRecentTokens; manual stopped-state compaction needs a fresh
+  ordinary boundary after large tool results. These were fixture failures.
+- Product red: a public agent pause injected 68,697 characters after compaction.
+  Bound pause/block/action/audit excerpts with history locators; reserve room
+  by omitting optional pending previews from large active projections. Add
+  current-task ancestry and stopped-state task counts; budget stop instructions
+  persist after the one-time wrap-up. No durable objective/task data is clipped.
+- Oracle context red: pending advice vanished beyond the recent ledger tail.
+  Persist its complete structured result as optional oracle_result.advice JSON text, then
+  project a bounded excerpt with a lossless history locator until the recorded
+  follow-up attempt. Legacy summary-only records explicitly disclose missing
+  full advice. Ticket 009 retains ownership of the complete disposition,
+  fingerprint/reopen and failure/cancellation matrix.
+- The real child-provider scenario invokes the native Oracle and auditor via
+  a loopback SSE provider, compacts their chat results, and checks their advice
+  and rejection in the next executor request. Parent goal tools/context stay
+  absent from child requests; Oracle tools remain read-only. Long objectives,
+  task titles/contracts, rejection and pause fields share the aggregate cap.
+- Intermediate checks: expanded lifecycle suite 20/20, helper Oracle/history
+  red then green, typecheck/lint, and inherited full suite 982/982 passed before
+  the final child/ancestor additions. Latest full qualification and independent
+  fixed-base reviews remain pending. Context baseline intentionally changes
+  four stopped/rejection fixture breakdowns, documented in its README.
+- Evidence is under ~/Data/pi-goal-x/reliability/002/. A fixture also exposed
+  completion reading project-only auditor settings despite resolved global
+  settings. The fixture uses explicit project settings; retain this behavior
+  as an open completion/settings issue for 011/012, not a passing global-settings
+  claim. All original tickets and final Qwen/package gates remain required.
+- Follow-up real-host stall red: moving detection into context let turn_start
+  reset the activity clock first. Capture the one-shot notice before that reset
+  and deliver it only for the matching active goal. The controlled-clock native
+  compaction case fails before repair and passes afterward (stall-context-*.log).
+  Latest expanded lifecycle run was 21/21 before adding that 22nd scenario.

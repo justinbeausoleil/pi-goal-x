@@ -57,6 +57,7 @@ for (const fixtureId of expectedFixtureIds) {
 	const breakdown = measureContext(captured);
 	const semantic = semanticCounts({ ...captured, goal: scenario.goal });
 	const goalText = automaticGoalText(captured);
+	if (goalText.length > 10000) failures.push(`${fixtureId}: aggregate automatic goal text exceeds 10000 characters (${goalText.length})`);
 	checked += 1;
 
 	// 1. deterministic equality

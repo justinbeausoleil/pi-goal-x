@@ -31,3 +31,11 @@ characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
 Evidence: pending implementation.
+
+Follow-up from 002: the real-host completed-state fixture showed that
+runGoalCompletionFlow reads loadGoalSettingsFileConfig (project-only) while the
+general settings view resolves global settings. Reproduce global auditor disable
+and model selection during this ticket's bypass/settings matrix; evidence:
+~/Data/pi-goal-x/reliability/002/complete-compaction.log and complete-diagnostic.log.
+The final 002 fixture explicitly configures project settings and does not claim
+to verify global completion settings.

@@ -43,3 +43,13 @@ projection instead of skipping assertions when the old system block is absent.
 Historical checkpoints, tool schemas, and separate child requests retain their
 checks. No size ceiling was raised. Full real-host compaction and aggregate
 input-bound acceptance remain ticket 002, not claims of this measurement gate.
+
+## Compaction continuity baseline (ticket 002)
+
+Plan D1 requires stopped-state task identity/counts, persistent budget stop
+instructions, and explicit retrieval markers for truncated auditor feedback.
+Those deliberate payload changes update four fixture breakdowns; semantic
+counts and child-request measurements remain unchanged. The gate additionally
+checks the aggregate 10,000-character limit. Real-host tests separately exercise
+oversized public plans and pause fields, three native compactions per path,
+and Oracle/auditor child responses. No limit or semantic assertion is relaxed.

@@ -32,7 +32,7 @@ export type GoalLedgerEvent =
   | { type: "goal_stalled"; goalId: string; reason: string; at: string }
   | { type: "goal_blocked"; goalId: string; reason: string; source: "agent" | "system"; at: string }
   | { type: "oracle_started"; goalId: string; fingerprint: string; provider: string; model: string; thinkingLevel?: string; reason: string; at: string }
-  | { type: "oracle_result"; goalId: string; fingerprint: string; adviceId: string; disposition: "actionable" | "needs_human" | "insufficient_context"; summary: string; recommendedTitle?: string; at: string }
+  | { type: "oracle_result"; goalId: string; fingerprint: string; adviceId: string; disposition: "actionable" | "needs_human" | "insufficient_context"; summary: string; advice?: string; recommendedTitle?: string; at: string }
   | { type: "oracle_failed"; goalId: string; fingerprint: string; attempt: number; errorCode: "config" | "provider" | "aborted" | "invalid_output"; message: string; at: string }
   | { type: "oracle_followup_attempted"; goalId: string; fingerprint: string; adviceId: string; firstToolName: string; at: string };
 
@@ -732,7 +732,7 @@ function isValidLedgerEvent(value: unknown): value is GoalLedgerEvent {
     case "oracle_started":
       return typeof obj.goalId === "string" && typeof obj.fingerprint === "string" && typeof obj.provider === "string" && typeof obj.model === "string" && typeof obj.reason === "string" && (obj.thinkingLevel === undefined || typeof obj.thinkingLevel === "string");
     case "oracle_result":
-      return typeof obj.goalId === "string" && typeof obj.fingerprint === "string" && typeof obj.adviceId === "string" && (obj.disposition === "actionable" || obj.disposition === "needs_human" || obj.disposition === "insufficient_context") && typeof obj.summary === "string";
+      return typeof obj.goalId === "string" && typeof obj.fingerprint === "string" && typeof obj.adviceId === "string" && (obj.disposition === "actionable" || obj.disposition === "needs_human" || obj.disposition === "insufficient_context") && typeof obj.summary === "string" && (obj.advice === undefined || typeof obj.advice === "string");
     case "oracle_failed":
       return typeof obj.goalId === "string" && typeof obj.fingerprint === "string" && typeof obj.attempt === "number" && (obj.errorCode === "config" || obj.errorCode === "provider" || obj.errorCode === "aborted" || obj.errorCode === "invalid_output") && typeof obj.message === "string";
     case "oracle_followup_attempted":

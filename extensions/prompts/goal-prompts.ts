@@ -62,9 +62,9 @@ export function promptProfile(env: NodeJS.ProcessEnv = process.env): "compact-v2
 }
 
 /** Render only PENDING nodes (depth-aware); completed/skipped collapse to counts. */
-function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count: number; stop: boolean; skipId?: string }): string[] {
+function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count: number; stop: boolean; skipId?: string; limit: number }): string[] {
 	if (rendered.stop) return [];
-	const prefix = "  ".repeat(indent);
+	const prefix = "  ".repeat(Math.min(indent, 3));
 	const lines: string[] = [];
 	for (const task of tasks) {
 		if (task.status !== "pending") {
@@ -78,7 +78,7 @@ function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count
    if (task.subtasks) lines.push(...renderPendingTasks(task.subtasks, indent + 1, rendered));
    continue;
   }
-		if (rendered.count >= MAX_PENDING_RENDERED) {
+		if (rendered.count >= rendered.limit) {
 			rendered.stop = true;
 			return lines;
 		}
@@ -99,7 +99,7 @@ function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count
  * header counts. Previously the ENTIRE tree (up to 50 tasks + subtrees) was
  * injected into every continuation prompt — most of it already-completed work.
  */
-export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string {
+export function taskListBlock(goal: GoalRecord, settings?: GoalSettings, previewLimit = MAX_PENDING_RENDERED): string {
 	if (settings?.disableTasks) return "";
 	if (!goal.taskList || goal.taskList.tasks.length === 0) return "";
 	const index = taskIndex(goal.taskList.tasks);
@@ -116,13 +116,20 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 		if (current) {
 			const contract = current.verificationContract ? ` (contract: ${excerpt(current.verificationContract, 600, "tasks")})` : "";
 			lines.push(`  Current: ${excerpt(current.id, 80, "tasks")} · ${excerpt(current.title, 180, "tasks")}${contract}`);
+			const ancestors: string[] = [];
+			let parentId = index.ordered.find(row => row.task.id === current.id)?.parentId;
+			while (parentId) {
+				ancestors.unshift(parentId);
+				parentId = index.ordered.find(row => row.task.id === parentId)?.parentId;
+			}
+			if (ancestors.length) lines.push(`  Ancestors: ${excerpt(ancestors.join(" > "), 300, "tasks")}`);
 		}
 	}
 	const legacy = promptProfile() === "legacy-v1";
 	if (legacy) {
 		// legacy-v1: pre-PR-E wording (current task also appears as a generic
 		// pending item; UI shortcut hint included).
-		const rendered = { count: 0, stop: false };
+		const rendered = { count: 0, stop: false, limit: previewLimit };
 		lines.push(...renderPendingTasks(goal.taskList.tasks, 0, rendered));
 		const hiddenPending = Math.max(0, (pending ?? 0) - rendered.count - (goal.currentTaskId && pendingTasks?.some(t => t.id === goal.currentTaskId) ? 1 : 0));
 		if (hiddenPending > 0) {
@@ -131,13 +138,13 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 	} else {
 		// compact-v2: the current task appears ONCE (in the Current line above);
 		// visible pending items exclude it.
-		const rendered = { count: 0, stop: false, skipId: goal.currentTaskId };
+		const rendered = { count: 0, stop: false, skipId: goal.currentTaskId, limit: previewLimit };
 		lines.push(...renderPendingTasks(goal.taskList.tasks, 0, rendered));
 		const hiddenPending = Math.max(0, (pending ?? 0) - rendered.count - (goal.currentTaskId && pendingTasks?.some(t => t.id === goal.currentTaskId) ? 1 : 0));
 		if (hiddenPending > 0 && rendered.count === 0) {
 			// Nothing visible at all: point at the next actionable task instead.
 			const next = pendingTasks?.find((t) => t.id !== goal.currentTaskId);
-			if (next) lines.push(`  Next pending: ${next.id} — ${next.title}`);
+			if (next && previewLimit > 0) lines.push(`  Next pending: ${excerpt(next.id, 80, "tasks")} — ${excerpt(next.title, 180, "tasks")}`);
 		}
 		if (hiddenPending > 0) {
 			lines.push(`  ${hiddenPending} additional pending tasks omitted; retrieve with get_goal(section="tasks").`);
@@ -150,9 +157,9 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 }
 
 /** Bounded verification-contract block. */
-function excerpt(text: string, cap: number, section: "objective" | "tasks"): string {
+export function excerpt(text: string, cap: number, section: "objective" | "tasks" | "history"): string {
  const safe = promptSafeObjective(text);
- return safe.length <= cap ? safe : `${safe.slice(0, cap)}… [more: get_goal(section="${section}")]`;
+ return safe.length <= cap ? safe : `${safe.slice(0, cap)}… [excerpt; more: get_goal(section="${section}")]`;
 }
 
 export function verificationContractBlock(goal: GoalRecord, settings?: GoalSettings): string {
@@ -233,12 +240,16 @@ export function goalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
 function buildGoalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
  // Stable policy comes first; changing counters are appended by goalPrompt.
  // Bound individual data fields so essential rules can never be sliced off.
- return [
+ const build = (previewLimit: number) => [
   `[PI GOAL ACTIVE goalId=${goal.id}]`,
   lifecyclePolicyBlock(), sisyphusDisciplineBlock(goal),
   `Status: ${statusLabel(goal)}\nMode: ${goal.sisyphus ? "sisyphus" : "regular"}`,
-  untrustedObjectiveBlock(goal), taskListBlock(goal, settings), verificationContractBlock(goal, settings),
+  untrustedObjectiveBlock(goal), taskListBlock(goal, settings, previewLimit), verificationContractBlock(goal, settings),
  ].filter(Boolean).join("\n\n");
+ const full = build(MAX_PENDING_RENDERED);
+ // Leave room for audit/Oracle/stall steering and the retained checkpoint.
+ // Current task, ancestors, counts, policy and retrieval locators remain.
+ return full.length <= 6500 ? full : build(0);
 }
 
 /** Steering injected when the user edits the objective (bounded). */

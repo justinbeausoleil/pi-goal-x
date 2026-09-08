@@ -13,7 +13,7 @@ import {
 	isToolUseAssistantMessage,
 } from "./goal-format.ts";
 import { buildCompactionSummary, buildPostCompactionGoalDelta } from "./goal-compaction.ts";
-import { latestAuditorResultForGoal, readGoalLedger, goalRuntimeEvents, invalidateGoalLedgerCache } from "./goal-ledger.ts";
+import { latestAuditorResultForGoal, readGoalLedger, goalRuntimeEvents, goalOracleState, invalidateGoalLedgerCache } from "./goal-ledger.ts";
 import { shouldArmPostCompactReminder, shouldInjectPostCompactReminder } from "./goal-policy.ts";
 import { formatTokenValue } from "./goal-core.ts";
 import { loadGoalSettings, invalidateGoalSettingsCache } from "./goal-settings.ts";
@@ -22,8 +22,12 @@ import { asRecord, nowIso, type AssistantMessageLike, type GoalRecord } from "./
 import { goalSelectorLabel, otherOpenGoalCount } from "./goal-pool.ts";
 import { invalidateGoalPoolCache } from "./storage/goal-files.ts";
 import { checkpointTriggerPrompt } from "./prompts/goal-prompts.ts";
-import { consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal } from "./goal-oracle.ts";import {
+import { consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal } from "./goal-oracle.ts";
+import {
 	goalPrompt,
+	excerpt,
+	MAX_PROMPT_FRAGMENT_CHARS,
+	taskListBlock,
 	staleContinuationPrompt,
 	unfocusedOpenGoalsPrompt,
 	untrustedObjectiveBlock,
@@ -85,6 +89,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	const { pi } = core;
 	let continuationAfterSettleFor: string | null = null;
 	let networkErrorRecoveryAfterSettleFor: string | null = null;
+	let pendingStall: { goalId: string; text: string } | undefined;
 
 	pi.on("message_start", async (event) => {
 		const message = event.message;
@@ -112,12 +117,20 @@ export function registerGoalEvents(core: GoalCore): void {
 		const sameStoppedGoal = core.state.goal?.id === checkpoint && core.state.goal.status !== "active";
 		const projection = !stale || sameStoppedGoal ? goalContext(ctx) : undefined;
 		const content = projection ?? (stale ? staleContinuationPrompt(checkpoint || "invalid-checkpoint", core.state.goal) : undefined);
+		const checkpointChars = messages.reduce<number>((chars, message) => {
+			const entry = message as { customType?: string; content?: unknown };
+			return chars + (entry.customType === GOAL_EVENT_ENTRY && typeof entry.content === "string" ? entry.content.length : 0);
+		}, 0);
+		if (content && content.length + checkpointChars > MAX_PROMPT_FRAGMENT_CHARS) throw new Error("Automatic goal context exceeds its 10000-character bound.");
 		return { messages: content ? [...messages, {
 			role: "custom", customType: "pi-goal-context", content, display: false, timestamp: Date.now(),
 		}] as typeof event.messages : messages as typeof event.messages };
 	});
 
 	pi.on("turn_start", async (_event, ctx) => {
+		// Detect inactivity before this response resets the activity clock.
+		const stalled = core.checkStall(ctx);
+		pendingStall = stalled && core.state.goal ? { goalId: core.state.goal.id, text: stalled } : undefined;
 		// Per-turn flag resets (#4 + C9 fix).
 		core.advanceTurnSeq();
 		core.goalWorkToolCalledThisTurn = false;
@@ -395,8 +408,8 @@ export function registerGoalEvents(core: GoalCore): void {
 			const pauseExtras: string[] = [];
 			if (current.stopReason === "agent") {
 				pauseExtras.push("");
-				pauseExtras.push(`Pause reason: ${current.pauseReason ?? "(unknown)"}`);
-				if (current.pauseSuggestedAction) pauseExtras.push(`Suggested action: ${current.pauseSuggestedAction}`);
+				pauseExtras.push(`Pause reason: ${excerpt(current.pauseReason ?? "(unknown)", 600, "history")}`);
+				if (current.pauseSuggestedAction) pauseExtras.push(`Suggested action: ${excerpt(current.pauseSuggestedAction, 400, "history")}`);
 			}
 				// Inject durable auditor feedback if available
 				let auditorExtra = "";
@@ -404,12 +417,12 @@ export function registerGoalEvents(core: GoalCore): void {
 					const ledger = getPromptLedger();
 				const auditorResult = latestAuditorResultForGoal(ledger.events, current.id);
 				if (auditorResult && auditorResult.verdict === "disapproved") {
-					auditorExtra = `\n\n[AUDITOR REJECTION] An independent auditor previously rejected a completion request for this goal. Reason: ${auditorResult.report.slice(0, 300)}\nAddress the auditor's objections before requesting completion again.`;
+					auditorExtra = `\n\n[AUDITOR REJECTION] An independent auditor previously rejected a completion request for this goal. Reason: ${excerpt(auditorResult.report, 300, "history")}\nAddress the auditor's objections before requesting completion again.`;
 				}
 			} catch {
 				// Ledger read failure should not break the prompt
 			}
-			return `[PI GOAL PAUSED goalId=${current.id}]\n${untrustedObjectiveBlock(current)}${pauseExtras.join("\n")}${auditorExtra}\n\nThe goal is paused. Do not autonomously continue substantive work unless the user resumes it with /goal-resume. If the user explicitly asks to finish the paused goal and the objective is already satisfied based on available evidence, you may call update_goal({status: "complete"}). To abandon a goal, the user runs /goal-clear. Do not report the goal blocked in response to a pause.`;
+			return `[PI GOAL PAUSED goalId=${current.id}]\n${untrustedObjectiveBlock(current)}\n${taskListBlock(current, loadGoalSettings(ctx.cwd), 0)}\n${budgetLine(current) ?? ""}${pauseExtras.join("\n")}${auditorExtra}\n\nThe goal is paused. Do not autonomously continue substantive work unless the user resumes it with /goal-resume. If the user explicitly asks to finish the paused goal and the objective is already satisfied based on available evidence, you may call update_goal({status: "complete"}). To abandon a goal, the user runs /goal-clear. Do not report the goal blocked in response to a pause.`;
 		}
 		// Token-budget-limited goals get one-time wrap-up steering: summarize,
 		// do not start new substantive work, never claim completion unless real.
@@ -426,24 +439,35 @@ export function registerGoalEvents(core: GoalCore): void {
 			const reminder = core.runtime.consumePostBudgetReminder()
 				? `\n\n[TOKEN BUDGET REACHED goalId=${limitedGoal.id}]\nThe goal's token budget has been reached${budgetText ? ` (${budgetText}${balanceText})` : ""}. Wrap up the current work in one final response: summarize what was accomplished and what remains, do not start new substantive work, and do not claim the goal is complete unless it actually is. To continue, the user must raise or remove the budget and resume the goal.`
 				: "";
-			return `[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${untrustedObjectiveBlock(limitedGoal)}${budgetText ? `\n${budgetText}` : ""}${reminder}`;
+			return `[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${untrustedObjectiveBlock(limitedGoal)}\n${taskListBlock(limitedGoal, loadGoalSettings(ctx.cwd), 0)}${budgetText ? `\n${budgetText}` : ""}\nDo not start new substantive work. The user must raise or remove the budget and resume the goal.${reminder}`;
 		}
   if (core.state.goal.status === "blocked") {
    const blocked = core.state.goal;
-   return `[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\nBlocker: ${blocked.pauseReason ?? "unspecified"}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`;
+   return `[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\n${taskListBlock(blocked, loadGoalSettings(ctx.cwd), 0)}\n${budgetLine(blocked) ?? ""}\nBlocker: ${excerpt(blocked.pauseReason ?? "unspecified", 600, "history")}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`;
   }
 		const activeGoal = core.state.goal;
 		const settings = loadGoalSettings(ctx.cwd);
 		let prompt = goalPrompt(activeGoal, settings);
 		// F5: [GOAL STALLED] steering note when the detector fired.
-		const stalledNote = core.checkStall(ctx);
-		if (stalledNote) prompt += stalledNote;
+		if (pendingStall?.goalId === activeGoal.id) prompt += pendingStall.text;
+		pendingStall = undefined;
+		if (settings.oracle?.enabled) {
+			try {
+			// ponytail: scan the opt-in Oracle history; index if long ledgers make this path costly.
+			const advice = readGoalLedger(ctx).events.filter(event => event.type === "oracle_result" && event.goalId === activeGoal.id).at(-1);
+			if (advice?.type === "oracle_result" && advice.disposition === "actionable" && !goalOracleState(ctx, activeGoal.id, advice.fingerprint).followupAttempted) {
+				prompt += `\n\n[ORACLE ADVICE goalId=${activeGoal.id}]\nAdvice ${excerpt(advice.adviceId, 100, "history")}: ${excerpt(advice.advice ?? advice.summary, 800, "history")}\n${advice.advice ? "" : "Legacy record: full original advice unavailable. "}Before reporting the same blocker again, retrieve get_goal(section="history"), check that this advice applies, and attempt the appropriate work. Inspection alone is not a follow-up attempt.`;
+			}
+			} catch {
+				prompt += '\n\n[ORACLE STATE UNAVAILABLE]\nRetrieve get_goal(section="history") before reporting blocked. Do not invent missing advice or treat it as completed work.';
+			}
+		}
 		// Inject durable auditor feedback if the latest result was a rejection
 		try {
 			const ledger = getPromptLedger();
 			const auditorResult = latestAuditorResultForGoal(ledger.events, activeGoal.id);
 			if (auditorResult && auditorResult.verdict === "disapproved" && ledger.events.some((e) => e.type === "completion_requested" && e.goalId === activeGoal.id)) {
-				prompt = `${prompt}\n\n[AUDITOR REJECTION goalId=${activeGoal.id}]\nAn independent auditor previously rejected a completion request for this goal. Reason: ${auditorResult.report.slice(0, 300)}\nAddress the auditor's objections before requesting completion again.`;
+				prompt = `${prompt}\n\n[AUDITOR REJECTION goalId=${activeGoal.id}]\nAn independent auditor previously rejected a completion request for this goal. Reason: ${excerpt(auditorResult.report, 300, "history")}\nAddress the auditor's objections before requesting completion again.`;
 			}
 		} catch {
 			// Ledger read failure should not break the prompt
@@ -458,7 +482,7 @@ export function registerGoalEvents(core: GoalCore): void {
 				const ledger = getPromptLedger();
 				const otherOpenCount = core.openGoals().filter((g) => g.id !== activeGoal.id).length;
 				const delta = buildPostCompactionGoalDelta({ goal: activeGoal, ledgerEvents: ledger.events, otherOpenCount });
-				prompt = `${prompt}\n\n${delta}`;
+				prompt = `${prompt}\n\n${prompt.length + delta.length <= MAX_PROMPT_FRAGMENT_CHARS - 162 ? delta : `[POST-COMPACTION RESYNC goalId=${activeGoal.id}]\nRecent activity omitted. Retrieve with get_goal(section="history"); continue from authoritative files and goal storage.`}`;
 			} catch {
 				prompt = `${prompt}\n\n[POST-COMPACTION RESYNC goalId=${core.state.goal.id}]\nThe conversation was just compacted. Re-read the objective and continue from the actual artifacts/state; do not rely on memory of the prior chat.`;
 			}

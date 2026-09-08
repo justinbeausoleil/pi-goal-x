@@ -426,6 +426,7 @@ pi.registerTool(defineTool({
 			adviceId,
 			disposition: advice.disposition,
 			summary: advice.diagnosis.slice(0, 500),
+			advice: JSON.stringify(advice),
 			recommendedTitle: recommendedTitle?.slice(0, 200),
 			at: nowIso(),
 		}]);
