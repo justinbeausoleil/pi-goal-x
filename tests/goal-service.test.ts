@@ -90,7 +90,7 @@ function fixture() {
 	return { cwd, written, ref, log, service, cleanup };
 }
 
-for (const locked of [false, true]) for (const foreignTokens of [0, 77]) it(`external scope reconciliation preserves incurred buffered usage on rejection (locked=${locked}, foreign=${foreignTokens})`, () => {
+for (const locked of [false, true]) for (const foreignTokens of [0, 77]) for (const reverted of [false, true]) it(`external scope reconciliation preserves incurred buffered usage on rejection (locked=${locked}, foreign=${foreignTokens}, reverted=${reverted})`, () => {
 	const f = fixture();
 	try {
 		f.service.persist(f);
@@ -112,12 +112,16 @@ for (const locked of [false, true]) for (const foreignTokens of [0, 77]) it(`ext
 			} finally { lock.release(); }
 		}
 		f.service.reconcileFocused(f);
+		if (reverted) {
+			external.objective = original.objective;
+			writeFileSync(file, serializeGoalFile(external));
+		}
 		f.service.reconcileFocused(f);
 		f.service.persist(f);
 		f.service.endTurn(f);
 		const disk = parseGoalFile(file)!;
 		assert.deepEqual(disk.usage, {tokensUsed: 121 + foreignTokens, activeSeconds: 8});
-		assert.equal(disk.objective, "Externally revised objective");
+		assert.equal(disk.objective, reverted ? original.objective : "Externally revised objective");
 		assert.equal(disk.retainedScope!.objective, original.objective);
 		assert(f.log.diagnostics.some(d => /buffered changes were rejected/.test(d.message)));
 	} finally { f.cleanup(); }
@@ -178,23 +182,29 @@ it("rebases buffered legacy work over another session's first-write scope migrat
 	} finally { f.cleanup(); }
 });
 
-it("keeps an old locked buffer when focus changes, then flushes without stealing focus", () => {
+for (const pending of [false, true]) it(`keeps an old locked buffer when focus changes, then flushes without stealing focus (pending=${pending})`, () => {
 	const f = fixture();
 	try {
 		f.service.beginTurn(f, f.written.id);
 		assert.equal(f.service.apply(f, {mutate: goal => ({...goal, objective: "Buffered old-goal work"})}).ok, true);
 		const other = writeActiveGoalFile(f, createGoal({objective: "Other goal", autoContinue: false, sisyphus: false}));
+		if (pending) {
+			other.retainedScope = {objective: other.objective, tasks: {}, changes: []};
+			writeFileSync(path.join(f.cwd, other.activePath!), serializeGoalFile({...other, objective: "External proposal on another goal"}));
+		}
 		f.ref.setFocused(other);
 		const lock = acquireGoalLock(f, f.written.id);
 		try {
 			const result = f.service.apply(f, {reconcile: false, mutate: goal => ({...goal, objective: "Should wait"})});
 			assert.equal(result.ok, false);
 			assert.equal(f.service.isTurnBuffered(), true);
+			f.service.reconcileFocused(f);
+			assert.equal(f.service.isTurnBuffered(), true, "another goal's proposal cannot discard the old locked buffer");
 		} finally {lock.release();}
 		f.service.flushTurn(f);
 		assert.equal(f.ref.getFocusedGoalId(), other.id);
 		assert.equal(parseGoalFile(path.join(f.cwd, f.written.activePath!))!.objective, "Buffered old-goal work");
-		assert.equal(parseGoalFile(path.join(f.cwd, other.activePath!))!.objective, "Other goal");
+		assert.equal(parseGoalFile(path.join(f.cwd, other.activePath!))!.objective, pending ? "External proposal on another goal" : "Other goal");
 	} finally {f.cleanup();}
 });
 

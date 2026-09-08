@@ -362,7 +362,7 @@ export class GoalService {
    const disk = this.readFreshDiskGoal(ctx, current);
    if (disk?.id === current.id) {
     source.set(current.id, disk);
-    if (this.turn.goal && scopeProposalWarning(disk) && goalWorkRevision(disk) !== goalWorkRevision(this.turnBase ?? current)) {
+    if (this.turn.goal?.id === current.id && scopeProposalWarning(disk) && goalWorkRevision(disk) !== goalWorkRevision(this.turnBase ?? current)) {
      this.rejectBufferedWork(ctx, disk);
      current = this.ref.getFocused(); // Rejected work retains incurred usage against the fresh baseline.
     }
@@ -403,8 +403,9 @@ export class GoalService {
 			this.ref.onFocusedGoalLost(lostGoalId, ctx);
 			return false;
 		}
-		const pendingScope = scopeProposalWarning(diskGoal);
-		const delta = current && pendingScope ? this.usageDelta(current, diskGoal) : undefined;
+		// Owed usage survives any fresh work/control state, including a resolved
+		// proposal. A buffered record already includes its own local delta.
+		const delta = current && !buffered && this.lastPersistedUsage?.goalId === current.id ? this.usageDelta(current, diskGoal) : undefined;
 		const reconciled = delta
 			? {...diskGoal, usage: {tokensUsed: diskGoal.usage.tokensUsed + delta.tokens, activeSeconds: diskGoal.usage.activeSeconds + delta.seconds}}
 			: current && opts.preserveMemoryUsage
@@ -417,7 +418,7 @@ export class GoalService {
 		fresh.set(reconciled.id, reconciled);
 		this.ref.assignFocusedGoalId(reconciled.id);
 		this.ref.onReconciled(reconciled);
-		this.trackBaseline(reconciled.id, pendingScope ? diskGoal.usage : reconciled.usage);
+		this.trackBaseline(reconciled.id, delta ? diskGoal.usage : reconciled.usage);
 		return true;
 	}
 

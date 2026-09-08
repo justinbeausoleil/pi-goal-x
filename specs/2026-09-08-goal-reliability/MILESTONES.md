@@ -786,3 +786,15 @@
   objective/Sisyphus follow-ups pass; final follow-up type/lint/context/full and
   fixed-base re-review remain in progress. Auditor approved-input red is retained
   in scope-audit-input-red.log; its implementation is still next, not complete.
+
+- Frozen d3f54af passes 1063/1063 full tests (101.9s), but re-review found two
+  additional accounting/ownership edges: resolving the proposal before pending
+  usage persisted again dropped 121/8, and reconciling a different pending goal
+  discarded the old goal's locked buffer. The permanent red covers both.
+  Rejection now checks goal identity, while delta reconciliation uses the known
+  persisted usage baseline independently of pending-review status. Eight usage
+  variants plus both cross-focus variants pass. The existing native 200-node/
+  65-request concurrent-accounting/reopen check also passes with one work effect.
+  A first targeted command named nonexistent goal-transactions.test.ts (Node
+  silently omits it); its 51 passing cases cover service/presentation only.
+  The actual goal-turn-transaction and accounting-runtime checks follow explicitly.
