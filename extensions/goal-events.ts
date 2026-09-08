@@ -17,7 +17,7 @@ import { latestAuditorResultForGoal, readGoalLedger, goalRuntimeEvents, invalida
 import { shouldArmPostCompactReminder, shouldInjectPostCompactReminder } from "./goal-policy.ts";
 import { formatTokenValue } from "./goal-core.ts";
 import { loadGoalSettings, invalidateGoalSettingsCache } from "./goal-settings.ts";
-import { budgetLine, budgetRemaining } from "./goal-accounting.ts";
+import { budgetLine } from "./goal-accounting.ts";
 import { asRecord, nowIso, type AssistantMessageLike, type GoalRecord } from "./goal-record.ts";
 import { goalSelectorLabel, otherOpenGoalCount } from "./goal-pool.ts";
 import { invalidateGoalPoolCache } from "./storage/goal-files.ts";
@@ -91,8 +91,8 @@ export function registerGoalEvents(core: GoalCore): void {
 		if (message.role === "custom" && message.customType === GOAL_EVENT_ENTRY) {
 			const goalId = goalEventMessageId(message);
 			const markerId = typeof message.content === "string" ? extractGoalIdFromInjectedMessage(message.content) : null;
-			// Missing or conflicting identity is a rejected trigger, never user authority.
-			core.runtime.setCheckpoint(goalId && goalId === markerId ? goalId : "invalid-checkpoint");
+			// Empty identity cannot pass isActionableContinuationGoal; null means user work.
+			core.runtime.setCheckpoint(goalId && goalId === markerId ? goalId : "");
 			core.clearContinuationState(false);
 		} else if (message.role === "user") {
 			core.runtime.setCheckpoint(null);
@@ -108,7 +108,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.runningGoalId = !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
 		const filtered = filterGoalSessionContext(event.messages);
 		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered ?? event.messages;
-		const content = stale ? staleContinuationPrompt(checkpoint, core.state.goal) : goalContext(ctx);
+		// A goal stopped during this run still needs its pause/budget wrap-up context.
+		const sameStoppedGoal = core.state.goal?.id === checkpoint && core.state.goal.status !== "active";
+		const projection = !stale || sameStoppedGoal ? goalContext(ctx) : undefined;
+		const content = projection ?? (stale ? staleContinuationPrompt(checkpoint || "invalid-checkpoint", core.state.goal) : undefined);
 		return { messages: content ? [...messages, {
 			role: "custom", customType: "pi-goal-context", content, display: false, timestamp: Date.now(),
 		}] as typeof event.messages : messages as typeof event.messages };
@@ -380,21 +383,12 @@ export function registerGoalEvents(core: GoalCore): void {
 		const getPromptLedger = () => promptLedger ??= { events: core.state.goal ? goalRuntimeEvents(ctx, core.state.goal.id) : [], malformed: 0 };
 
 		if (!core.state.goal) {
-			core.runningGoalId = null;
 			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) {
 				return unfocusedOpenGoalsPrompt(openCount);
 			}
 			return;
 		}
-		core.reconcileFocusedGoalFromDisk(ctx);
-		if (!core.state.goal) {
-			core.runningGoalId = null;
-			const openCount = otherOpenGoalCount(core.goalsById, null);
-			if (openCount > 0) return unfocusedOpenGoalsPrompt(openCount);
-			return;
-		}
-		core.runningGoalId = core.state.goal.status === "active" ? core.state.goal.id : null;
 		if (core.state.goal.status === "complete") return;
 		if (core.state.goal.status === "paused") {
 			const current = core.state.goal;
@@ -423,7 +417,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			const limitedGoal = core.state.goal;
 			const budgetText = budgetLine(limitedGoal);
 			// E4: surface the remaining-vs-overshoot fact in the wrap-up steering.
-			const remaining = budgetRemaining(limitedGoal);
+			const remaining = typeof limitedGoal.tokenBudget === "number" ? limitedGoal.tokenBudget - limitedGoal.usage.tokensUsed : null;
 			const balanceText = typeof remaining === "number"
 				? remaining < 0
 					? ` — ${formatTokenValue(-remaining)} over the budget`

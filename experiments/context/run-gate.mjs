@@ -16,7 +16,7 @@ import * as path from "node:path";
 
 import { captureOne } from "./capture-context.mjs";
 import { FIXTURES } from "./fixtures.mjs";
-import { measureContext, semanticCounts, serializeRequest } from "./measure-context.mjs";
+import { automaticGoalText, measureContext, semanticCounts, serializeRequest } from "./measure-context.mjs";
 
 function serializedRequestText(captured) {
 	return serializeRequest(captured).total;
@@ -46,6 +46,7 @@ for (const fixtureId of expectedFixtureIds) {
 	const captured = await captureOne(fixtureId);
 	const breakdown = measureContext(captured);
 	const semantic = semanticCounts({ ...captured, goal: scenario.goal });
+	const goalText = automaticGoalText(captured);
 	checked += 1;
 
 	// 1. deterministic equality
@@ -70,7 +71,8 @@ for (const fixtureId of expectedFixtureIds) {
  if (scenario.draftPrompt && JSON.stringify([...names].sort()) !== JSON.stringify(["goal_question", "goal_questionnaire", "propose_goal_draft"].sort())) failures.push(`${fixtureId}: incorrect drafting profile`);
  if (fixtureId === "tasks-disabled" && names.some(n => n === "set_goal_tasks" || n === "update_goal_task")) failures.push(`${fixtureId}: disabled tools advertised`);
  if (["completion-audit", "audit-rejection-and-rework", "oracle-consultation"].includes(fixtureId) && !(breakdown.childRequestChars > 0)) failures.push(`${fixtureId}: child request not captured`);
- if (fixtureId === "post-compaction-turn" && !captured.extensionSystem.includes("POST-COMPACTION RESYNC")) failures.push(`${fixtureId}: compaction hook was not exercised`);
+ if (fixtureId === "post-compaction-turn" && !goalText.includes("POST-COMPACTION RESYNC")) failures.push(`${fixtureId}: compaction hook was not exercised`);
+	if (captured.extensionSystem.includes("[PI GOAL")) failures.push(`${fixtureId}: dynamic goal state remains in system prompt`);
 
 	// 4. checkpoint history bounded (post-#30 invariant)
 	if (breakdown.historicalCheckpointChars > 0) {
@@ -80,7 +82,8 @@ for (const fixtureId of expectedFixtureIds) {
 	// Required single-source markers on active-goal fixtures whose turn was
 	// actually dispatched with an active block (a stale-checkpoint trigger
 	// correctly aborts and injects GOAL STALE instead).
-	const hasActiveBlock = /\[PI GOAL ACTIVE goalId=/.test(captured.extensionSystem ?? "");
+	const hasActiveBlock = /\[PI GOAL ACTIVE goalId=/.test(goalText);
+	if (scenario.goal?.status === "active" && fixtureId !== "stale-checkpoint" && !hasActiveBlock) failures.push(`${fixtureId}: active goal projection missing`);
 	if (scenario.goal?.status === "active" && hasActiveBlock) {
 		if (semantic.goalActiveMarker !== 1) failures.push(`${fixtureId}: [PI GOAL ACTIVE] block count ${semantic.goalActiveMarker} != 1`);
 		// Long objectives are truncated to MAX_OBJECTIVE_BLOCK_CHARS — only the
@@ -89,7 +92,7 @@ for (const fixtureId of expectedFixtureIds) {
 		const fullObjective = scenario.goal.objective ?? "";
 		const objectiveNeedle = fullObjective.slice(0, 300);
 		const objectiveOccurrences = objectiveNeedle
-			? (captured.extensionSystem.match(new RegExp(escapeRegExp(objectiveNeedle), "g")) ?? []).length
+			? (goalText.match(new RegExp(escapeRegExp(objectiveNeedle), "g")) ?? []).length
 			: 0;
 		if (objectiveOccurrences !== 1) failures.push(`${fixtureId}: objective appears ${objectiveOccurrences}x in composed request (must be exactly 1)`);
 		if (scenario.goal?.verificationContract && fixtureId !== "get-goal-default-and-verbose" && semantic.verificationContract !== 1) {

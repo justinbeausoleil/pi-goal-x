@@ -30,3 +30,16 @@ post-hook message list, and ACTIVE tool schemas — not isolated prompt strings.
 The 2026-09-07 capture uses actual active profiles and the SDK system-prompt builder (including tool snippets/guidelines), includes host schemas, exercises drafting/compaction, and measures child audit/Oracle request surfaces separately. Explicit get_goal results are included in the read-tool fixture. Character-based estimates remain estimates. `node experiments/context/provider-crosscheck.mjs` compares six executor/auditor/Oracle captures against real SDK provider payloads, intercepting before network dispatch.
 
 Use `CONTEXT_OUTPUT=<file> npm run context:measure` for isolated campaign outputs. The committed main baseline is updated only after semantic gates pass. The baseline rationale is recorded in specs/2026-09-07-runtime-token-optimization/MILESTONES.md.
+
+## Reliability fork baseline (ticket 001)
+
+Plan D1/ADR 0003 move dynamic state from system prompts to ephemeral custom
+context. The 24-fixture baseline now measures that message framing and Pi
+0.85.1 SDK guidance. Goal-state bytes include the new projection, semantic
+counts inspect decoded content (so multiline objectives count equally in
+system and message placement), and single-objective/contract/active-marker
+checks cover all automatic goal text. The gate now requires an active
+projection instead of skipping assertions when the old system block is absent.
+Historical checkpoints, tool schemas, and separate child requests retain their
+checks. No size ceiling was raised. Full real-host compaction and aggregate
+input-bound acceptance remain ticket 002, not claims of this measurement gate.

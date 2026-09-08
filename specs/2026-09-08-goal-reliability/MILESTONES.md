@@ -91,3 +91,36 @@
   `~/Data/pi-goal-x/reliability/001/`. Full gates and independent fixed-base
   standards/spec review are running; 001 remains in progress. Aggregate bounds
   and repeated compaction belong to 002; no later requirement is claimed done.
+
+### Ticket 001 independent review and payload gates
+
+- Fixed-base independent review of `4c0f23d...169b790`: standards reported no
+  hard breaches, two smell judgments (colliding invalid-ID sentinel and
+  duplicate reconciliation); specification reported two reproduced defects
+  (incomplete legacy marker accepted and custom-run budget wrap-up omitted).
+- Repairs use an empty checkpoint identity, which actionable-goal validation
+  always rejects; reconcile once in the context handler; require complete
+  supported marker syntax; project same-goal stopped lifecycle instructions.
+  The new actual-host prefix/budget cases both failed before repair. The budget
+  follow-up exposed an inherited display bug: clamped remaining-budget cannot
+  report overshoot, so the wrap-up now computes the signed balance locally.
+  Accounting helpers retain their established clamped-remaining contract.
+- Real-host suite now passes 12/12, including 220 tokens against a 200-token
+  budget with a 20-token overshoot, one wrap-up, and no subsequent work tools.
+  Typecheck passes. Review reproductions and failed repair attempts remain in
+  the external 001 evidence directory; follow-up review is pending.
+- Initial full qualification: typecheck, lint, 971 tests, runner self-check,
+  provider cross-check, NAF benchmark gate, package dry run and production audit
+  passed. Context gate failed because state moved from system to messages.
+- Updated the context measurement surface and retained its semantic assertions
+  over decoded automatic goal text, added mandatory active-projection presence,
+  and prohibited dynamic system state. Regenerated 24 fixtures with the D1 /
+  ADR 0003 rationale documented in experiments/context/README.md. No size limit
+  increased. Serialized total: 242142 -> 244730 chars; extension-attributable
+  total: 130042 -> 132591; child requests: 15225 -> 15230 (Pi 0.85.1 guidance).
+  `context:gate` now passes, including unchanged single-objective/contract and
+  checkpoint-history rules. Full post-review qualification is running.
+- Ranking updater: `uv run --no-project python -B scripts/test-update-ranking.py`
+  passed all five tests. A separate detached upstream worktree at fe430b25 under
+  ~/Developer/scratch is rerunning clean locked baseline installation/checks;
+  this replaces any ambiguity from the early dependency-alignment timing.

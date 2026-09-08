@@ -22,6 +22,17 @@ export function serializeRequest(captured) {
  return { system, messages, tools, hostTools, total: `${system}\n${messages}\n${tools}\n${hostTools}` };
 }
 
+/** Goal-owned automatic text, regardless of its system/message placement. */
+export function automaticGoalText(captured) {
+	return (captured.extensionSystem ?? "") + (captured.messages ?? [])
+		.filter(m => m.role === "custom" && ["pi-goal-context", "pi-goal-event"].includes(m.customType))
+		.map(m => contentText(m.content)).join("\n");
+}
+
+function contentText(content) {
+	return typeof content === "string" ? content : (content ?? []).map(p => p.text ?? JSON.stringify(p)).join("");
+}
+
 /**
  * Compute ContextSizeBreakdown for one captured request.
  */
@@ -56,8 +67,10 @@ export function measureContext(captured) {
 
 	const baseSystemChars = captured.baseSystem.length;
 	const extensionSystemChars = (captured.extensionSystem ?? "").length;
-	// Goal state = the extension's injected system block only.
-	const goalStateChars = extensionSystemChars;
+	// Dynamic state moved from the system prompt to ephemeral context messages.
+	const goalStateChars = extensionSystemChars + (captured.messages ?? [])
+		.filter(m => m.role === "custom" && m.customType === "pi-goal-context")
+		.reduce((sum, m) => sum + contentText(m.content).length, 0);
 	const toolSchemaChars = serialized.tools.length;
 
 	const childRequestChars = (captured.childRequests ?? []).reduce((sum, request) => sum + request.system.length + JSON.stringify(request.messages).length + JSON.stringify(request.tools).length, 0);
@@ -94,7 +107,9 @@ function checkpointTotal(captured) {
 /** Semantic counts for one captured request. Pass `goal` for exact needles. */
 export function semanticCounts(captured) {
 	const serialized = serializeRequest(captured);
-	return countSemanticOccurrences(serialized.total, {
+	// Count provider-visible text, not JSON escapes of multiline objective strings.
+	const text = [serialized.system, ...(captured.messages ?? []).map(m => contentText(m.content)), serialized.tools, serialized.hostTools].join("\n");
+	return countSemanticOccurrences(text, {
 		objective: captured.goal?.objective,
 		verificationContract: captured.goal?.verificationContract,
 		currentTaskLine: currentTaskNeedle(captured.goal),

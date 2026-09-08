@@ -17,7 +17,8 @@ process.env.PI_OFFLINE = "1";
 process.env.PI_CODING_AGENT_DIR = agentDir;
 process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
 const guided = mode === "goal" || mode === "sisyphus";
-const explicit = mode === "create_goal";
+const budget = mode === "budget-wrapup";
+const explicit = mode === "create_goal" || budget;
 const ordered = mode.startsWith("sisyphus");
 const rejected = mode.startsWith("reject-");
 const objective = ordered
@@ -63,7 +64,7 @@ try {
 	});
 	let resolveFinished;
 	const finished = new Promise(resolve => { resolveFinished = resolve; });
-	session.subscribe(event => { if (event.type === "agent_settled" && (failure || results.some(r => r.toolName === "update_goal"))) resolveFinished(); });
+	session.subscribe(event => { if (event.type === "agent_settled" && (failure || results.some(r => r.toolName === "update_goal") || (budget && captures.length === 3))) resolveFinished(); });
 	session.agent.streamFunction = (_model, context) => {
 		captures.push(JSON.parse(JSON.stringify(context)));
 		const step = captures.length - (guided || explicit ? 1 : 0);
@@ -72,7 +73,12 @@ try {
 			if (action === "startup") {
 				assert(step <= 4, "bounded startup");
 				assert(JSON.stringify(context).includes("SYNTHETIC_OBJECTIVE_4f927"), "startup/checkpoint must deliver the approved objective before work");
-				if (step > 0) {
+				if (budget && step === 2) {
+					const projection = JSON.stringify(context.messages.at(-1));
+					assert.match(projection, /TOKEN BUDGET REACHED/, "custom-start budget exhaustion retains wrap-up steering");
+					assert.match(projection, /20 tokens over the budget/, "wrap-up reports the actual balance");
+					assert.match(projection, /do not start new substantive work/);
+				} else if (step > 0) {
 					const projection = context.messages.at(-1);
 					assert.match(JSON.stringify(projection), /\[PI GOAL ACTIVE goalId=/, "fresh focused projection must reach every request");
 					assert(JSON.stringify(projection).includes("SYNTHETIC_OBJECTIVE_4f927"), "projection itself must carry the approved objective");
@@ -83,7 +89,7 @@ try {
 		const call = (name, args) => [{ type: "toolCall", id: `call-${step}`, name, arguments: args }];
 		const content = failure ? [{ type: "text", text: "Fixture failed." }]
 			: action !== "startup" ? (++actionRequests === 1 ? call("write", { path: `${action}.txt`, content: action }) : [{ type: "text", text: "Attempt settled." }])
-			: step === 0 ? call(guided ? "propose_goal_draft" : "create_goal", { objective, ...(guided ? { sisyphus: ordered } : {}) })
+			: step === 0 ? call(guided ? "propose_goal_draft" : "create_goal", { objective, ...(guided ? { sisyphus: ordered } : {}), ...(budget ? { token_budget: 200 } : {}) })
 			: step === 1 ? call("write", { path: "proof.txt", content: "SYNTHETIC_OBJECTIVE_4f927" })
 			: step === 2 ? [{ type: "text", text: "File created; checkpoint should verify it." }]
 			: step === 3 ? call("read", { path: "proof.txt" })
@@ -100,29 +106,30 @@ try {
 	if (failure) { console.error(JSON.stringify({ requests: captures.length, starts, results })); throw failure; }
 	assert.equal(readFileSync(join(cwd, "proof.txt"), "utf8"), "SYNTHETIC_OBJECTIVE_4f927");
 	assert.deepEqual(results.filter(r => r.isError), []);
-	assert(results.some(r => r.toolName === "read" && JSON.stringify(r.content).includes("SYNTHETIC_OBJECTIVE_4f927")));
+	assert(budget || results.some(r => r.toolName === "read" && JSON.stringify(r.content).includes("SYNTHETIC_OBJECTIVE_4f927")));
 	const checkpoints = manager.getBranch().filter(e => e.type === "custom_message" && e.customType === "pi-goal-event");
-	assert.equal(checkpoints.length, 2, "initial startup and second automatic checkpoint");
+	assert.equal(checkpoints.length, budget ? 1 : 2, "only eligible automatic checkpoints run");
 	assert(checkpoints.every(e => e.content.length <= 160 && !e.content.includes("SYNTHETIC_OBJECTIVE")));
 	assert.equal(starts, guided || explicit ? 1 : 0, "custom starts must use the real host path without before_agent_start");
 	assert(!guided || confirmations > 0, "guided startup must cross the host's human confirmation interface");
-	assert.equal(results.find(r => r.toolName === "update_goal").details.goal.sisyphus, ordered);
+	if (!budget) assert.equal(results.find(r => r.toolName === "update_goal").details.goal.sisyphus, ordered);
+	if (budget) assert.deepEqual(results.map(r => r.toolName), ["create_goal", "write"], "one wrap-up without further work tools");
 	assert(!manager.getBranch().some(e => e.customType === "pi-goal-context"), "per-response projections must not persist");
 	if (rejected) {
 		const original = checkpoints[0];
 		action = "rejected";
 		if (mode === "reject-unfocused") await session.prompt("/goal-unfocus");
-		if (mode === "reject-replaced" || mode === "reject-malformed") await session.prompt("/goal-direct Leave the replacement goal available for later work.");
+		if (mode === "reject-replaced" || mode.startsWith("reject-malformed")) await session.prompt("/goal-direct Leave the replacement goal available for later work.");
 		const currentFocus = manager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-focus").data.focusedGoalId;
-		const message = mode === "reject-malformed"
-			? { customType: "pi-goal-event", content: "malformed checkpoint", details: { goalId: currentFocus }, display: false }
+		const message = mode.startsWith("reject-malformed")
+			? { customType: "pi-goal-event", content: mode === "reject-malformed-prefix" ? `<pi_goal_continuation goal_id="${currentFocus}"` : "malformed checkpoint", details: { goalId: currentFocus }, display: false }
 			: mode === "reject-stale"
 				? { customType: "pi-goal-event", content: '<pi_goal_continuation goal_id="missing-goal" kind="checkpoint" v="2"/>', details: { goalId: "missing-goal" }, display: false }
 				: { customType: original.customType, content: original.content, details: original.details, display: false };
 		await session.sendCustomMessage(message, { triggerTurn: true });
 		assert.equal(existsSync(join(cwd, "rejected.txt")), false, "rejected checkpoint must not dispatch work");
 		assert(session.messages.some(m => m.role === "toolResult" && m.toolName === "write" && m.isError && JSON.stringify(m.content).includes("checkpoint")), "host must expose the rejected work result");
-		if (mode === "reject-replaced" || mode === "reject-malformed") await session.prompt("/goal-pause");
+		if (mode === "reject-replaced" || mode.startsWith("reject-malformed")) await session.prompt("/goal-pause");
 		action = "explicit-user";
 		actionRequests = 0;
 		await session.prompt("Write explicit-user.txt containing explicit-user as ordinary user work.");

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
-for (const mode of ["goal-direct", "sisyphus-direct", "goal", "sisyphus", "create_goal", "reject-stale", "reject-malformed", "reject-paused", "reject-replaced", "reject-unfocused"]) {
+for (const mode of ["goal-direct", "sisyphus-direct", "goal", "sisyphus", "create_goal", "reject-stale", "reject-malformed", "reject-malformed-prefix", "reject-paused", "reject-replaced", "reject-unfocused", "budget-wrapup"]) {
 test(`S1: actual Pi ${mode} startup and second checkpoint`, { timeout: 15000 }, async () => {
 	const { stdout } = await run(process.execPath, ["--experimental-strip-types", worker, mode], {
 		timeout: 12000,
