@@ -30,3 +30,9 @@ characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
 Evidence: pending implementation.
+
+Implementation checkpoint: the ten-case `npm run test:lifecycle` passes on
+Pi 0.85.1 (Node 26.8.1 development host). Typecheck/lint and 22 inherited
+budget/unfocus/stale checks pass. See the milestone log for red reproductions,
+harness corrections, and external log location. Full gates and independent
+review remain pending; acceptance is not yet marked done.

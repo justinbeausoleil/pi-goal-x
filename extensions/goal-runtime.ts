@@ -142,8 +142,8 @@ export class GoalRuntime {
 	/**
 	 * Issue #30: the delivered follow-up must trigger the turn, but it no longer
 	 * carries goal state. The persisted content is a tiny v2 marker and the
-	 * details are a bounded structured record; before_agent_start injects the
-	 * authoritative full prompt once per turn.
+	 * details are a bounded structured record; the context hook injects fresh
+	 * authoritative state before each executor response.
 	 */
 	private sendQueuedContinuation(ctx: ExtensionContext, scheduledGoalId: string): void {
 		this.continuationTimer = null;

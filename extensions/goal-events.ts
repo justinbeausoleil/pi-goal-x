@@ -38,8 +38,7 @@ import type { GoalMutationOutcome } from "./goal-service.ts";
  * Issue #30: provider-context checkpoint compaction (pure helper).
  *
  * Every historical checkpoint message is redundant: its authoritative state is
- * reconstructed from goal storage and injected once per turn by
- * before_agent_start. Normal provider requests therefore retain at most ONE
+ * reconstructed from goal storage by the per-response context hook. Normal provider requests therefore retain at most ONE
  * checkpoint marker — the latest — rewritten to the tiny bounded v2 trigger
  * content. Keeping one user-role turn-start marker avoids provider edge cases
  * where removing it would leave the request ending on an assistant or tool
@@ -76,7 +75,7 @@ export function compactGoalCheckpointContext(
 }
 
 /**
- * The goal extension's lifecycle event handlers (context, turn_start,
+ * The goal extension's lifecycle event handlers (context, message_start, turn_start,
  * tool_call, tool_execution_end, turn_end, message_end, session_start,
  * session_before_compact, session_compact, session_tree, before_agent_start,
  * agent_end, agent_settled, session_shutdown). All state flows through the
@@ -87,10 +86,32 @@ export function registerGoalEvents(core: GoalCore): void {
 	let continuationAfterSettleFor: string | null = null;
 	let networkErrorRecoveryAfterSettleFor: string | null = null;
 
-	pi.on("context", async (event) => {
+	pi.on("message_start", async (event) => {
+		const message = event.message;
+		if (message.role === "custom" && message.customType === GOAL_EVENT_ENTRY) {
+			const goalId = goalEventMessageId(message);
+			const markerId = typeof message.content === "string" ? extractGoalIdFromInjectedMessage(message.content) : null;
+			// Missing or conflicting identity is a rejected trigger, never user authority.
+			core.runtime.setCheckpoint(goalId && goalId === markerId ? goalId : "invalid-checkpoint");
+			core.clearContinuationState(false);
+		} else if (message.role === "user") {
+			core.runtime.setCheckpoint(null);
+			core.clearContinuationState();
+			networkErrorRecoveryAfterSettleFor = null;
+		}
+	});
+
+	pi.on("context", async (event, ctx) => {
+		core.reconcileFocusedGoalFromDisk(ctx);
+		const checkpoint = core.runtime.getCheckpointGoalId();
+		const stale = checkpoint !== null && !core.isActionableContinuationGoal(checkpoint);
+		core.runningGoalId = !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
 		const filtered = filterGoalSessionContext(event.messages);
-		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered;
-		return messages === null ? undefined : { messages: messages as typeof event.messages };
+		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered ?? event.messages;
+		const content = stale ? staleContinuationPrompt(checkpoint, core.state.goal) : goalContext(ctx);
+		return { messages: content ? [...messages, {
+			role: "custom", customType: "pi-goal-context", content, display: false, timestamp: Date.now(),
+		}] as typeof event.messages : messages as typeof event.messages };
 	});
 
 	pi.on("turn_start", async (_event, ctx) => {
@@ -116,6 +137,8 @@ export function registerGoalEvents(core: GoalCore): void {
 					`Do not call more tools; end the turn with a brief summary and yield to the user.`,
 			};
 		}
+		// Recheck disk at dispatch too: the goal can change after the request.
+		if (core.runtime.getCheckpointGoalId() !== null) core.reconcileFocusedGoalFromDisk(ctx);
 		// Stale checkpoint guard: if the turn was triggered by a queued continuation
 		// for a goal that is no longer active/autoContinue, block work tools.
 		const checkpointGoalId = core.runtime.getCheckpointGoalId();
@@ -339,52 +362,28 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		core.advanceTurnSeq();
-  if (!hasActiveDraft(core)) core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
-		const currentSystemPrompt = () => ctx.getSystemPrompt?.() || event.systemPrompt;
+		// Explicit user prompts reset the automatic chain; custom starts skip this hook.
 		const incomingGoalId = extractGoalIdFromInjectedMessage(event.prompt ?? "");
-		// Several prompt enrichments may need the same ledger snapshot. Keep one
-		// local read for this hook instead of repeatedly traversing the cached
-		// ledger when rejection and post-compaction steering overlap.
+		core.runtime.setCheckpoint(incomingGoalId);
+		core.clearContinuationState(incomingGoalId === null);
+		if (incomingGoalId === null) networkErrorRecoveryAfterSettleFor = null;
+		core.reconcileFocusedGoalFromDisk(ctx);
+		core.runningGoalId = core.state.goal?.status === "active" ? core.state.goal.id : null;
+		if (!hasActiveDraft(core)) core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
+		if (incomingGoalId !== null && !core.isActionableContinuationGoal(incomingGoalId)) {
+			try { ctx.abort?.(); } catch {}
+		}
+	});
+
+	function goalContext(ctx: ExtensionContext): string | undefined {
 		let promptLedger: ReturnType<typeof readGoalLedger> | undefined;
 		const getPromptLedger = () => promptLedger ??= { events: core.state.goal ? goalRuntimeEvents(ctx, core.state.goal.id) : [], malformed: 0 };
-
-		// If this turn was triggered by a hidden goal checkpoint that no longer
-		// matches the active goal, abort the whole turn instead of letting the
-		// model act on a stale instruction.
-		if (incomingGoalId !== null) {
-			// Reconcile from disk to pick up any external state changes before
-			// evaluating whether the checkpoint is actionable.
-			core.reconcileFocusedGoalFromDisk(ctx);
-			core.runtime.setCheckpoint(incomingGoalId);
-			// This can be the hidden checkpoint dispatched by the network-error
-			// timer. Clear ordinary continuation bookkeeping but retain the
-			// consecutive recovery count for a later failed retry.
-			core.clearContinuationState(false);
-			if (!core.isActionableContinuationGoal(incomingGoalId)) {
-				try {
-					ctx.abort?.();
-				} catch {}
-				core.updateUI(ctx);
-				return {
-					systemPrompt: `${currentSystemPrompt()}\n\n${staleContinuationPrompt(incomingGoalId, core.state.goal)}`,
-				};
-			}
-			core.runtime.setCheckpoint(null);
-		} else {
-			// A user-driven turn — clear any queued continuation so we don't
-			// double-fire after the user's own message returns. Also reset the
-			// autoContinue nudge state so the user always gets a fresh chain.
-			core.runtime.setCheckpoint(null);
-			core.clearContinuationState();
-			networkErrorRecoveryAfterSettleFor = null;
-		}
 
 		if (!core.state.goal) {
 			core.runningGoalId = null;
 			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) {
-				return { systemPrompt: `${currentSystemPrompt()}\n\n${unfocusedOpenGoalsPrompt(openCount)}` };
+				return unfocusedOpenGoalsPrompt(openCount);
 			}
 			return;
 		}
@@ -392,7 +391,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		if (!core.state.goal) {
 			core.runningGoalId = null;
 			const openCount = otherOpenGoalCount(core.goalsById, null);
-			if (openCount > 0) return { systemPrompt: `${currentSystemPrompt()}\n\n${unfocusedOpenGoalsPrompt(openCount)}` };
+			if (openCount > 0) return unfocusedOpenGoalsPrompt(openCount);
 			return;
 		}
 		core.runningGoalId = core.state.goal.status === "active" ? core.state.goal.id : null;
@@ -416,9 +415,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			} catch {
 				// Ledger read failure should not break the prompt
 			}
-			return {
-				systemPrompt: `${currentSystemPrompt()}\n\n[PI GOAL PAUSED goalId=${current.id}]\n${untrustedObjectiveBlock(current)}${pauseExtras.join("\n")}${auditorExtra}\n\nThe goal is paused. Do not autonomously continue substantive work unless the user resumes it with /goal-resume. If the user explicitly asks to finish the paused goal and the objective is already satisfied based on available evidence, you may call update_goal({status: "complete"}). To abandon a goal, the user runs /goal-clear. Do not report the goal blocked in response to a pause.`,
-			};
+			return `[PI GOAL PAUSED goalId=${current.id}]\n${untrustedObjectiveBlock(current)}${pauseExtras.join("\n")}${auditorExtra}\n\nThe goal is paused. Do not autonomously continue substantive work unless the user resumes it with /goal-resume. If the user explicitly asks to finish the paused goal and the objective is already satisfied based on available evidence, you may call update_goal({status: "complete"}). To abandon a goal, the user runs /goal-clear. Do not report the goal blocked in response to a pause.`;
 		}
 		// Token-budget-limited goals get one-time wrap-up steering: summarize,
 		// do not start new substantive work, never claim completion unless real.
@@ -435,13 +432,11 @@ export function registerGoalEvents(core: GoalCore): void {
 			const reminder = core.runtime.consumePostBudgetReminder()
 				? `\n\n[TOKEN BUDGET REACHED goalId=${limitedGoal.id}]\nThe goal's token budget has been reached${budgetText ? ` (${budgetText}${balanceText})` : ""}. Wrap up the current work in one final response: summarize what was accomplished and what remains, do not start new substantive work, and do not claim the goal is complete unless it actually is. To continue, the user must raise or remove the budget and resume the goal.`
 				: "";
-			return {
-				systemPrompt: `${currentSystemPrompt()}\n\n[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${untrustedObjectiveBlock(limitedGoal)}${budgetText ? `\n${budgetText}` : ""}${reminder}`,
-			};
+			return `[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${untrustedObjectiveBlock(limitedGoal)}${budgetText ? `\n${budgetText}` : ""}${reminder}`;
 		}
   if (core.state.goal.status === "blocked") {
    const blocked = core.state.goal;
-   return {systemPrompt: `${currentSystemPrompt()}\n\n[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\nBlocker: ${blocked.pauseReason ?? "unspecified"}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`};
+   return `[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\nBlocker: ${blocked.pauseReason ?? "unspecified"}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`;
   }
 		const activeGoal = core.state.goal;
 		const settings = loadGoalSettings(ctx.cwd);
@@ -461,7 +456,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		}
 		if (core.runtime.isPostCompactReminderPending() && shouldInjectPostCompactReminder({ pending: true, goal: activeGoal })) {
 			core.runtime.clearPostCompactReminder();
-			// PR E §62: post-compaction DELTA — the active system goal block already
+			// PR E §62: post-compaction DELTA — the current goal projection already
 			// carries objective/policy/task gate/contract; inject only what
 			// compaction may have lost. Falls back to a generic note on ledger
 			// read failure.
@@ -474,8 +469,8 @@ export function registerGoalEvents(core: GoalCore): void {
 				prompt = `${prompt}\n\n[POST-COMPACTION RESYNC goalId=${core.state.goal.id}]\nThe conversation was just compacted. Re-read the objective and continue from the actual artifacts/state; do not rely on memory of the prior chat.`;
 			}
 		}
-		return { systemPrompt: `${currentSystemPrompt()}\n\n${prompt}` };
-	});
+		return `${prompt}`;
+	}
 
 	pi.on("agent_end", async (event, ctx) => {
 		const endedGoalId = core.runningGoalId;
@@ -495,6 +490,8 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Keep any prior recovery attempt while Pi finishes its own automatic
 		// retries. A user-driven path resets it through the default argument.
 		core.runtime.clearContinuationState(false);
+		const checkpoint = core.runtime.getCheckpointGoalId();
+		if (checkpoint !== null && !core.isActionableContinuationGoal(checkpoint)) return;
 		if (!core.state.goal || core.state.goal.status !== "active" || !core.state.goal.autoContinue) return;
 		if (endedGoalId && core.state.goal.id !== endedGoalId) return;
 		if (!core.reconcileFocusedGoalFromDisk(ctx)) return;

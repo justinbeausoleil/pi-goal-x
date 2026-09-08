@@ -60,3 +60,34 @@
   and stale-trigger cases, then fixed-base independent standards/spec review.
 - Acceptance and all runtime evidence remain pending; next eligible ticket
   after 001 is 002. The complete G1–G13 / 001–014 scope remains unchanged.
+
+### Ticket 001 implementation checkpoint (review pending)
+
+- Pi development/peer dependencies now pin 0.85.1; installation used lifecycle
+  scripts disabled. No live Pi package/configuration changed.
+- Ported the lab's real-loader/stream-provider startup seam into
+  `npm run test:lifecycle`, also discovered by `test:all` in a child process
+  without SDK substitutes. No goal-file seeding or manually fired startup hook.
+- Red: `/tmp/pi-goal-001-red.log` records `npm run test:lifecycle` against
+  unchanged upstream runtime on Pi 0.85.1: one request, zero before_agent_start,
+  missing objective. An earlier harness attempt failed because structuredClone
+  cannot copy tool functions; switched to JSON capture before reproducing the
+  product failure. Both attempts remain in this log's history description.
+- Repair: per-response ephemeral context; message-start checkpoint identity,
+  dispatch reconciliation, ordinary-user chain reset, and rejected-checkpoint
+  continuation suppression. Removed dynamic system goal state.
+- Stronger red: `node --experimental-strip-types tests/goal-lifecycle-worker.mjs
+  reject-malformed` dispatched an unauthorized fixture write when malformed
+  content borrowed the active ID. Matching marker/metadata identity repairs it.
+- Green: 10 real-host cases cover four direct/guided regular/ordered commands,
+  explicit create_goal, second checkpoints, and stale/malformed/paused/replaced/
+  unfocused markers followed by ordinary user work. Actual write/read results,
+  projection content, tiny checkpoints and non-persistence are asserted.
+- The first inherited full run after moving context had six failures in tests
+  asserting the old system-prompt location. Their budget/unfocus/stale behavior
+  assertions now inspect the context hook. Targeted checks: 22/22; typecheck and
+  lint passed after fixing a test result type annotation.
+- Validation logs are retained outside Git under
+  `~/Data/pi-goal-x/reliability/001/`. Full gates and independent fixed-base
+  standards/spec review are running; 001 remains in progress. Aggregate bounds
+  and repeated compaction belong to 002; no later requirement is claimed done.

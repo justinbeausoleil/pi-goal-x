@@ -19,7 +19,7 @@ handlers from their dedicated modules:
 | `goal-task-tools.ts` | `set_goal_tasks` / `update_goal_task` executors plus flat parent-linked conversion, id-stable merge, `countTasks` |
 | `goal-task-confirmation.ts` | Task-only result boundary (`{decision}`, no auditor toggle) with neutral Confirm task list / Keep current tasks labels |
 | `goal-commands.ts` | The curated fourteen-command palette and its handlers |
-| `goal-events.ts` | The 14 lifecycle event handlers (`context`, `turn_start`, `tool_call`, `tool_execution_end`, `turn_end`, `message_end`, `session_start`, `session_before_compact`, `session_compact`, `session_tree`, `before_agent_start`, `agent_end`, `agent_settled`, `session_shutdown`) |
+| `goal-events.ts` | Lifecycle event handlers (`message_start`, `context`, `turn_start`, `tool_call`, `tool_execution_end`, `turn_end`, `message_end`, `session_start`, `session_before_compact`, `session_compact`, `session_tree`, `before_agent_start`, `agent_end`, `agent_settled`, `session_shutdown`) |
 | `goal-widget.ts` | Terminal input keybindings (Esc pause / abort-audit, Ctrl+Shift+T overlay) and the hidden debug helpers |
 | `goal-format.ts` | Pure formatting/message-introspection helpers and renderers |
 | `goal-service.ts` | `GoalService` — the sole mutation boundary: ordered reconcile → id/focus-revision validation → clone-mutate → write/archive → ledger → memory commit → returned effects |
@@ -55,6 +55,27 @@ let focusedGoalId: string | null;
 legacy session entries. `focusedGoalId` is reconstructed from branch-local
 `pi-goal-focus` session entries. The focused id is not serialized into goal
 markdown.
+
+## Executor requests (reliability fork)
+
+Development and peer dependencies are pinned to Pi 0.85.1. Custom-message
+checkpoints bypass Pi's before_agent_start hook. The message_start handler
+binds their marker identity; the context handler reconciles focused goal state
+and adds an ephemeral pi-goal-context message for each executor request.
+Normal user prompts reset continuation bookkeeping. Dynamic goal instructions
+are no longer appended to the system prompt, and projections are not saved
+in the session or added to the separate summarizer request.
+
+Checkpoint metadata and content must identify the same goal. Stale or malformed
+checkpoints receive stop guidance; tool_call rechecks eligibility before work
+dispatch. Read-only inspection stays available, and a later ordinary user
+request can use normal work tools. agent_end cannot schedule another goal from
+a rejected checkpoint. Persisted checkpoints remain tiny v2 markers.
+
+Ticket 001's real-loader test exercises four command starts, explicit
+create_goal, second checkpoints, rejected markers, and ordinary user work.
+Repeated-compaction coverage and the aggregate automatic-text bound remain
+ticket 002's acceptance work; package qualification remains ticket 012.
 
 ## Sole mutation boundary
 
