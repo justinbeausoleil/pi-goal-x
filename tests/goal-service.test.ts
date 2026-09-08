@@ -122,6 +122,29 @@ for (const buffered of [false, true]) it(`migrates surviving legacy scope on the
 	} finally { f.cleanup(); }
 });
 
+it("rebases buffered legacy work over another session's first-write scope migration", () => {
+	const f = fixture();
+	try {
+		const original = writeActiveGoalFile(f, {...f.written, taskList: {tasks: [{id: "required", title: "Verify output", verificationContract: "Output matches.", status: "pending"}], blockCompletion: true, proposedAt: f.written.createdAt}});
+		f.ref.setFocused(original);
+		const b = makeRef(cloneGoal(original));
+		const second = new GoalService(b.ref);
+		f.service.beginTurn(f, original.id);
+		assert.equal(f.service.updateTask(f, {taskId: "required", expectedWorkRevision: goalWorkRevision(original), update: t => ({...t, status: "complete", evidence: "Output matches.", completedAt: "2026-09-08T12:00:00Z"})}).ok, true);
+		f.ref.getFocused()!.usage = {tokensUsed: 21, activeSeconds: 3};
+		f.service.persist(f);
+		b.ref.getFocused()!.usage = {tokensUsed: 100, activeSeconds: 5};
+		const migrated = second.persist(f)!;
+		assert(migrated.retainedScope);
+		assert.equal(goalWorkRevision(migrated), goalWorkRevision(original));
+		assert(f.service.flushTurn(f), "metadata-only migration must not reject buffered work");
+		const saved = parseGoalFile(path.join(f.cwd, original.activePath!))!;
+		assert.equal(saved.taskList!.tasks[0]!.status, "complete");
+		assert.equal(saved.retainedScope!.tasks.required!.evidence, "Output matches.");
+		assert.deepEqual(saved.usage, {tokensUsed: 121, activeSeconds: 8});
+	} finally { f.cleanup(); }
+});
+
 it("keeps an old locked buffer when focus changes, then flushes without stealing focus", () => {
 	const f = fixture();
 	try {

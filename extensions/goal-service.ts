@@ -245,8 +245,8 @@ export class GoalService {
    // Only accounting may be rebased. The work fingerprint intentionally
    // excludes lifecycle/budget controls, which must still reject stale writes.
    const accountingOnly = revisionChanged && freshDisk && isDeepStrictEqual(
-    {...freshDisk, usage: undefined, revision: undefined, updatedAt: undefined},
-    {...normalizeGoalRecord(expected), usage: undefined, revision: undefined, updatedAt: undefined},
+    {...freshDisk, retainedScope: retainedGoalScope(freshDisk), usage: undefined, revision: undefined, updatedAt: undefined},
+    {...normalizeGoalRecord(expected), retainedScope: retainedGoalScope(expected), usage: undefined, revision: undefined, updatedAt: undefined},
    );
    if (!freshDisk || (revisionChanged && !accountingOnly)) {
     this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;

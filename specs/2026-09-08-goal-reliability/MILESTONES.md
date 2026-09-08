@@ -639,3 +639,12 @@
   experiments/context/README.md; all limits remain fixed. Independent reviews
   follow from fixed base 6f39a58. Human receipts/revisions, completed-task
   reopening, external proposals and final ticket qualification remain next.
+
+- Both independent reviewers reproduced first-write migration rejecting a
+  second session's already successful buffered task update: equivalent absent
+  versus materialized scope failed the accounting-only deep comparison. The
+  permanent two-service red records the rejected flush. The comparison now
+  uses effective retained scope on both sides while retaining all lifecycle/
+  budget/work comparisons. The green keeps completed proof and exact combined
+  usage (121 tokens, 8 seconds); service/transaction checks and type pass.
+  Evidence: scope-migration-race-{red,green}.log and scope-migration-type.log.
