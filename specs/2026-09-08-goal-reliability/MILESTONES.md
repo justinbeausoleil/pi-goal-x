@@ -226,3 +226,24 @@
   review-4/5.log retain those failures and review-4/5-serial.log the successful
   reruns. Run these two tools serially. Full-suite completion and final repair
   checks still need recording. 002 remains in progress.
+
+### Ticket 002 complete; ticket 003 frontier
+
+- Both independent follow-ups at 32e8f188 cleared all ticket-002 findings.
+  The Spec reviewer independently reran five native regressions successfully.
+  Separate reports: docs/reviews/2026-09-08-ticket-002.md.
+- Final qualification at 32e8f188: check/lint, 988/988 full tests across 76
+  discovered files, self-check plus 916 unit tests, NAF gate, dry pack, and
+  production audit passed. The 24-fixture context gate and six-payload SDK
+  cross-check passed sequentially at identical product code (5af76d98).
+  Exact commands and evidence: reliability/002/review-checks.json under Data.
+- All 002 criteria now have actual-host evidence, including three successive
+  manual/threshold/overflow compactions and stopped-state/child/context bounds.
+  No 200-node, full Oracle lifecycle, package compatibility, real-Qwen, or live
+  adoption result is implied. Those gates retain their original ticket owners.
+- Migration regression initially lacked a materialized checkpoint (ENOENT);
+  32e8f188 corrects the fixture and the final suite includes the passing case.
+- Implementation and these records are being pushed on feat/goal-reliability.
+  Main and live Pi selection remain unchanged. Ticket 003 is now in progress;
+  006 is independently eligible. Next: trace task tools/service, establish
+  public incremental-plan and work-revision red tests, then implement D2.

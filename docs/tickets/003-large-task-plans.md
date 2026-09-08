@@ -1,6 +1,6 @@
 # 003: incrementally build a 200-node task plan
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; blocker 002 verified 2026-09-08.
 **Blocked by:** 002.
 **Requirements:** G3; seams S1, S2.
 **What to build:** The executor builds 180 tasks, appends 20, and edits a small group without replacing unrelated progress.
