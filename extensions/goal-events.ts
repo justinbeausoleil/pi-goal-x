@@ -34,6 +34,7 @@ import {
 	untrustedObjectiveBlock,
 } from "./prompts/goal-prompts.ts";
 import { hasActiveDraft, rehydrateDraft } from "./goal-drafting.ts";
+import { DRAFTING_GOAL_TOOLS } from "./goal-tool-names.ts";
 import { syncTerminalInputPause } from "./goal-widget.ts";
 import type { GoalCore } from "./goal-state.ts";
 import { filterGoalSessionContext } from "./goal-session-safety.ts";
@@ -95,6 +96,8 @@ export function registerGoalEvents(core: GoalCore): void {
 	let continuationAfterSettleFor: string | null = null;
 	let networkErrorRecoveryAfterSettleFor: string | null = null;
 	let pendingStall: { goalId: string; text: string } | undefined;
+	let draftingRun = false;
+	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
 
 	pi.on("message_start", async (event) => {
 		const message = event.message;
@@ -105,6 +108,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			core.runtime.setCheckpoint(goalId && goalId.length <= 80 && goalId === markerId ? goalId : "");
 			core.clearContinuationState(false);
 		} else if (message.role === "user") {
+			draftingRun = hasActiveDraft(core);
 			core.runtime.setCheckpoint(null);
 			core.clearContinuationState();
 			networkErrorRecoveryAfterSettleFor = null;
@@ -112,6 +116,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("context", async (event, ctx) => {
+		if (hasActiveDraft(core)) draftingRun = true;
 		core.reconcileFocusedGoalFromDisk(ctx);
 		const checkpoint = core.runtime.getCheckpointGoalId();
 		const stale = checkpoint !== null && !core.isActionableContinuationGoal(checkpoint);
@@ -147,6 +152,9 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	// #4 + C9 fix + Phase 5 C3: gate in-turn tool calls based on lifecycle state.
 	pi.on("tool_call", async (event, ctx) => {
+		if ((hasActiveDraft(core) || (draftingRun && core.draftContinuationHeld)) && !draftAllowedTools.has(event.toolName)) {
+			return { block: true, reason: "This drafting run has no approval to start goal work. Continue the discussion or yield after cancellation; wait for a fresh user request or confirmed goal." };
+		}
 		const stoppedGoalId = core.currentTurnStoppedGoalId();
 		// Post-stop in-turn block: after update_goal / set_goal_tasks (or a user
 		// lifecycle command) fires in this turn, block all subsequent tool calls
@@ -404,6 +412,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		const getPromptLedger = () => promptLedger ??= { events: core.state.goal ? goalRuntimeEvents(ctx, core.state.goal.id) : [], malformed: 0 };
 
 		if (!core.state.goal) {
+			if (hasActiveDraft(core) || (draftingRun && core.draftContinuationHeld)) return "[PI GOAL DISCUSSION]\nNo goal has been approved in this discussion. Clarify or propose with drafting tools; read-only reconnaissance is allowed. After cancellation, yield for fresh user intent. Do not start implementation work.";
 			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) {
 				return unfocusedOpenGoalsPrompt(openCount);
@@ -412,7 +421,8 @@ export function registerGoalEvents(core: GoalCore): void {
 		}
 		if (core.state.goal.status === "complete") return;
 		const settings = loadGoalSettings(ctx.cwd);
-		const stoppedContext = core.state.goal.status === "active" ? "" : [
+		const discussionHeld = hasActiveDraft(core) || core.draftContinuationHeld;
+		const stoppedContext = core.state.goal.status === "active" && !discussionHeld ? "" : [
 			`work_revision: ${goalWorkRevision(core.state.goal)}`,
 			untrustedObjectiveBlock(core.state.goal), taskListBlock(core.state.goal, settings, 0),
 			verificationContractBlock(core.state.goal, settings), budgetLine(core.state.goal),
@@ -424,6 +434,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		} catch {
 			auditorExtra = '\n\n[AUDIT STATE UNAVAILABLE]\nRetrieve get_goal(section="history") before requesting completion. Do not assume a missing audit approved the work.';
 		}
+		if (discussionHeld) return `[PI GOAL DISCUSSION goalId=${core.state.goal.id}]\nApproved lifecycle: ${core.state.goal.status}. Automatic goal work is held.\n${stoppedContext}${auditorExtra}\n${hasActiveDraft(core) || draftingRun ? "Continue clarification or read-only reconnaissance; do not start implementation. After cancellation, yield for fresh user intent." : "Respond only to the user's fresh request; automatic goal work remains held."} Confirm the draft or use /goal-resume after cancellation to continue goal work.`;
 		if (core.state.goal.status === "paused") {
 			const current = core.state.goal;
 			const pauseExtras: string[] = [];

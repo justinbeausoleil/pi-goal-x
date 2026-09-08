@@ -70,3 +70,13 @@ schema description now points to lossless task pages instead of claiming a
 200-character storage limit. This adds 45 schema characters to seven fixtures;
 all semantic counts, automatic-context text and child-request measurements
 remain unchanged. No content/page/automatic-context ceiling is raised.
+
+## Draft discussion baseline (ticket 005)
+
+D1/D3 require the current allowed action in every response, including a draft
+without an approved goal. Two guided fixtures now include a 226-character
+discussion-only projection (330 serialized message characters). The gate
+requires that instruction and excludes execution guidance in those fixtures.
+All semantic counts, schemas, child contexts, and other 22 measurements remain
+unchanged; no size limit is raised. Native tests separately check an active
+tweak's cancellation, blocked same-run dispatch, and fresh ordinary user work.

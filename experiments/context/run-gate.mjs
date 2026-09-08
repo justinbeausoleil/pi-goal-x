@@ -80,6 +80,7 @@ for (const fixtureId of expectedFixtureIds) {
 
  const names = captured.tools.map(t => t.name);
  if (scenario.draftPrompt && JSON.stringify([...names].sort()) !== JSON.stringify(["goal_question", "goal_questionnaire", "propose_goal_draft"].sort())) failures.push(`${fixtureId}: incorrect drafting profile`);
+ if (scenario.draftPrompt && (!goalText.includes("[PI GOAL DISCUSSION]") || goalText.includes("Use work tools directly"))) failures.push(`${fixtureId}: drafting lacks discussion-only context`);
  if (fixtureId === "tasks-disabled" && names.some(n => n === "set_goal_tasks" || n === "update_goal_task")) failures.push(`${fixtureId}: disabled tools advertised`);
  if (["completion-audit", "audit-rejection-and-rework", "oracle-consultation"].includes(fixtureId) && !(breakdown.childRequestChars > 0)) failures.push(`${fixtureId}: child request not captured`);
  if (fixtureId === "post-compaction-turn" && !goalText.includes("POST-COMPACTION RESYNC")) failures.push(`${fixtureId}: compaction hook was not exercised`);

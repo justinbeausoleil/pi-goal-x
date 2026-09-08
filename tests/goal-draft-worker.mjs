@@ -1,6 +1,6 @@
 /** S1/S2 draft lifecycle through the real loader, public tools and session tree. */
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ process.env.PI_GOAL_AUTO_CONFIRM = "0";
 const settings = SettingsManager.inMemory({ compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 100 }, retry: { enabled: false } });
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const results = [], errors = [], dialogs = [], notices = [];
-let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles, settingsChoices = [];
+let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles, settingsChoices = [], providerFailure;
 const objective = label => `1) Discuss ${label}. Done when the requirements are agreed.\n2) Implement ${label}. Done when its tests pass.`;
 const proposal = (selectedMode, label) => ({ name: "propose_goal_draft", args: { objective: objective(label), sisyphus: selectedMode === "sisyphus", auto_continue: false } });
 const latestDraft = () => session.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-draft");
@@ -67,6 +67,14 @@ async function open(manager, sessionStartEvent) {
     if (summary) summaries++;
     else assert(++requests <= 100, "bounded draft fixture");
     const step = summary ? undefined : steps.shift();
+    if (step?.args.path === "cancelled-work.txt") {
+      const content = context.messages.at(-1)?.content;
+      const projection = typeof content === "string" ? content : (content ?? []).map(c => c.text ?? "").join("\n");
+      try {
+        assert.match(projection, /DISCUSSION|DRAFT/);
+        assert.doesNotMatch(projection, /Use work tools directly/);
+      } catch (error) { providerFailure = error; }
+    }
     const content = step ? [{ type: "toolCall", id: `draft-${requests}`, name: step.name, arguments: step.args }]
       : [{ type: "text", text: summary ? "Unconfirmed discussion remains. No goal or implementation has been approved." : "Discussion awaits the user." }];
     const value = { role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
@@ -81,7 +89,7 @@ async function run(prompt, nextSteps) {
   let settled, timeout;
   const done = new Promise((resolve, reject) => { settled = resolve; timeout = setTimeout(() => reject(new Error("Draft fixture did not settle")), 8000); });
   const unsubscribe = session.subscribe(event => { if (event.type === "agent_settled" && steps.length === 0) settled(); });
-  try { await session.prompt(prompt); await done; assert.deepEqual(errors, []); }
+  try { await session.prompt(prompt); await done; if (providerFailure) throw providerFailure; assert.deepEqual(errors, []); }
   finally { clearTimeout(timeout); unsubscribe(); }
 }
 async function reopen() {
@@ -179,7 +187,14 @@ try {
     };
     const approved = proposal(mode, "Existing active goal");
     approved.args.auto_continue = true;
-    await run("Confirm, then immediately discuss a possible revision.", [approved, proposal(mode, "Possible change")]);
+    await run("Confirm, then immediately discuss a possible revision.", [approved, proposal(mode, "Possible change"),
+      ...(scenario === "active-cancel" ? [{ name: "write", args: { path: "cancelled-work.txt", content: "Unauthorized drafting continuation" } }] : []),
+    ]);
+    if (scenario === "active-cancel") {
+      assert.equal(existsSync(join(cwd, "cancelled-work.txt")), false, "cancelled drafting run must not dispatch a new write before settlement");
+      const rejected = session.messages.findLast(m => m.role === "toolResult" && m.toolName === "write");
+      assert.equal(rejected?.isError, true, "host reports the blocked dispatch");
+    }
     if (scenario === "active-settings") {
       settingsChoices = ["disableTasks:", "Set project override to true", "Done"];
       await session.prompt("/goal-settings");
@@ -201,6 +216,8 @@ try {
       await session.compact();
       await delay(150);
       assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 0, "cancelled drafting remains stopped after compaction");
+      await run("Write ordinary.txt with the word authorized; this is an unrelated user request.", [{ name: "write", args: { path: "ordinary.txt", content: "authorized" } }]);
+      assert.equal(readFileSync(join(cwd, "ordinary.txt"), "utf8"), "authorized", "a fresh ordinary user request can still use normal tools");
       await run("/goal-resume", [{ name: "update_goal", args: { status: "paused", reason: "Explicit resume verified." } }]);
       assert.equal(results.at(-1).details.goal.status, "paused", "explicit resume permits a fresh execution response: " + JSON.stringify(results.at(-1)));
       assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 1, "explicit resume dispatches once");
@@ -229,7 +246,7 @@ try {
     assert(!session.getActiveToolNames().includes("propose_goal_draft"));
   } else throw new Error(`Unknown scenario ${scenario}`);
   assert.deepEqual(results.filter(r => r.isError), []);
-  assert(!results.some(r => ["write", "edit", "bash"].includes(r.toolName)), "no unconfirmed implementation work");
+  assert(!results.some(r => ["write", "edit", "bash"].includes(r.toolName) && r.input?.path !== "ordinary.txt"), "no unconfirmed implementation work");
   console.log(JSON.stringify({ passed: true, scenario, mode, requests, summaries, dialogs: dialogs.length }));
 } finally {
   if (session) await session.abort();

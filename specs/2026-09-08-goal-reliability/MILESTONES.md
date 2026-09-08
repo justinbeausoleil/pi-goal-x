@@ -539,3 +539,22 @@
   correctly rejected it, and the corrected fixture supplies the reason.
   Type/lint and 110 targeted drafting/settings/session checks pass. Final native
   verification and independent review follow; retained scope remains next.
+
+- The 21a7bea follow-up cleared the settings repair but Spec reproduced one
+  more cancellation path: the same drafting run could write after a returning
+  stale proposal, before settlement. Zero checkpoints alone missed this.
+  draft-cancel-dispatch-red.log records the unauthorized file; the regression
+  now attempts that actual write, checks the host's blocked result, and proves
+  a fresh ordinary user request can still write after cancellation.
+- The event boundary retains discussion identity through cancellation and
+  gates every work-tool dispatch, allowing drafting and read-only research.
+  Per-response context now explains the discussion hold instead of instructing
+  work on the approved active goal. The initial context assertion inspected
+  custom messages after Pi had converted them and failed at the wrong boundary;
+  draft-cancel-provider-payload-red.log is the corrected red against actual
+  provider content. All failed/provisional logs remain under Data/005.
+- Standards requested architecture documentation for the hold's ownership,
+  release and reload behavior; docs/architecture.md now records them. Two
+  context baselines gain only the 226-character no-goal discussion instruction;
+  the rationale and a new drafting invariant are in experiments/context/.
+  Semantic counts and all ceilings are unchanged. Qualification/review pending.

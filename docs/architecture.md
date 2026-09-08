@@ -212,8 +212,15 @@ selected branch's latest draft entry replaces memory, including its auditor
 choice and questionnaire answers. Awaited drafting decisions are bound to the
 draft object, session/focus generation and content-based work revision; late
 answers cannot recreate a cancelled/replaced draft or apply to changed work.
-Drafting is excluded from the shared actionable-continuation predicate, so an
-active goal can remain active while its user discusses a revision. The native
+GoalCore owns a session-local continuation hold while drafting, including after
+explicit cancellation. Confirmation, creation, or explicit focus/resume releases
+it; reload restores D4 eligibility and a live branch draft reinstates the hold.
+Profile refreshes consult the actual draft independently of this hold, so task
+settings cannot end the discussion. The event boundary remembers a drafting
+run through cancellation and blocks new work-tool dispatch before settlement;
+read-only reconnaissance and drafting tools remain available. A fresh ordinary
+user message can use normal tools after cancellation. The approved goal can
+remain active while its user discusses a revision. The native
 host's fork start detaches focus before restoring drafts or scheduling work;
 a normal discussion can survive, while a detached tweak is tombstoned.
 
