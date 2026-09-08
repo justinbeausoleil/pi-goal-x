@@ -29,6 +29,16 @@ function escapeRegExp(text) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const failures = [];
 
+// Native summaries are provider-visible too; a duplicate must never evade the gate.
+for (const role of ["compactionSummary", "branchSummary"]) {
+	const marker = "[PI GOAL ACTIVE goalId=summary-probe]";
+	const probe = semanticCounts({ baseSystem: "", messages: [
+		{ role, summary: marker, timestamp: 0 },
+		{ role: "custom", customType: "pi-goal-context", content: marker, timestamp: 0 },
+	] });
+	if (probe.goalActiveMarker !== 2) failures.push(`${role}: provider-visible summary text was not counted`);
+}
+
 const baseline = JSON.parse(readFileSync(path.join(here, "baseline-main.json"), "utf8"));
 const baselineById = new Map(baseline.fixtures.map((r) => [r.fixture, r]));
 

@@ -6,6 +6,7 @@
  */
 
 import { countSemanticOccurrences, currentTaskNeedle } from "./semantic-invariants.mjs";
+import { convertToLlm } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/messages.js";
 
 /**
  * Serialize one captured request to the exact text whose size we report.
@@ -108,7 +109,7 @@ function checkpointTotal(captured) {
 export function semanticCounts(captured) {
 	const serialized = serializeRequest(captured);
 	// Count provider-visible text, not JSON escapes of multiline objective strings.
-	const text = [serialized.system, ...(captured.messages ?? []).map(m => contentText(m.content)), serialized.tools, serialized.hostTools].join("\n");
+	const text = [serialized.system, ...convertToLlm(captured.messages ?? []).map(m => contentText(m.content)), serialized.tools, serialized.hostTools].join("\n");
 	return countSemanticOccurrences(text, {
 		objective: captured.goal?.objective,
 		verificationContract: captured.goal?.verificationContract,

@@ -124,3 +124,16 @@
   passed all five tests. A separate detached upstream worktree at fe430b25 under
   ~/Developer/scratch is rerunning clean locked baseline installation/checks;
   this replaces any ambiguity from the early dependency-alignment timing.
+
+- Follow-up review at 3ac2d4c: both specification findings resolved; both initial
+  standards findings resolved. One additional standards finding reproduced:
+  decoded semantic counting omitted native compaction/branch summary text.
+  Added a red-capable probe to the existing context gate and now use Pi's
+  native convertToLlm conversion. The two-summary duplicate-marker probes and
+  all 24 fixtures pass without another baseline change; provider cross-check
+  and lint rerun for this measurement-only fix.
+- Post-review runtime qualification at 3ac2d4c passed all nine npm commands in
+  `~/Data/pi-goal-x/reliability/001/review-checks.json`, including full tests and
+  self-check, both context gates, NAF benchmark, dry pack and production audit.
+  Clean upstream fe430b25 installation/check/typecheck/full tests also passed:
+  961/961 tests with its locked original dependencies. Main remains unchanged.
