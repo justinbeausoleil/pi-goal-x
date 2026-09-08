@@ -56,7 +56,15 @@ const replacing = control.startsWith("replace");
 const successor = !recovery && boundary !== "oracle-followup" && (replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control));
 const oracleFollowup = boundary === "oracle-followup";
 const oracleOutcome = boundary === "oracle-outcome";
-const reviewing = boundary === "audit" || boundary === "oracle" || oracleFollowup || oracleOutcome;
+const auditOutcome = boundary === "audit-outcome";
+const reviewReopen = process.argv.includes("--review-reopen");
+const reviewLedgerFailure = process.argv.includes("--review-ledger-failure");
+const completionWriteFailure = process.argv.includes("--completion-write-failure");
+const reviewWriteFailure = process.argv.includes("--review-write-failure");
+const auditCancelled = auditOutcome && control.startsWith("cancel-");
+const auditSkipped = auditOutcome && (control.startsWith("disabled-") || control === "per-goal" || control === "cancel-skip");
+const auditStopped = auditOutcome && control.endsWith("-paused");
+const reviewing = boundary === "audit" || boundary === "oracle" || oracleFollowup || oracleOutcome || auditOutcome;
 const agentStop = boundary === "agent" || boundary === "agent-block";
 let retryOffered = false, hostRetries = 0;
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
@@ -68,7 +76,9 @@ process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
 process.env.PI_GOAL_AUTO_CONFIRM = "1";
 const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: {enabled: boundary === "provider-retry", maxRetries: 2, baseDelayMs: 1}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
-const results = [], errors = [], requests = [], notices = [];
+const results = [], errors = [], requests = [], notices = [], statuses = [];
+const widgetFrames = [];
+let goalWidget;
 const bills = [];
 let billedRunOwner;
 const timeline = [];
@@ -88,8 +98,27 @@ let triggerGoalId, testing = false, secondaryDone = false, replaying = false, fo
 let queuedUserSeen = false, queuedUserDone = false;
 let agentResumed = false, agentResumeCheckpoint = 0;
 let faultGoalId, failedUsageWrites = 0;
+let failedCompletionWrites = 0;
+let failedReviewWrites = 0;
+let failedLedgerWrites = 0;
+const originalAppend = fs.appendFileSync;
+fs.appendFileSync = (path, ...args) => {
+  if (reviewLedgerFailure && testing && String(path).endsWith("goal_events.jsonl")) {
+    failedLedgerWrites++;
+    throw Object.assign(new Error("Synthetic review ledger failure"), {code: "EACCES"});
+  }
+  return originalAppend(path, ...args);
+};
 const originalRename = fs.renameSync;
 fs.renameSync = (from, to) => {
+  if (reviewWriteFailure && testing && String(to).includes("/active_goal_") && parseGoalFile(String(from))?.latestReview) {
+    failedReviewWrites++;
+    throw Object.assign(new Error("Synthetic review write failure"), {code: "EACCES"});
+  }
+  if (completionWriteFailure && testing && String(to).includes("/active_goal_") && parseGoalFile(String(from))?.status === "complete") {
+    failedCompletionWrites++;
+    throw Object.assign(new Error("Synthetic completion write failure"), {code: "EACCES"});
+  }
   if (faultGoalId && String(to).endsWith(".md") && String(to).includes(faultGoalId) && !(clearUnpaid && String(to).includes("/archived/"))) {
     failedUsageWrites++;
     throw Object.assign(new Error("Synthetic unpaid-usage write failure"), {code: "EACCES"});
@@ -112,14 +141,26 @@ const server = http.createServer(async (req, res) => {
   childPayloads.push(payload);
   childRequests++;
   res.on("close", () => { if (!res.writableEnded) transportAborted = true; resolveChildClosed(); });
-  if (childRequests === 1 && !oracleFollowup && !oracleOutcome) { await stop(); await delay(30); }
+  if (childRequests === 1 && !oracleFollowup && !oracleOutcome && !auditOutcome) { await stop(); await delay(30); }
+  if (childRequests === 1 && auditCancelled) { assert.deepEqual(terminalInput("\x1b"), {consume: true}); await delay(30); }
+  if (childRequests === 1 && auditOutcome && control === "stale-work") editPrimaryMetadata(record => { record.taskList.tasks[0].title = "A new user requirement arrived during the audit"; });
   if (res.destroyed) return;
-  if (oracleOutcome && control === "provider") { res.writeHead(401); res.end(JSON.stringify({error: {message: "Synthetic Oracle provider failure"}})); return; }
+  if ((oracleOutcome || auditOutcome) && control === "provider") { res.writeHead(401); res.end(JSON.stringify({error: {message: "Synthetic review provider failure"}})); return; }
   res.writeHead(200, {"content-type": "text/event-stream"});
   const submit = boundary.startsWith("oracle") && control !== "malformed" && !payload.messages.some(message => message.role === "tool");
   const offered = {...advice, ...(["needs_human", "insufficient_context"].includes(control) ? {disposition: control} : {}), ...(control === "invalid-index" ? {recommendedIndex: 3} : {})};
-  const delta = submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(offered)}}]} : {role: "assistant", content: boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
-  for (const [d, finish_reason] of [[delta, null], [{}, submit ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({id: "stop-review", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta: d, finish_reason}]})}\n\n`);
+  const auditRead = auditOutcome && !payload.messages.some(message => message.role === "tool");
+  const artifactWrong = JSON.stringify(payload.messages.filter(message => message.role === "tool")).includes("wrong");
+  const rejectionReport = "proof.txt contains wrong instead of verified.\n" + (reviewReopen ? "Retained finding: repair the actual proof artifact.\n".repeat(100) : "") + "<disapproved/>";
+  if (auditOutcome) {
+    assert(JSON.stringify(payload.messages).includes("proof.txt must contain verified"), "the auditor receives the retained contract");
+    assert(!payload.tools.some(tool => ["create_goal", "update_goal", "set_goal_tasks", "update_goal_task"].includes(tool.function.name)));
+    if (!auditRead) assert(JSON.stringify(payload.messages.filter(message => message.role === "tool")).includes(readFileSync(join(cwd, "proof.txt"), "utf8")), "the auditor actually read the workspace artifact");
+  }
+  const delta = auditRead ? {role: "assistant", tool_calls: [{index: 0, id: "audit-read", type: "function", function: {name: "read", arguments: JSON.stringify({path: "proof.txt"})}}]}
+    : submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(offered)}}]}
+    : {role: "assistant", content: auditOutcome ? (artifactWrong ? rejectionReport : control === "malformed" ? "The artifact was inspected; no verdict supplied." : "proof.txt contains verified.\n<approved/>") : boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
+  for (const [d, finish_reason] of [[delta, null], [{}, submit || auditRead ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({id: "stop-review", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta: d, finish_reason}]})}\n\n`);
   res.end("data: [DONE]\n\n");
 });
 
@@ -146,12 +187,16 @@ async function stop() {
 }
 async function bind() {
   await session.bindExtensions({mode: "rpc", onError: error => errors.push(error), uiContext: {
-    notify: message => notices.push(message), setStatus() {}, setWidget() {}, setEditorText() {},
+    notify: message => notices.push(message), setStatus: (_key, value) => statuses.push(value),
+    setWidget: (_key, factory) => {
+      if (auditOutcome) goalWidget = typeof factory === "function" ? factory({requestRender() {}}, {fg: (_color, value) => value, bg: (_color, value) => value, bold: value => value}) : undefined;
+    }, setEditorText() {},
     onTerminalInput: handler => { terminalInput = handler; return () => {}; },
     confirm: async title => title === "Clear goal?",
     select: async (_title, choices) => choices.find(choice => choice.includes(selectId)),
     custom: async () => {
       dialogSeen = true;
+      if (auditCancelled) return control === "cancel-skip" ? "complete_without_audit" : "continue_working";
       if (boundary === "audit") return "continue_working";
       if (control === "esc") { assert.equal(terminalInput("\x1b"), undefined); return {decision: "cancel"}; }
       await duringDialog?.();
@@ -166,6 +211,13 @@ async function create({sessionManager, sessionStartEvent}) {
       pi.on("agent_start", () => { billedRunOwner = undefined; });
       pi.on("tool_result", event => {
         results.push(event);
+        if (auditOutcome && testing && event.toolName === "update_goal") {
+          if (goalWidget) widgetFrames.push(goalWidget.render(140).join("\n"));
+          if (event.details?.goal?.status === "complete") {
+            assert.equal(parseGoalFile(resolve(cwd, event.details.goal.activePath)).status, "complete", "the executor receives the committed result before deferred archival");
+            assert(!existsSync(join(cwd, ".pi/goals/archived")), "archival has not run at the completion tool result");
+          }
+        }
         if (controlledClock && event.toolName === "create_goal" && event.details?.goal) clockNow += 8000;
         if (controlledClock && testing && agentStop && event.toolName === "update_goal" && ["paused", "blocked"].includes(event.details?.goal?.status)) clockNow += 5700;
         if (event.toolName === "create_goal" && event.details?.goal && bills.at(-1)?.goalId === null) {
@@ -235,7 +287,7 @@ async function create({sessionManager, sessionStartEvent}) {
     if (billedRunOwner === undefined) billedRunOwner = JSON.stringify(context.messages.at(-1)?.content).match(/\[PI GOAL ACTIVE goalId=([^\]]+)\]/)?.[1] ?? null;
     bills.push({goalId: billedRunOwner, tokens: 110});
     timeline.push({event: "request", count: requests.length});
-    if (requests.length > 30) failure = new Error("Unbounded stop fixture continuation");
+    if (requests.length > (reviewReopen ? 45 : 30)) failure = new Error("Unbounded stop fixture continuation");
     const startSecondary = testing && !replaying && successor && !secondaryDone
       && (control !== "agent-resume" || (agentResumed && checkpoints.length > agentResumeCheckpoint))
       && (replacing ? typeof triggerGoalId === "string" && triggerGoalId !== primary.id : triggerGoalId === (switching ? secondary.id : primary.id));
@@ -247,6 +299,7 @@ async function create({sessionManager, sessionStartEvent}) {
     if (retryError) retryOffered = true;
     const calls = failure || retryError ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     const recoveryFailure = recovery ? calls[0]?.failure : undefined;
+    if (auditOutcome) for (const call of calls) if (call.name === "update_goal_task") call.args.expected_work_revision = results.findLast(result => result.details?.work_revision)?.details.work_revision;
     if (startSecondary) secondaryDone = true;
     if (controlledClock && boundary === "completion" && calls.some(call => call.name === "update_goal" && call.args.status === "complete")) clockNow += 8000;
     const content = recoveryFailure ? [] : calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: control === "clarify" ? "Which output format should I use?" : "Waiting for explicit authorization."}];
@@ -305,6 +358,12 @@ function assertBilling() {
     assert.equal(events.filter(event => event.type === "goal_budget_limited" && event.goalId === primary.id).length, 1, "one durable budget transition despite subsequent responses and refresh");
   }
 }
+function editPrimaryMetadata(edit) {
+  const path = resolve(cwd, primary.activePath), content = readFileSync(path, "utf8"), split = content.indexOf("\n\n# Goal Prompt");
+  const record = JSON.parse(content.slice(0, split));
+  edit(record);
+  writeFileSync(path, JSON.stringify(record) + content.slice(split));
+}
 try {
   if (recovery) {
     mkdirSync(join(cwd, ".pi"));
@@ -318,6 +377,15 @@ try {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     mkdirSync(join(cwd, ".pi"));
     writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({provider: "fixture", model: "reviewer", disabled: false, oracle: {enabled: boundary.startsWith("oracle") && control !== "disabled", provider: "fixture", ...(control === "config" ? {} : {model: "reviewer"}), projectResources: control === "resources", maxFailedAttemptsPerBlocker: 2}}));
+    if (auditOutcome && control.startsWith("disabled-")) {
+      const settingsFile = join(cwd, ".pi", "pi-goal-x-settings.json");
+      if (control === "disabled-global") writeFileSync(settingsFile, "{}");
+      writeFileSync(control === "disabled-global" ? process.env.PI_GOAL_GLOBAL_SETTINGS_FILE : settingsFile, JSON.stringify({disabled: true, provider: "fixture", model: "reviewer"}));
+    }
+    if (auditOutcome && control === "approved-global-model") {
+      writeFileSync(join(cwd, ".pi/pi-goal-x-settings.json"), "{}");
+      writeFileSync(process.env.PI_GOAL_GLOBAL_SETTINGS_FILE, JSON.stringify({provider: "fixture", model: "reviewer"}));
+    }
     if (oracleFollowup) writeFileSync(join(cwd, "AGENTS.md"), "oracle-project-resource-sentinel");
   }
   host = await createAgentSessionRuntime(create, {cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
@@ -326,11 +394,15 @@ try {
   deadline = setTimeout(() => { failure = new Error("Stop fixture deadline exceeded"); void session.abort(); }, 8000);
   await run("Create a goal to verify explicit stop boundaries.", [
     {name: "create_goal", args: {objective: "Write only explicitly authorized fixture files; preserve user stop boundaries.", ...(lateBudget ? {token_budget: 440} : {})}},
-    {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof"}]}},
-    ...(boundary === "audit" ? [write("proof.txt"), {name: "update_goal_task", args: {task_id: "work", status: "complete", evidence: "proof.txt contains proof.txt"}}] : []), pause,
+    {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof", ...(auditOutcome ? {verification_contract: "proof.txt must contain verified"} : {})}]}},
+    ...(boundary === "audit" || auditOutcome ? [{name: "write", args: {path: "proof.txt", content: auditOutcome ? control === "disapproved" ? "wrong" : "verified" : "proof.txt"}}, {name: "update_goal_task", args: {task_id: "work", status: "complete", evidence: auditOutcome ? "Executor claims proof.txt contains verified" : "proof.txt contains proof.txt"}}] : []), pause,
   ]);
   primary = structuredClone(currentGoal());
   assert.equal(primary.status, "paused");
+  if (auditOutcome && control === "per-goal") {
+    editPrimaryMetadata(record => { record.skipAuditor = true; });
+    await session.prompt("/goal-refresh");
+  }
   if (controlledClock) assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).usage.activeSeconds, 8, "model creation starts its active clock before response settlement");
   if (switching) {
     responses = [[pause]];
@@ -349,8 +421,86 @@ try {
     settings.setCompactionEnabled(true);
   }
   testing = true;
-  if (boundary !== "ordinary") await session.prompt("/goal-resume");
-  if (compactionFailure) {
+  if (boundary !== "ordinary" && !auditStopped) await session.prompt("/goal-resume");
+  if (auditOutcome) {
+    await run("Complete only if the independent review permits it.", [{name: "update_goal", args: {status: "complete"}}]);
+    const skipped = auditSkipped;
+    if (skipped && !auditCancelled) assert.equal(childRequests, 0, "effective disabled settings bypass the child auditor");
+    else assert(childRequests > 0, "the actual child transport ran");
+    const completed = !completionWriteFailure && (skipped || control.startsWith("approved"));
+    const file = completed ? join(cwd, ".pi/goals/archived", readdirSync(join(cwd, ".pi/goals/archived")).find(name => name.includes(primary.id))) : resolve(cwd, primary.activePath);
+    const record = parseGoalFile(file);
+    assert.equal(record.status, completed ? "complete" : auditStopped ? "paused" : "active");
+    if (reviewWriteFailure) {
+      assert(failedReviewWrites > 0);
+      const result = results.findLast(result => result.toolName === "update_goal");
+      assert(!result.isError, "review persistence failure returns an actionable tool result");
+      assert.match(JSON.stringify(result.content), /Could not retain.*review.*not completed/i);
+      assert(JSON.stringify(result.content).includes("proof.txt contains wrong"), "the unpersisted findings remain visible in the tool result");
+      assert.equal(record.latestReview, undefined);
+    } else if (control === "stale-work") {
+      assert.equal(record.latestReview, undefined, "a stale review cannot become authoritative");
+      assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /completion failed.*not completed/i);
+      assert.equal(record.taskList.tasks[0].title, "A new user requirement arrived during the audit");
+    } else if (completionWriteFailure) {
+      assert(failedCompletionWrites > 0, "the completion commit reached the failing storage boundary");
+      assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /completion failed.*not completed/i);
+      assert(!session.messages.some(message => message.role === "custom" && message.customType === "pi-goal-audit-event" && ["approved", "skipped"].includes(message.details?.phase)), "failed completion cannot publish a successful audit/completion card");
+      assert(!statuses.some(status => status?.includes("complete")));
+    } else {
+      assert.equal(record.latestReview?.outcome, skipped ? "audit_skipped" : auditCancelled ? "cancelled" : control.startsWith("approved") ? "approved" : control === "provider" ? "error" : control, "the latest outcome survives independently of the ledger");
+      if (skipped) assert.equal(record.latestReview.bypassOrigin, control === "per-goal" ? "per_goal" : control === "cancel-skip" ? "user_choice" : "settings");
+      if (auditStopped && auditCancelled) assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /remains paused/);
+      assert(record.latestReview.report.length > 0);
+      assert.match(record.latestReview.workRevision, /^[a-f0-9]{64}$/);
+      if (completed) {
+        const label = skipped ? "complete (audit skipped)" : "complete (audited)";
+        assert(readFileSync(file, "utf8").includes(`Status: ${label}`), "archive labels the completion origin");
+        assert(widgetFrames.some(frame => skipped ? frame.includes(label) : /APPROVED|complete \(audited\)/.test(frame)), `the live widget labels the completion origin: ${JSON.stringify(widgetFrames)}`);
+      }
+    }
+    if (!completed) await session.prompt("/goal-pause");
+    if (reviewReopen) {
+      assert.equal(record.latestReview.outcome, "disapproved");
+      for (let i = 0; i < 3; i++) {
+        await session.sendCustomMessage({customType: "review-fixture-ballast", content: "00112233445566778899 ".repeat(5000), display: false}, {triggerTurn: false});
+        await session.compact();
+      }
+      assert.equal(summaries, 3);
+      await host.switchSession(session.sessionManager.getSessionFile());
+      assert.deepEqual(parseGoalFile(resolve(cwd, primary.activePath)).latestReview, record.latestReview);
+      const projectedAt = requests.length;
+      await run("Inspect the saved goal after reopening.", [{name: "get_goal", args: {}}]);
+      const projection = JSON.stringify(requests[projectedAt].messages.at(-1));
+      assert(projection.includes("proof.txt contains wrong instead of verified"), "authoritative rejection is supplied even without ledger history");
+      assert(projection.includes('section=\\"review\\"'), "next response can retrieve the full review");
+      let cursor, fullReview = "", pages = 0;
+      do {
+        await run("Read the next review page.", [{name: "get_goal", args: {section: "review", ...(cursor ? {cursor} : {})}}]);
+        const page = results.at(-1).details?.page;
+        assert(page, "review is available through the public detail tool");
+        assert(page.content.length <= 4000);
+        fullReview += page.content;
+        cursor = page.nextCursor;
+        assert(++pages <= 4, "bounded pagination terminates");
+      } while (cursor);
+      assert(pages > 1);
+      assert.deepEqual(JSON.parse(fullReview), record.latestReview, "the complete report survives losslessly");
+      if (reviewLedgerFailure) {
+        assert(failedLedgerWrites > 0);
+        assert(!readFileSync(goalLedgerPath({cwd}), "utf8").includes('"type":"audit_result"'));
+      }
+      await session.prompt("/goal-resume");
+      await run("Repair the actual artifact, then request a fresh independent review.", [
+        {name: "write", args: {path: "proof.txt", content: "verified"}},
+        {name: "update_goal", args: {status: "complete"}},
+      ]);
+      const archived = parseGoalFile(join(cwd, ".pi/goals/archived", readdirSync(join(cwd, ".pi/goals/archived")).find(name => name.includes(primary.id))));
+      assert.equal(archived.status, "complete");
+      assert.equal(archived.latestReview.outcome, "approved");
+      assert.equal(childRequests, 4, "each review independently reads the current artifact");
+    }
+  } else if (compactionFailure) {
     responses = control.includes("overflow")
       ? [[{failure: {stopReason: "error", errorMessage: "maximum context length exceeded"}}], [write("forbidden.txt"), pause]]
       : [[write("before-compaction.txt")], [], [write(compactionSuccessor ? "resumed-proof.txt" : "forbidden.txt"), pause]];
@@ -692,7 +842,7 @@ try {
   const focused = results.at(-1).details.goal;
   if (process.argv.includes("--accounting")) assertBilling();
   if (exhaustedEdit) assert.equal(focused.status, "budget_limited");
-  else if (boundary === "completion" || clearUnpaid || (["unfocus", "clear", "new-session"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
+  else if (boundary === "completion" || (auditOutcome && !completionWriteFailure && (reviewReopen || auditSkipped || control.startsWith("approved"))) || clearUnpaid || (["unfocus", "clear", "new-session"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, boundary === "agent-block" || oracleFollowup || oracleOutcome ? "blocked" : "paused");
   if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {
@@ -708,6 +858,7 @@ try {
   globalThis.setTimeout = originalTimeout; globalThis.clearTimeout = originalClearTimeout;
   Date.now = originalNow;
   fs.renameSync = originalRename;
+  fs.appendFileSync = originalAppend;
   syncBuiltinESMExports();
   clearTimeout(deadline);
   await session?.abort();

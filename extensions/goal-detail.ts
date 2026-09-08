@@ -6,7 +6,7 @@ import { retainedGoalScope } from "./goal-scope.ts";
 
 export const GOAL_DETAIL_PAGE_CHARS = 4000;
 const INVALID_CURSOR = "Invalid or stale cursor: goal details changed or the section/task differs. Restart this section without cursor.";
-export type GoalDetailSection = "objective" | "tasks" | "history" | "scope";
+export type GoalDetailSection = "objective" | "tasks" | "history" | "scope" | "review";
 export interface GoalDetailQuery { section: GoalDetailSection; task_id?: string; cursor?: string }
 export type GoalDetailPage = {ok: true; text: string; goalId: string; section: GoalDetailSection; taskId?: string; contentRevision: string; content: string; nextCursor?: string; totalChars: number} | {ok: false; text: string};
 
@@ -17,7 +17,7 @@ let detailCacheChars = 0;
 function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[], revision?: object): DetailSource | undefined {
  const index = query.section === "tasks" ? taskIndex(goal.taskList?.tasks) : undefined;
  const inputs = [goal.id, query.section, query.task_id, ...(query.section === "objective" ? [goal.objective, goal.verificationContract]
-  : query.section === "tasks" ? [index, goal.currentTaskId] : [revision])];
+  : query.section === "tasks" ? [index, goal.currentTaskId] : query.section === "review" ? [goal.latestReview] : [revision])];
  // Arbitrary caller-owned histories remain content checked; only the ledger can supply a generation.
  const cacheable = query.section !== "scope" && (query.section !== "history" || revision !== undefined);
  if (cacheable) for (let i = detailCache.length - 1; i >= 0; i--) {
@@ -28,6 +28,7 @@ function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readon
  if (query.section === "objective") source = `${goal.objective}${goal.verificationContract ? `\n\nVerification contract:\n${goal.verificationContract}` : ""}`;
  else if (query.section === "history") source = events.filter(e => "goalId" in e && e.goalId === goal.id).map(e => JSON.stringify(e)).join("\n");
  else if (query.section === "scope") source = JSON.stringify(retainedGoalScope(goal));
+ else if (query.section === "review") source = JSON.stringify(goal.latestReview ?? null);
  else {
   const rows = index!.ordered;
   const selected = query.task_id ? rows.find(row => row.task.id === query.task_id) : undefined;

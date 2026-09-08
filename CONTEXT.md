@@ -49,6 +49,10 @@ request. _Avoid_: new goal, new requirement.
 An independent assessment of a completion claim against requirements and
 evidence. _Avoid_: task count, successful tool call.
 
+**Latest completion review**:
+The most recent audit outcome or explicit bypass, together with its report and
+the work it assessed. _Avoid_: complete review history, executor claim.
+
 **Blocker**:
 An impediment that prevents required progress and remains unresolved after
 concrete attempts. _Avoid_: unfinished work, pause.

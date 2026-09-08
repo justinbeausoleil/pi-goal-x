@@ -304,11 +304,7 @@ export function renderCompactDashboard(
 	lines.push(boxHeader(theme, safeWidth, `${accent(theme, "pi-goal-x")} ${frame(theme, `─ ${model.title}`)}`));
 
 	// Status line.
-	if (model.status.code === "complete") {
-		lines.push(boxLine(theme, safeWidth, `${success(theme, "✓")} ${success(theme, "All required work is complete.")}`));
-	} else {
-		lines.push(boxLine(theme, safeWidth, statusLine(theme, model)));
-	}
+	lines.push(boxLine(theme, safeWidth, statusLine(theme, model)));
 
 	// Budget (when configured): fuel gauge + amount, amber until the budget is
 	// exhausted, then soft red.

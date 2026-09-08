@@ -54,7 +54,8 @@ test("renderGoalWidgetLines shows the complete state", () => {
 		sisyphus: false,
 		archivedPath: ".pi/goals/archived/goal.md",
 	}), theme, 100);
-	assert.match(lines.join("\n"), /All required work is complete/);
+	assert.match(lines.join("\n"), /goal: complete/);
+	assert.doesNotMatch(lines.join("\n"), /audited|APPROVED/, "legacy completion has no review claim");
 });
 
 
@@ -420,7 +421,7 @@ test("GoalWidgetComponent shows completed goal status", () => {
 	});
 
 	const lines = component.render(100);
-	assert.match(lines.join("\n"), /All required work is complete/);
+	assert.match(lines.join("\n"), /goal: complete/);
 });
 
 for (const width of [50, 70, 100, 109, 120]) {

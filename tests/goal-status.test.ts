@@ -193,7 +193,7 @@ test("unfocused and no-goal states render correctly", () => {
 	assert.match(none, /No goal is set/);
 });
 
-test("complete goal standard output shows the §4.7 message", () => {
+test("complete goal standard output shows its completion status", () => {
 	const text = buildGoalStatusText({
 		goal: withTasks(fiveTasks().map((t) => ({ ...t, status: "complete" as const })), {
 			status: "complete",
@@ -203,7 +203,7 @@ test("complete goal standard output shows the §4.7 message", () => {
 		focused: true,
 		otherOpenGoals: 0,
 	});
-	assert.match(text, /All required work is complete/);
+	assert.match(text, /goal: complete/);
 });
 
 test("health mode reports storage, ledger, task, and budget warnings without claiming completion", () => {

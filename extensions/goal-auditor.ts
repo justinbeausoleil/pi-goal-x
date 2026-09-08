@@ -16,6 +16,7 @@ import type { GoalRecord, GoalTask, GoalTaskList } from "./goal-record.ts";
 import { countTaskSubtree } from "./goal-task-count.ts";
 import { loadGoalSettings, type GoalSettings, type ThinkingLevel } from "./goal-settings.ts";
 import { statusLabel } from "./goal-core.ts";
+import { isAbortedAssistantMessage, isErrorAssistantMessage } from "./goal-format.ts";
 
 export interface AuditorProgress {
 	/** Current tool being executed by the auditor, if any */
@@ -335,6 +336,7 @@ export async function runGoalCompletionAuditor(args: {
 	const thinkingLevel = config.thinkingLevel;
 	const outputParts: string[] = [];
 	let outputTail: string[] = [];
+	let providerFailure: string | undefined;
 	if (resolved.error) {
 		return { approved: false, disapproved: true, output: "", model: modelLabel(model), thinkingLevel, error: resolved.error };
 	}
@@ -428,8 +430,9 @@ export async function runGoalCompletionAuditor(args: {
 				return;
 			}
 			if (event.type !== "message_end") return;
-			const message = event.message as { role?: string; content?: Array<{ type?: string; text?: string }> };
+			const message = event.message as { role?: string; content?: Array<{ type?: string; text?: string }>; errorMessage?: string };
 			if (message.role !== "assistant") return;
+			providerFailure = isErrorAssistantMessage(message) || isAbortedAssistantMessage(message) ? message.errorMessage || "Auditor provider failed." : undefined;
 			for (const part of message.content ?? []) {
 				if (part.type === "text" && typeof part.text === "string") {
 					outputParts.push(part.text);
@@ -482,6 +485,7 @@ export async function runGoalCompletionAuditor(args: {
 			};
 		}
 		const output = outputParts.join("\n\n").trim();
+		if (providerFailure) return {approved: false, disapproved: false, output, model: modelLabel(model), thinkingLevel, error: providerFailure};
 		const decision = parseAuditorDecision(output);
 		return { ...decision, output, model: modelLabel(model), thinkingLevel };
 	} catch (error) {

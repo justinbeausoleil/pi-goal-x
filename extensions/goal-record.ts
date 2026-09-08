@@ -49,6 +49,16 @@ export interface GoalRetainedScope {
 	changes: GoalScopeChangeReceipt[];
 }
 
+const REVIEW_OUTCOMES = ["approved", "disapproved", "malformed", "error", "cancelled", "audit_skipped"] as const;
+const BYPASS_ORIGINS = ["per_goal", "settings", "user_choice"] as const;
+export interface GoalCompletionReview {
+	outcome: typeof REVIEW_OUTCOMES[number];
+	workRevision: string;
+	report: string;
+	at: string;
+	bypassOrigin?: typeof BYPASS_ORIGINS[number];
+}
+
 export interface GoalRecord {
 	id: string;
 	objective: string;
@@ -86,6 +96,7 @@ export interface GoalRecord {
 	verificationContract?: string;
 	/** Approved requirements survive changes to the planning tree. Absent in legacy files. */
 	retainedScope?: GoalRetainedScope;
+	latestReview?: GoalCompletionReview;
 }
 
 export interface GoalStateEntry {
@@ -205,6 +216,7 @@ export function cloneGoal(goal: GoalRecord): GoalRecord {
 		...goal,
 		usage: { ...goal.usage },
 		retainedScope: goal.retainedScope ? structuredClone(goal.retainedScope) : undefined,
+		...(goal.latestReview ? {latestReview: {...goal.latestReview}} : {}),
 		taskList: goal.taskList
 			? { ...goal.taskList, tasks: goal.taskList.tasks.map(cloneGoalTask) }
 			: undefined,
@@ -396,6 +408,17 @@ function normalizeRetainedScope(value: unknown): GoalRetainedScope | undefined {
 	return {objective: raw.objective, verificationContract: raw.verificationContract as string | undefined, tasks: Object.fromEntries(entries), changes};
 }
 
+function normalizeCompletionReview(value: unknown): GoalCompletionReview | undefined {
+	const raw = asRecord(value);
+	if (!raw || !REVIEW_OUTCOMES.includes(raw.outcome as GoalCompletionReview["outcome"])
+		|| typeof raw.workRevision !== "string" || !/^[a-f0-9]{64}$/.test(raw.workRevision)
+		|| typeof raw.report !== "string" || !raw.report.trim()
+		|| typeof raw.at !== "string" || !Number.isFinite(Date.parse(raw.at))) return;
+	if (raw.outcome === "audit_skipped" ? !BYPASS_ORIGINS.includes(raw.bypassOrigin as NonNullable<GoalCompletionReview["bypassOrigin"]>) : raw.bypassOrigin !== undefined) return;
+	return {outcome: raw.outcome as GoalCompletionReview["outcome"], workRevision: raw.workRevision, report: raw.report, at: raw.at,
+		...(raw.outcome === "audit_skipped" ? {bypassOrigin: raw.bypassOrigin as GoalCompletionReview["bypassOrigin"]} : {})};
+}
+
 export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	const raw = asRecord(value);
 	if (!raw) return null;
@@ -403,6 +426,8 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	if (!objective) return null;
 	const retainedScope = normalizeRetainedScope(raw.retainedScope);
 	if (raw.retainedScope !== undefined && !retainedScope) return null; // Invalid scope must never silently become a legacy goal.
+	const latestReview = normalizeCompletionReview(raw.latestReview);
+	if (raw.latestReview !== undefined && !latestReview) return null;
 
 	const timestamp = nowIso();
 	// Persisted lifecycle status is authoritative. autoContinue is an execution
@@ -451,5 +476,6 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 		currentTaskId,
 		verificationContract: typeof raw.verificationContract === "string" ? raw.verificationContract : undefined,
 		...(retainedScope ? {retainedScope} : {}),
+		...(latestReview ? {latestReview} : {}),
 	};
 }

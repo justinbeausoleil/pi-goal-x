@@ -438,7 +438,7 @@ test("compact: budget-limited state shows the budget summary", () => {
 	assert.match(text, /goal: budget limited/);
 });
 
-test("compact: complete state shows the §4.7 message", () => {
+test("compact: complete state shows its completion status", () => {
 	const model = modelFor(withTasks(fiveTaskTree().map((t) => ({ ...t, status: "complete" as const, subtasks: t.subtasks?.map((s) => ({ ...s, status: "complete" as const })) })), {
 		status: "complete",
 		activePath: undefined,
@@ -446,7 +446,7 @@ test("compact: complete state shows the §4.7 message", () => {
 	}));
 	assert.ok(model);
 	const text = renderCompactDashboard(model, theme, 100).join("\n");
-	assert.match(text, /All required work is complete/);
+	assert.match(text, /goal: complete/);
 	assert.match(text, /✓5 done · 0 open/);
 });
 

@@ -10,6 +10,7 @@ export interface GoalDisplayRecordLike {
 	usage: GoalUsageLike;
 	sisyphus: boolean;
 	stopReason?: "user" | "agent";
+	latestReview?: {outcome: "approved" | "disapproved" | "malformed" | "error" | "cancelled" | "audit_skipped"};
 }
 
 
@@ -59,12 +60,14 @@ export function formatDuration(seconds: number): string {
 	return `${secs}s`;
 }
 
-export function statusLabel(goal: Pick<GoalDisplayRecordLike, "sisyphus" | "status" | "autoContinue" | "stopReason">): string {
+export function statusLabel(goal: Pick<GoalDisplayRecordLike, "sisyphus" | "status" | "autoContinue" | "stopReason" | "latestReview">): string {
 	const prefix = goal.sisyphus ? "sisyphus " : "";
 	if (goal.status === "active" && goal.autoContinue) return `${prefix}running`;
 	if (goal.status === "paused" && goal.stopReason === "agent") return `${prefix}paused (agent)`;
 	if (goal.status === "blocked") return `${prefix}blocked`;
 	if (goal.status === "budget_limited") return `${prefix}budget limited`;
+	if (goal.status === "complete" && goal.latestReview?.outcome === "audit_skipped") return `${prefix}complete (audit skipped)`;
+	if (goal.status === "complete" && goal.latestReview?.outcome === "approved") return `${prefix}complete (audited)`;
 	return `${prefix}${goal.status}`;
 }
 

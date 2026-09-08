@@ -505,7 +505,10 @@ export function registerGoalEvents(core: GoalCore): void {
 			workHeld ? drafting ? "Draft discussion is active or cancelled; automatic goal work is held. Confirm the revision or use /goal-resume after cancellation to continue when the lifecycle and budget allow it." : "Automatic goal work is held after discussion or session navigation. Use /goal-focus or /goal-resume to continue when the lifecycle and budget allow it." : "",
 		].filter(Boolean).join("\n");
 		let auditorExtra = "";
-		try {
+		const latestReview = core.state.goal.latestReview;
+		if (latestReview) {
+			auditorExtra = `\n\n[COMPLETION REVIEW goalId=${core.state.goal.id}]\nLatest outcome: ${latestReview.outcome}${latestReview.bypassOrigin ? ` (${latestReview.bypassOrigin}; audit skipped)` : ""}. Reviewed work_revision: ${latestReview.workRevision}.\n${excerpt(latestReview.report, 300, "review")}\nFull review: get_goal(section="review"). Address outstanding findings before requesting completion. This historical result does not approve subsequent changes.`;
+		} else try {
 			const auditorResult = latestAuditorResultForGoal(getPromptLedger().events, core.state.goal.id);
 			if (auditorResult?.verdict === "disapproved") auditorExtra = `\n\n[AUDITOR REJECTION goalId=${core.state.goal.id}]\nAn independent auditor previously rejected a completion request for this goal. Reason: ${excerpt(auditorResult.report, 300, "history")}\nAddress the auditor's objections before requesting completion again.`;
 		} catch {

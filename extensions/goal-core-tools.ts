@@ -47,11 +47,11 @@ export function registerCoreTools(
 pi.registerTool(defineTool({
 	name: "get_goal",
 	label: "Get Goal",
-	description: "Read focused goal state. Default: compact summary. Retrieve full objective/contracts, tasks, retained scope, or history in 4000-character pages with section and cursor. verbose preserves full legacy output.",
+	description: "Read focused goal state. Default: compact summary. Retrieve full objective/contracts, tasks, retained scope, latest review, or history in 4000-character pages with section and cursor. verbose preserves full legacy output.",
 	promptSnippet: "Inspect goal state or retrieve omitted requirements.",
 		promptGuidelines: ["Use the latest work_revision as expected_work_revision for task mutations; accounting alone does not change it."],
 	parameters: Type.Object({
-  section: Type.Optional(StringEnum(["summary", "objective", "tasks", "scope", "history"] as const)),
+  section: Type.Optional(StringEnum(["summary", "objective", "tasks", "scope", "review", "history"] as const)),
   task_id: Type.Optional(Type.String({description: "With section=tasks, retrieve one task."})),
   cursor: Type.Optional(Type.String({maxLength: 256, description: "Next page; repeat section/task."})),
 		verbose: Type.Optional(Type.Boolean({ description: "Full detail mode." })),
@@ -78,13 +78,13 @@ pi.registerTool(defineTool({
 			};
 		}
   if (params.section && params.section !== "summary") {
-   if (!["objective", "tasks", "scope", "history"].includes(params.section)) return {content: [{type: "text", text: "Unknown goal section."}], details: goalDetails(view)};
+   if (!["objective", "tasks", "scope", "review", "history"].includes(params.section)) return {content: [{type: "text", text: "Unknown goal section."}], details: goalDetails(view)};
    const history = params.section === "history" ? readGoalLedger(ctx) : undefined;
    const page = goalDetailPage(view, {section: params.section, task_id: params.task_id, cursor: params.cursor}, history?.events, history?.revision);
    const {ok, text, ...detail} = page;
    return {content: [{type: "text", text}], details: {...goalDetails(view), ...(ok ? {page: detail} : {})}};
   }
-  if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, scope, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
+  if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, scope, review, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
 		const scopeWarning = scopeProposalWarning(view);
 		if (verbose && !params.section) {
 			const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, `work_revision: ${goalWorkRevision(view)}`];

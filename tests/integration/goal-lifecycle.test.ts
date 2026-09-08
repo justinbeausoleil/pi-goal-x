@@ -5,6 +5,22 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
+for (const outcome of ["approved", "disabled-project"]) test(`S2: native completion ${outcome} reports failed commit honestly`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "audit-outcome", outcome, "--completion-write-failure"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const ledgerFailure of [false, true]) test(`S2: native review survives compaction/reopen and artifact repair (ledger failure=${ledgerFailure})`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "audit-outcome", "disapproved", "--review-reopen", ...(ledgerFailure ? ["--review-ledger-failure"] : [])], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+test("S2: native rejection reports review storage failure", {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "audit-outcome", "disapproved", "--review-write-failure"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const outcome of ["approved", "approved-paused", "approved-global-model", "disapproved", "malformed", "provider", "disabled-project", "disabled-global", "per-goal", "cancel-continue", "cancel-paused", "cancel-skip", "stale-work"]) test(`S1: native completion ${outcome} persists an honest audit outcome`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "audit-outcome", outcome], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const successor of ["pause-resume", "replace"]) test(`S1: failed old compaction preserves explicit ${successor} authority`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "recovery", "compaction-threshold-cancelled", `--compaction-successor=${successor}`], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);

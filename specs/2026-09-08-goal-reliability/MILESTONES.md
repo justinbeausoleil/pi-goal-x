@@ -1784,3 +1784,56 @@
  both review axes are clear. Ticket010 is accepted and011 is the next frontier.
  No live selection or dependencies changed. The implementation branch is pushed
  after recording this acceptance; exact artifact/model/adoption gates remain012–014.
+
+### Ticket011 latest completion review
+
+- Six native audit outcomes fail at8f2745f: latest goal metadata is absent for
+  approved/disapproved/malformed/provider/project-disabled outcomes, and global
+  disabled settings still invoke the child twice (Data011/audit-active-outcomes-red.log).
+  The child uses actual read against proof.txt and sees the retained task contract;
+  a false executor evidence claim does not alter the wrong artifact it reads.
+  The first audit-outcomes-red.log ran from paused setup; move the default matrix
+  after explicit resume, retaining that initial log without claiming active-state proof.
+- Add validated optional latestReview metadata with outcome, content work revision,
+  report, timestamp and bypass origin. GoalService remains the mutation boundary;
+  completion rechecks work revision and preserves the fresh record. Negative
+  outcomes persist before their best-effort ledger entry. Malformed/no-verdict is
+  distinct from disapproval; terminal provider errors are observed from actual
+  child events. Use resolved settings for the completion bypass and model label.
+- Audit-outcomes-first-green.log passes all6 native cases and type checking passes.
+  The glossary uses the existing domain guidance for latest completion review.
+  This is partial011 implementation: full retrieval/projection, ledger-fault and
+  compaction/reopen proof, all bypass/cancel/stale/lifecycle cases, honest display
+  labels, recovery of completed-but-unarchived files, qualification and reviews
+  remain. No011 acceptance box is checked; no live selection changed.
+
+### 011 — durable review and honest completion display (partial)
+
+- Public `get_goal(section="review")` uses existing lossless detail paging;
+  automatic context reads a bounded latest-review excerpt from goal metadata.
+  `review-reopen-red.log` reproduced missing retrieval and lost rejection when
+  ledger writes fail. Its green native fixture rejects a lying executor claim
+  after a real child file read, performs three actual Pi compactions, reopens,
+  retrieves the full multi-page report, repairs the artifact, and obtains a
+  fresh independent approval. Both normal and failed-ledger variants pass.
+- Native completion write faults reproduced success messages emitted before a
+  failed commit (`completion-commit-corrected-red.log`, 2/2 red). Success messages,
+  bypass ledger entries and approval cards now follow the shared successful
+  commit. The real tool-result boundary observes the complete active record
+  before archival. The compact widget now uses shared status text, including
+  audited/audit-skipped labels; legacy records make no new review claim.
+- Retained failed attempts: `completion-display-red.log` initially watched the
+  wrong custom-message type; corrected reproduction failed both commit paths.
+  `review-display-green.log` and `review-widget-green.log` were 7/10 because the
+  fixture first watched the unused focused footer, then exposed the compact
+  widget's hardcoded completion text. `widget-diagnostic.log` captured that UI.
+- `review-matrix-red.log`: 16/18. Cancellation misleadingly said a paused goal
+  remained active; storage failure omitted the unsaved rejection findings.
+  Both repaired. `review-matrix-green.log`: 18/18 native cases, including all
+  three bypass origins, global model resolution, active/paused approval,
+  cancellation, provider/malformed verdicts, stale work, persistence faults and
+  compaction/reopen. `helpers-review.log`: 139/139 related checks. Type checking
+  and lint pass (`check-review-matrix.log`, `lint-review-matrix.log`).
+- Remaining011: completed-record recovery and crash/archive faults, remaining
+  lifecycle/gate preservation cases, final payload/qualification checks and
+  independent fixed-base reviews. Acceptance remains unchecked.

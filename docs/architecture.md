@@ -439,6 +439,19 @@ normal-parent, lightweight-child, and ordered progress-batch gates remain.
 Normal prompt/dashboard reads use per-goal ledger indexes: 12 recent events,
 64 activity candidates in stable timestamp order, pinned audit/lifecycle state,
 and blocker-fingerprint Oracle state plus the latest complete Oracle result.
+The latest completion review also persists in goal metadata: outcome, report,
+reviewed work revision, timestamp and bypass origin. Completion commits and
+negative-review writes use GoalService with the captured focus/work revision;
+ledger failure cannot remove an already saved review. Completion settings use
+the resolved global/project configuration. Provider errors and missing verdicts
+remain distinct from explicit disapproval.
+`get_goal(section="review")` pages the complete metadata/report through the
+existing 4000-character detail boundary. Automatic context carries a bounded
+excerpt from this authoritative review, with ledger fallback for legacy records.
+Completion success messages and approval cards follow the successful commit;
+the tool result precedes archival. Shared status text labels audited and
+audit-skipped completion in the widget, status tool and saved file. Cancellation
+preserves the existing lifecycle, including a paused goal.
 Pending advice is queried through that index until a recorded follow-up attempt.
 The ledger is the authority after both compaction and reopen, without a second
 in-memory advice gate. Only substantive write/edit/bash attempts discharge
