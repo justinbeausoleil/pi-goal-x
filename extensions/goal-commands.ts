@@ -189,10 +189,12 @@ export function registerGoalCommands(core: GoalCore): void {
 		const report = runRecoveryReport({ cwd: ctx.cwd });
 		if (/^repair$/i.test(rawArgs)) {
 			const result = await runRecoveryRepair({ cwd: ctx.cwd }, report, async () => {
-				const confirmed = await ctx.ui.confirm(`Remove ${report.staleLocks.length} stale lock(s) and refresh the pool snapshot?`, `Files are backed up to .pi/goals/.recovery-backup first.`);
+				const confirmed = await ctx.ui.confirm(`Remove ${report.staleLocks.length} stale lock(s), archive ${report.completedGoals.length} completed goal(s) and refresh the pool snapshot?`, `Files are backed up to .pi/goals/.recovery-backup first.`);
 				return confirmed === true && core.focusRevision === revision;
-			});
+			}, (fileContext, goal) => core.goalService.archiveGoal(fileContext, goal));
 			if (core.focusRevision !== revision) return;
+			core.reconcileFocusedGoalFromDisk(ctx);
+			core.updateUI(ctx);
 			if (result.confirmed) {
 				const lines = [result.applied.length > 0
 					? `goal-recovery repair: ${result.applied.length} operation(s) applied.`

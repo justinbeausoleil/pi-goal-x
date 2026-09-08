@@ -62,14 +62,20 @@ const reviewLedgerFailure = process.argv.includes("--review-ledger-failure");
 const completionWriteFailure = process.argv.includes("--completion-write-failure");
 const reviewWriteFailure = process.argv.includes("--review-write-failure");
 const auditCancelled = auditOutcome && control.startsWith("cancel-");
-const auditSkipped = auditOutcome && (control.startsWith("disabled-") || control === "per-goal" || control === "cancel-skip");
+const planningGate = auditOutcome && ["optional-pending", "required-pending"].includes(control);
+const auditSkipped = auditOutcome && (planningGate || control.startsWith("disabled-") || control === "per-goal" || control === "cancel-skip");
 const auditStopped = auditOutcome && control.endsWith("-paused");
+const archiveFailure = process.argv.find(arg => arg.startsWith("--archive-failure="))?.split("=")[1];
+const archiveReopen = process.argv.includes("--archive-reopen");
+const archiveRepairRace = process.argv.find(arg => arg.startsWith("--archive-repair-race="))?.split("=")[1];
+let repairRaceFired = false;
+let allowArchiveRetry = false, confirmArchiveRepair = false, archiveWrites = 0, failedArchives = 0;
 const reviewing = boundary === "audit" || boundary === "oracle" || oracleFollowup || oracleOutcome || auditOutcome;
 const agentStop = boundary === "agent" || boundary === "agent-block";
 let retryOffered = false, hostRetries = 0;
-const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
+const work = process.argv.find(arg => arg.startsWith("--archive-work="))?.slice("--archive-work=".length) ?? mkdtempSync(join(tmpdir(), "goal-stop-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
-mkdirSync(cwd); mkdirSync(agentDir);
+mkdirSync(cwd, {recursive: true}); mkdirSync(agentDir, {recursive: true});
 process.env.PI_OFFLINE = "1";
 process.env.PI_CODING_AGENT_DIR = agentDir;
 process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
@@ -111,6 +117,13 @@ fs.appendFileSync = (path, ...args) => {
 };
 const originalRename = fs.renameSync;
 fs.renameSync = (from, to) => {
+  if (archiveFailure && testing && String(to).includes("/archived/")) {
+    archiveWrites++;
+    if (!allowArchiveRetry && archiveFailure === "write") {
+      failedArchives++;
+      throw Object.assign(new Error("Synthetic archive write failure"), {code: "EACCES"});
+    }
+  }
   if (reviewWriteFailure && testing && String(to).includes("/active_goal_") && parseGoalFile(String(from))?.latestReview) {
     failedReviewWrites++;
     throw Object.assign(new Error("Synthetic review write failure"), {code: "EACCES"});
@@ -124,6 +137,26 @@ fs.renameSync = (from, to) => {
     throw Object.assign(new Error("Synthetic unpaid-usage write failure"), {code: "EACCES"});
   }
   return originalRename(from, to);
+};
+const originalUnlink = fs.unlinkSync;
+fs.unlinkSync = path => {
+  if (archiveFailure === "unlink" && testing && !allowArchiveRetry && String(path).includes("/active_goal_") && parseGoalFile(String(path))?.status === "complete") {
+    failedArchives++;
+    throw Object.assign(new Error("Synthetic archive unlink failure"), {code: "EACCES"});
+  }
+  return originalUnlink(path);
+};
+const originalCopy = fs.copyFileSync;
+fs.copyFileSync = (source, target, ...args) => {
+  if (archiveRepairRace && !repairRaceFired && allowArchiveRetry && String(source).includes("/active_goal_") && ["copy", "backup", "failure"].includes(archiveRepairRace)) {
+    repairRaceFired = true;
+    if (archiveRepairRace === "failure") throw new Error("Synthetic archive backup failure");
+    if (archiveRepairRace === "copy") originalAppend(source, "\nreview-recovery-user-note");
+    originalCopy(source, target, ...args);
+    if (archiveRepairRace === "backup") originalAppend(source, "\nreview-recovery-user-note");
+    return;
+  }
+  return originalCopy(source, target, ...args);
 };
 syncBuiltinESMExports();
 const pause = {name: "update_goal", args: {status: "paused", reason: "Fixture requested a deliberate stop.", suggested_action: "Wait for explicit user instructions."}};
@@ -192,7 +225,17 @@ async function bind() {
       if (auditOutcome) goalWidget = typeof factory === "function" ? factory({requestRender() {}}, {fg: (_color, value) => value, bg: (_color, value) => value, bold: value => value}) : undefined;
     }, setEditorText() {},
     onTerminalInput: handler => { terminalInput = handler; return () => {}; },
-    confirm: async title => title === "Clear goal?",
+    confirm: async title => {
+      if (archiveFailure && /repair|archive|stale lock/i.test(title)) {
+        if (confirmArchiveRepair && !repairRaceFired && ["edit", "session"].includes(archiveRepairRace)) {
+          repairRaceFired = true;
+          if (archiveRepairRace === "session") await host.newSession();
+          else originalAppend(resolve(cwd, primary.activePath), "\nreview-recovery-user-note");
+        }
+        return confirmArchiveRepair;
+      }
+      return title === "Clear goal?";
+    },
     select: async (_title, choices) => choices.find(choice => choice.includes(selectId)),
     custom: async () => {
       dialogSeen = true;
@@ -216,6 +259,11 @@ async function create({sessionManager, sessionStartEvent}) {
           if (event.details?.goal?.status === "complete") {
             assert.equal(parseGoalFile(resolve(cwd, event.details.goal.activePath)).status, "complete", "the executor receives the committed result before deferred archival");
             assert(!existsSync(join(cwd, ".pi/goals/archived")), "archival has not run at the completion tool result");
+            if (archiveFailure === "crash") {
+              writeFileSync(join(work, "crash.json"), JSON.stringify({primary: event.details.goal, sessionFile: session.sessionManager.getSessionFile()}));
+              // Abruptly end the actual host before turn_end or shutdown can archive.
+              process.exit(0);
+            }
           }
         }
         if (controlledClock && event.toolName === "create_goal" && event.details?.goal) clockNow += 8000;
@@ -375,32 +423,40 @@ try {
   }
   if (reviewing) {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-    mkdirSync(join(cwd, ".pi"));
+    mkdirSync(join(cwd, ".pi"), {recursive: true});
     writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({provider: "fixture", model: "reviewer", disabled: false, oracle: {enabled: boundary.startsWith("oracle") && control !== "disabled", provider: "fixture", ...(control === "config" ? {} : {model: "reviewer"}), projectResources: control === "resources", maxFailedAttemptsPerBlocker: 2}}));
     if (auditOutcome && control.startsWith("disabled-")) {
       const settingsFile = join(cwd, ".pi", "pi-goal-x-settings.json");
       if (control === "disabled-global") writeFileSync(settingsFile, "{}");
       writeFileSync(control === "disabled-global" ? process.env.PI_GOAL_GLOBAL_SETTINGS_FILE : settingsFile, JSON.stringify({disabled: true, provider: "fixture", model: "reviewer"}));
     }
+    if (planningGate) writeFileSync(join(cwd, ".pi/pi-goal-x-settings.json"), JSON.stringify({disabled: true}));
     if (auditOutcome && control === "approved-global-model") {
       writeFileSync(join(cwd, ".pi/pi-goal-x-settings.json"), "{}");
       writeFileSync(process.env.PI_GOAL_GLOBAL_SETTINGS_FILE, JSON.stringify({provider: "fixture", model: "reviewer"}));
     }
     if (oracleFollowup) writeFileSync(join(cwd, "AGENTS.md"), "oracle-project-resource-sentinel");
   }
-  host = await createAgentSessionRuntime(create, {cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
+  const crashed = archiveReopen ? JSON.parse(readFileSync(join(work, "crash.json"), "utf8")) : undefined;
+  host = await createAgentSessionRuntime(create, {cwd, agentDir, sessionManager: crashed ? SessionManager.open(crashed.sessionFile) : SessionManager.create(cwd, join(work, "sessions")), ...(crashed ? {sessionStartEvent: {type: "session_start", reason: "resume"}} : {})});
   host.setRebindSession(async current => { session = current; await bind(); });
   await bind();
   deadline = setTimeout(() => { failure = new Error("Stop fixture deadline exceeded"); void session.abort(); }, 8000);
-  await run("Create a goal to verify explicit stop boundaries.", [
+  if (!crashed) {
+   await run("Create a goal to verify explicit stop boundaries.", [
     {name: "create_goal", args: {objective: "Write only explicitly authorized fixture files; preserve user stop boundaries.", ...(lateBudget ? {token_budget: 440} : {})}},
-    {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof", ...(auditOutcome ? {verification_contract: "proof.txt must contain verified"} : {})}]}},
-    ...(boundary === "audit" || auditOutcome ? [{name: "write", args: {path: "proof.txt", content: auditOutcome ? control === "disapproved" ? "wrong" : "verified" : "proof.txt"}}, {name: "update_goal_task", args: {task_id: "work", status: "complete", evidence: auditOutcome ? "Executor claims proof.txt contains verified" : "proof.txt contains proof.txt"}}] : []), pause,
+    {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof", ...(auditOutcome && !planningGate ? {verification_contract: "proof.txt must contain verified"} : {})}], ...(planningGate ? {block_completion: control === "required-pending"} : {})}},
+    ...((boundary === "audit" || auditOutcome) && !planningGate ? [{name: "write", args: {path: "proof.txt", content: auditOutcome ? control === "disapproved" ? "wrong" : "verified" : "proof.txt"}}, {name: "update_goal_task", args: {task_id: "work", status: "complete", evidence: auditOutcome ? "Executor claims proof.txt contains verified" : "proof.txt contains proof.txt"}}] : []), pause,
   ]);
   primary = structuredClone(currentGoal());
   assert.equal(primary.status, "paused");
+  } else primary = crashed.primary;
   if (auditOutcome && control === "per-goal") {
     editPrimaryMetadata(record => { record.skipAuditor = true; });
+    await session.prompt("/goal-refresh");
+  }
+  if (auditOutcome && control === "approved-limited") {
+    editPrimaryMetadata(record => { record.tokenBudget = record.usage.tokensUsed + 110; });
     await session.prompt("/goal-refresh");
   }
   if (controlledClock) assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).usage.activeSeconds, 8, "model creation starts its active clock before response settlement");
@@ -421,14 +477,34 @@ try {
     settings.setCompactionEnabled(true);
   }
   testing = true;
-  if (boundary !== "ordinary" && !auditStopped) await session.prompt("/goal-resume");
+  if (boundary !== "ordinary" && !auditStopped && !archiveReopen) await session.prompt("/goal-resume");
   if (auditOutcome) {
-    await run("Complete only if the independent review permits it.", [{name: "update_goal", args: {status: "complete"}}]);
+    if (control === "required-pending") {
+      await run("Request completion with a pending required planning task.", [{name: "update_goal", args: {status: "complete"}}]);
+      assert.equal(childRequests, 0);
+      assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "active");
+      assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /pending.*blockCompletion/);
+      await run("Explicitly skip this uncontracted planning task with a reason.", [{name: "update_goal_task", args: {task_id: "work", status: "skipped", reason: "The optional planning exercise is no longer needed."}}]);
+      assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).taskList.tasks[0].status, "skipped", "the public skip persists before retrying completion");
+    }
+    if (control === "approved-limited") {
+      await run("Inspect while the remaining budget is consumed.", [{name: "get_goal", args: {}}]);
+      assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "budget_limited", "native response accounting exhausts the budget before completion");
+    }
+    if (control === "approved-after-blocked") {
+      await run("Report the concrete unresolved blocker.", [{name: "update_goal", args: {status: "blocked", reason: "The fixture dependency remains unavailable."}}]);
+      await run("Request completion while blocked.", [{name: "update_goal", args: {status: "complete"}}]);
+      assert.equal(childRequests, 0, "blocked goals cannot start the auditor");
+      assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "blocked");
+      assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /blocked.*user to resume/);
+      await session.prompt("/goal-resume");
+    }
+    if (!archiveReopen) await run("Complete only if the independent review permits it.", [{name: "update_goal", args: {status: "complete"}}]);
     const skipped = auditSkipped;
-    if (skipped && !auditCancelled) assert.equal(childRequests, 0, "effective disabled settings bypass the child auditor");
+    if (archiveReopen || (skipped && !auditCancelled)) assert.equal(childRequests, 0, "recovery and disabled settings do not run the child auditor");
     else assert(childRequests > 0, "the actual child transport ran");
     const completed = !completionWriteFailure && (skipped || control.startsWith("approved"));
-    const file = completed ? join(cwd, ".pi/goals/archived", readdirSync(join(cwd, ".pi/goals/archived")).find(name => name.includes(primary.id))) : resolve(cwd, primary.activePath);
+    const file = completed && !archiveFailure ? join(cwd, ".pi/goals/archived", readdirSync(join(cwd, ".pi/goals/archived")).find(name => name.includes(primary.id))) : resolve(cwd, primary.activePath);
     const record = parseGoalFile(file);
     assert.equal(record.status, completed ? "complete" : auditStopped ? "paused" : "active");
     if (reviewWriteFailure) {
@@ -453,13 +529,58 @@ try {
       if (auditStopped && auditCancelled) assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /remains paused/);
       assert(record.latestReview.report.length > 0);
       assert.match(record.latestReview.workRevision, /^[a-f0-9]{64}$/);
-      if (completed) {
+      if (completed && !archiveReopen) {
         const label = skipped ? "complete (audit skipped)" : "complete (audited)";
         assert(readFileSync(file, "utf8").includes(`Status: ${label}`), "archive labels the completion origin");
         assert(widgetFrames.some(frame => skipped ? frame.includes(label) : /APPROVED|complete \(audited\)/.test(frame)), `the live widget labels the completion origin: ${JSON.stringify(widgetFrames)}`);
       }
     }
     if (!completed) await session.prompt("/goal-pause");
+    if (archiveFailure) {
+      if (!archiveReopen) {
+        assert(failedArchives > 0);
+        assert(notices.some(notice => /Failed to archive completed goal/.test(notice)));
+        await host.switchSession(session.sessionManager.getSessionFile());
+      }
+      const requestCount = requests.length, childCount = childRequests;
+      let activeBytes = readFileSync(file);
+      await session.prompt("/goal-status");
+      assert.match(notices.at(-1), /No goal|unfocused/i, "the completed record is outside the open pool after reopen");
+      await session.prompt("/goal-recovery");
+      assert(notices.at(-1).includes(primary.id) && /complete.*unarchived/i.test(notices.at(-1)), "recovery discovers completed records outside the open pool");
+      assert.deepEqual(readFileSync(file), activeBytes, "the report is read-only");
+      await session.prompt("/goal-recovery repair");
+      assert.deepEqual(readFileSync(file), activeBytes, "cancelled repair is a durable no-op");
+      assert(!existsSync(join(cwd, ".pi/goals/.recovery-backup")));
+      allowArchiveRetry = true; confirmArchiveRepair = true;
+      await session.prompt("/goal-recovery repair");
+      if (archiveRepairRace) {
+        assert(repairRaceFired);
+        assert(existsSync(file), "an obsolete or failed repair preserves the authoritative record");
+        if (archiveRepairRace !== "session") assert.match(notices.at(-1), /failed|changed/i);
+        const expected = ["edit", "copy", "backup"].includes(archiveRepairRace) ? Buffer.concat([activeBytes, Buffer.from("\nreview-recovery-user-note")]) : activeBytes;
+        assert.deepEqual(readFileSync(file), expected, "repair cannot overwrite concurrent user content");
+        activeBytes = expected;
+        assert.equal(requests.length, requestCount);
+        await session.prompt("/goal-recovery repair");
+      }
+      assert(!existsSync(file), "confirmed repair archives the completed record without another executor turn");
+      const archivedFiles = readdirSync(join(cwd, ".pi/goals/archived")).filter(name => name.endsWith(".md"));
+      assert.equal(archivedFiles.length, 1, "retry retains one archive copy");
+      const archived = parseGoalFile(join(cwd, ".pi/goals/archived", archivedFiles[0]));
+      assert.equal(archived.status, "complete");
+      assert.deepEqual(archived.latestReview, record.latestReview);
+      const backups = join(cwd, ".pi/goals/.recovery-backup");
+      assert(readdirSync(backups).some(directory => readdirSync(join(backups, directory)).some(name => readFileSync(join(backups, directory, name)).equals(activeBytes))), "the pre-repair completed record is backed up exactly");
+      const writeCount = archiveWrites;
+      await session.prompt("/goal-recovery repair");
+      assert.equal(archiveWrites, writeCount, "repeated repair does not archive twice");
+      assert.equal(requests.length, requestCount);
+      assert.equal(childRequests, childCount);
+      const ledger = readFileSync(goalLedgerPath({cwd}), "utf8").trim().split("\n").map(line => JSON.parse(line));
+      assert.equal(ledger.filter(event => event.type === "goal_completed").length, 1);
+      assert.equal(ledger.filter(event => event.type === "goal_archived").length, 1);
+    }
     if (reviewReopen) {
       assert.equal(record.latestReview.outcome, "disapproved");
       for (let i = 0; i < 3; i++) {
@@ -859,6 +980,8 @@ try {
   Date.now = originalNow;
   fs.renameSync = originalRename;
   fs.appendFileSync = originalAppend;
+  fs.unlinkSync = originalUnlink;
+  fs.copyFileSync = originalCopy;
   syncBuiltinESMExports();
   clearTimeout(deadline);
   await session?.abort();

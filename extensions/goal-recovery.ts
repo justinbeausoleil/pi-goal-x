@@ -1,15 +1,16 @@
 /**
  * /goal-recovery — read-only storage/recovery report + guarded repair.
  *
- * Reliability campaign 2026-08-09. The report scans four failure classes:
+ * Reliability campaign 2026-08-09. The report scans these failure classes:
  *   - malformed goal files (active_goal_*.md that do not parse);
  *   - malformed ledger lines (counted by the ledger reader);
  *   - stale locks (.pi/goals/.locks/*.lock whose pid is dead or whose age
  *     exceeds the TTL — left behind by crashed sessions);
  *   - orphaned snapshot data (pool-snapshot goals with no matching file).
+ *   - completed records still at active paths after failed/interrupted archival.
  *
  * Everything is read-only by default. Repair operations (stale-lock removal,
- * snapshot refresh) require an explicit confirmation AND copy the affected
+ * snapshot refresh and completed-record archival) require confirmation AND copy the affected
  * files into a timestamped backup directory first. Malformed goal files and
  * malformed ledger lines are reported but never rewritten automatically —
  * rewriting user-owned data is deliberately out of scope (and automatic
@@ -18,9 +19,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { invalidateGoalLedgerCache, readGoalLedger, type GoalLedgerContext } from "./goal-ledger.ts";
-import { GOAL_LOCK_DIR } from "./storage/goal-lock.ts";
-import { parseGoalFile, refreshGoalPoolSnapshot, type GoalFileContext } from "./storage/goal-files.ts";
+import { createHash } from "node:crypto";
+import { appendGoalEvents, invalidateGoalLedgerCache, readGoalLedger, type GoalLedgerContext } from "./goal-ledger.ts";
+import { acquireGoalLock, GOAL_LOCK_DIR } from "./storage/goal-lock.ts";
+import { archiveGoalFile, parseGoalFile, refreshGoalPoolSnapshot, type GoalFileContext } from "./storage/goal-files.ts";
 
 export const GOALS_DIR = ".pi/goals";
 export const RECOVERY_BACKUP_DIR = ".pi/goals/.recovery-backup";
@@ -49,6 +51,7 @@ export interface RecoveryReport {
 	malformedLedgerLines: number;
 	staleLocks: StaleLockEntry[];
 	orphanedSnapshotGoals: OrphanedSnapshotEntry[];
+	completedGoals: Array<{relPath: string; goalId: string; digest: string}>;
 	healthy: boolean;
 }
 
@@ -83,26 +86,29 @@ function locksDir(cwd: string): string {
 	return path.join(cwd, GOAL_LOCK_DIR);
 }
 
-/** Scan the goals dir for active_goal files that fail to parse. */
-function scanMalformedGoalFiles(cwd: string): MalformedGoalFileEntry[] {
+/** Inspect active paths, including completed records excluded from the open pool. */
+function scanGoalFiles(cwd: string): Pick<RecoveryReport, "malformedGoalFiles" | "completedGoals"> {
 	const root = goalsDir(cwd);
 	const out: MalformedGoalFileEntry[] = [];
+	const completedGoals: RecoveryReport["completedGoals"] = [];
 	let names: string[];
 	try {
 		names = fs.readdirSync(root);
 	} catch {
-		return out;
+		return {malformedGoalFiles: out, completedGoals};
 	}
 	for (const name of names) {
 		if (!/^active_goal_.*\.md$/.test(name)) continue;
 		const relPath = path.posix.join(GOALS_DIR, name);
 		try {
-			if (!parseGoalFile(path.join(root, name), true)) out.push({ relPath, error: "file does not parse as a goal record" });
+			const file = path.join(root, name), goal = parseGoalFile(file, true);
+			if (!goal) out.push({ relPath, error: "file does not parse as a goal record" });
+			else if (goal.status === "complete") completedGoals.push({relPath, goalId: goal.id, digest: createHash("sha256").update(fs.readFileSync(file)).digest("hex")});
 		} catch (error) {
 			out.push({ relPath, error: "Unable to read goal file: " + String(error) });
 		}
 	}
-	return out;
+	return {malformedGoalFiles: out, completedGoals};
 }
 
 /** Scan the lock dir for lock files whose pid is dead or whose age exceeds the TTL. */
@@ -167,7 +173,7 @@ function scanOrphanedSnapshotGoals(cwd: string): OrphanedSnapshotEntry[] {
 export function runRecoveryReport(ctx: GoalFileContext): RecoveryReport {
 	invalidateGoalLedgerCache();
 	const ledger = readGoalLedger({ cwd: ctx.cwd } as GoalLedgerContext);
-	const malformedGoalFiles = scanMalformedGoalFiles(ctx.cwd);
+	const {malformedGoalFiles, completedGoals} = scanGoalFiles(ctx.cwd);
 	const staleLocks = scanStaleLocks(ctx.cwd);
 	const orphanedSnapshotGoals = scanOrphanedSnapshotGoals(ctx.cwd);
 	return {
@@ -176,7 +182,8 @@ export function runRecoveryReport(ctx: GoalFileContext): RecoveryReport {
 		malformedLedgerLines: ledger.malformed,
 		staleLocks,
 		orphanedSnapshotGoals,
-		healthy: malformedGoalFiles.length === 0 && ledger.malformed === 0 && staleLocks.length === 0 && orphanedSnapshotGoals.length === 0,
+		completedGoals,
+		healthy: malformedGoalFiles.length === 0 && ledger.malformed === 0 && staleLocks.length === 0 && orphanedSnapshotGoals.length === 0 && completedGoals.length === 0,
 	};
 }
 
@@ -184,15 +191,16 @@ export function runRecoveryReport(ctx: GoalFileContext): RecoveryReport {
  * Apply the safe repair operations with confirmation + backup.
  *
  * Repairs: stale-lock removal (backed up then unlinked) and pool-snapshot
- * refresh (backed up then rewritten from a fresh scan). Returns what was
+ * refresh and completed-record archival (after backup). Returns what was
  * applied. When `confirm` rejects, nothing is touched.
  */
 export async function runRecoveryRepair(
 	ctx: GoalFileContext,
 	report: RecoveryReport,
 	confirm: () => Promise<boolean>,
+	archive: typeof archiveGoalFile = archiveGoalFile,
 ): Promise<RecoveryRepairResult> {
-	if (report.staleLocks.length === 0 && report.orphanedSnapshotGoals.length === 0) {
+	if (report.staleLocks.length === 0 && report.orphanedSnapshotGoals.length === 0 && report.completedGoals.length === 0) {
 		return { applied: [], failures: [], backupDir: null, confirmed: false };
 	}
 	const confirmed = await confirm();
@@ -234,6 +242,32 @@ export async function runRecoveryRepair(
 		}
 	}
 
+	for (const entry of report.completedGoals) {
+		let lock;
+		try {
+			lock = acquireGoalLock(ctx, entry.goalId);
+			const source = path.join(ctx.cwd, entry.relPath), before = fs.lstatSync(source);
+			if (!before.isFile()) throw new Error("Completed goal is not a regular file.");
+			const content = fs.readFileSync(source);
+			if (createHash("sha256").update(content).digest("hex") !== entry.digest) throw new Error("Completed goal changed; run /goal-recovery again.");
+			const backup = path.join(backupDir, path.basename(entry.relPath));
+			fs.copyFileSync(source, backup);
+			const goal = parseGoalFile(backup, true);
+			if (!goal || goal.id !== entry.goalId || goal.status !== "complete") throw new Error("Goal is no longer the completed record selected for repair.");
+			const after = fs.lstatSync(source);
+			if (!after.isFile() || before.ino !== after.ino || before.dev !== after.dev || !fs.readFileSync(backup).equals(content) || !fs.readFileSync(source).equals(content)) throw new Error("Completed goal changed during backup; run /goal-recovery again.");
+			const written = archive(ctx, {...goal, activePath: entry.relPath});
+			applied.push(`archived completed goal ${written.id}: ${written.archivedPath}`);
+			try {
+				appendGoalEvents(ctx, [
+					{type: "goal_completed", goalId: written.id, archivePath: written.archivedPath, at: written.updatedAt},
+					{type: "goal_archived", goalId: written.id, archivePath: written.archivedPath!, at: written.updatedAt},
+				]);
+			} catch (error) { failures.push(`Goal ${written.id} was archived, but its ledger event could not be saved: ${String(error)}`); }
+		} catch (error) { failures.push(`Archive recovery failed for ${entry.goalId}: ${String(error)}`); }
+		finally { lock?.release(); }
+	}
+
 	if (report.orphanedSnapshotGoals.length > 0) {
 		const snapshotPath = path.join(ctx.cwd, ".pi", ".goals-pool-snapshot.json");
 		try {
@@ -268,8 +302,12 @@ export function formatRecoveryReport(report: RecoveryReport): string {
 		lines.push(`  - ${report.orphanedSnapshotGoals.length} orphaned snapshot entr${report.orphanedSnapshotGoals.length === 1 ? "y" : "ies"}:`);
 		for (const o of report.orphanedSnapshotGoals) lines.push(`      ${o.goalId} (${o.activePath})`);
 	}
-	if (report.staleLocks.length > 0 || report.orphanedSnapshotGoals.length > 0) {
-		lines.push("Run `/goal-recovery repair` to remove stale locks and refresh the pool snapshot (confirmation + backup required).");
+	if (report.completedGoals.length > 0) {
+		lines.push(`  - ${report.completedGoals.length} complete but unarchived goal(s):`);
+		for (const entry of report.completedGoals) lines.push(`      ${entry.goalId} (${entry.relPath})`);
+	}
+	if (report.staleLocks.length > 0 || report.orphanedSnapshotGoals.length > 0 || report.completedGoals.length > 0) {
+		lines.push("Run `/goal-recovery repair` to remove stale locks, archive completed goals and refresh the pool snapshot (confirmation + backup required).");
 	}
 	return lines.join("\n");
 }

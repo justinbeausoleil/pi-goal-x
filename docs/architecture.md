@@ -275,6 +275,11 @@ removal, including changes during backup copying. Snapshot refresh requires a
 successful authoritative scan and write before replacing its cache. Failed
 backup/scan/read/write operations produce explicit diagnostics and retain valid
 progress. Cancelled or stale-session confirmations apply no repair.
+The report also discovers completed goal files still at active paths, even
+though they are excluded from the open pool. Confirmed repair locks each goal,
+checks the selected file's content and identity before and after backup, then
+uses the existing archive operation. It retains any unpaid usage's archive
+locator and records completion/archival events without another model turn.
 
 ## Goal styles
 
@@ -530,7 +535,7 @@ event, arms the one-time wrap-up steering, and cancels pending continuations.
 ## Completion output
 
 Completion is explicit and checked by an independent auditor agent.
-`update_goal(status="complete")` is valid for active and paused goals; paused
+`update_goal(status="complete")` is valid for active, paused and budget-limited goals; paused
 goals do not need to be resumed just to record completion when existing
 evidence is sufficient. There is no verification-summary parameter — the
 auditor derives the requirements from the objective and any verification

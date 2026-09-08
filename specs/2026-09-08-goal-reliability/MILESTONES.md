@@ -1837,3 +1837,35 @@
 - Remaining011: completed-record recovery and crash/archive faults, remaining
   lifecycle/gate preservation cases, final payload/qualification checks and
   independent fixed-base reviews. Acceptance remains unchecked.
+
+### 011 — completed-record recovery and gate preservation
+
+- `archive-recovery-red.log` reproduced write and unlink failures leaving a
+  complete record invisible to recovery after reopen. Recovery now reports
+  completed active files outside the open pool. Confirmed repair backs them up,
+  rechecks content/file identity under the existing lock, and uses the existing
+  archive operation with usage-locator bookkeeping. It never requests another
+  executor or auditor turn. Cancellation and repeated repair are no-ops.
+- `archive-matrix-first.log`: 8/8 native cases pass: archive write/unlink faults,
+  abrupt process exit after committed completion but before turn_end, and edits,
+  before/after-copy races, session changes and backup failure during repair.
+  The crash fixture creates through public tools, actually exits the host, and
+  reopens its saved session in a fresh process. At frozen0bcb17d the identical
+  test fails to discover the record (`archive-crash-frozen-red.log`); current
+  recovery passes (`archive-crash-first.log`). One archive and one pair of
+  completion/archival events remain after successful repair.
+- `archive-lifecycle-preservation.log`: 20/21, including prior storage-recovery
+  guards and real budget exhaustion followed by completion. The blocked case
+  reached the earlier public stop guard, not the policy helper text the fixture
+  expected; corrected assertion passes (`blocked-completion-preservation.log`).
+  `helpers-archive.log`: 12/12; type checking and lint pass.
+- `completion-gates-preservation.log`: 5/6. Retained-contract rejection, missing
+  evidence, deletion/settings scope retention and optional planning pass through
+  the real host. A skipped uncontracted task remained incorrectly pending in
+  the shared task counter; `required-skip-diagnostic.log` confirms the skip was
+  durably saved. Fix pending = total minus complete minus skipped at that shared
+  boundary, also correcting auditor counts. Final green/qualification pending.
+- `completion-gates-green.log` now passes6/6, including the previously failing
+  public skipped-task completion. `check-candidate.log` and
+  `lint-candidate.log` pass. Freeze this011 candidate for independent review and
+  full qualification; do not mark acceptance complete until those pass.

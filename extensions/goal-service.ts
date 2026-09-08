@@ -185,7 +185,8 @@ export class GoalService {
 	private lastPersistedUsage: { goalId: string; tokensUsed: number; activeSeconds: number } | null = null;
 	private pendingUsage = new Map<string, {goal: GoalRecord; usage: GoalUsage}>();
 
-	private archiveGoal(ctx: GoalServiceContext, goal: GoalRecord): GoalRecord {
+	/** Archive under the caller's per-goal lock, preserving unpaid usage's locator. */
+	archiveGoal(ctx: GoalServiceContext, goal: GoalRecord): GoalRecord {
 		const written = archiveGoalFile(ctx, goal);
 		const pending = this.pendingUsage.get(goal.id);
 		if (pending) pending.goal = written;
