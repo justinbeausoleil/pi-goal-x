@@ -294,11 +294,12 @@ try {
   testing = true;
   if (boundary !== "ordinary") await session.prompt("/goal-resume");
   if (boundary === "idle") {
+    const shellWork = {redirect: "echo progress > progress.txt", substitution: 'echo "$(echo progress > progress.txt)"', backtick: 'echo "`echo progress > progress.txt`"'}[control];
     responses = control === "inspect" ? Array.from({length: 3}, () => [{name: "get_goal", args: {}}])
       : control === "echo" ? [[{name: "bash", args: {command: "echo inspecting"}}]]
       : control === "ls" ? [[{name: "ls", args: {path: "."}}]]
-      : control === "work" || control === "redirect" ? [[control === "redirect" ? {name: "bash", args: {command: "echo progress > progress.txt"}} : write("progress.txt")], [], [pause]] : [];
-    const worked = control === "work" || control === "redirect";
+      : control === "work" || shellWork ? [[shellWork ? {name: "bash", args: {command: shellWork}} : write("progress.txt")], [], [pause]] : [];
+    const worked = control === "work" || Boolean(shellWork);
     const expectedResponses = control === "inspect" ? 4 : worked ? 3 : ["text", "clarify"].includes(control) ? 1 : 2;
     await delay(100);
     await settled();
@@ -307,7 +308,7 @@ try {
     if (control === "inspect") assert(requests.slice(before).every(request => JSON.stringify(request).includes("Do not call get_goal repeatedly")), "every inspection receives the existing soft guidance");
     assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, worked ? "paused" : "active", "yielding for clarification does not mark the goal blocked or complete");
     if (control === "work") assert.equal(readFileSync(join(cwd, "progress.txt"), "utf8"), "progress.txt");
-    if (control === "redirect") assert.equal(readFileSync(join(cwd, "progress.txt"), "utf8"), "progress\n");
+    if (shellWork) assert.equal(readFileSync(join(cwd, "progress.txt"), "utf8"), "progress\n");
     if (control === "clarify") assert(JSON.stringify(session.messages.at(-1)).includes("Which output format"), "the active goal can ask a real clarification question");
     responses = [[write("resumed-proof.txt"), pause]];
     await session.prompt(control === "clarify" ? "Use JSON and continue the requested work." : "/goal-resume");
@@ -360,7 +361,9 @@ try {
     }
     const inspectionStart = requests.length;
     await run("Inspect state and report the same blocker without attempting the advice.", [
-      {name: "get_goal", args: {}}, {name: "bash", args: {command: control === "echo-variable" ? 'echo "$PWD"' : "echo inspecting"}}, {name: "ls", args: {path: "."}}, block,
+      {name: "get_goal", args: {}},
+      ...(control === "echo-quoted" ? ['echo "inspection; still inspection"', "echo 'inspection > still inspection'", 'echo inspection\\;still', "echo '$(inspection) `still inspection`'", 'echo inspection # no > work', 'echo "inspection\\\"; still inspection"'] : [control === "echo-variable" ? 'echo "$PWD"' : "echo inspecting"]).map(command => ({name: "bash", args: {command}})),
+      {name: "ls", args: {path: "."}}, block,
     ]);
     assert.equal(currentGoal().status, "active", "inspection and another block request do not execute Oracle advice");
     assert(JSON.stringify(requests[inspectionStart].messages.at(-1)).includes("Late Oracle advice"), "durable advice is supplied before renewed work");

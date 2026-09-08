@@ -315,8 +315,29 @@ export function isMeaningfulProgressToolCall(toolName: string, args: unknown): b
 	if (!GOAL_PROGRESS_TOOL_SET.has(toolName)) return false;
 	if (toolName === "bash") {
 		const command = asRecord(args)?.command;
-		// ponytail: recognize plain echo only; full shell analysis needs a parser.
-		if (typeof command === "string" && /^\s*echo\b/.test(command) && !/[;&|<>`()\r\n]/.test(command)) return false;
+		// ponytail: recognize simple echo, including quotes; arbitrary shell analysis needs a parser.
+		if (typeof command === "string" && /^\s*echo\b/.test(command)) {
+			const shell = command.trimEnd();
+			let quote = "";
+			for (let i = 0; i < shell.length; i++) {
+				const char = shell.charAt(i);
+				if (quote === "'") {
+					if (char === "'") quote = "";
+					continue;
+				}
+				if (char === "\\") { i++; continue; }
+				if (char === "`" || (char === "$" && shell[i + 1] === "(")) return true;
+				if (quote === '"') {
+					if (char === '"') quote = "";
+					continue;
+				}
+				if (char === "'" || char === '"') quote = char;
+				else if (char === "#" && /\s/.test(shell[i - 1] ?? "")) {
+					return shell.includes("\n", i);
+				} else if (/[;&|<>()\r\n]/.test(char)) return true;
+			}
+			return false;
+		}
 	}
 	return true;
 }

@@ -74,7 +74,9 @@ automatic checkpoint. Successful task confirmation and explicitly requested
 continuations retain their handoff. The active goal can ask clarification;
 the user's reply or an explicit `/goal-resume` can continue an idle goal.
 The existing repeated-get_goal guidance stays soft and does not block reads.
-Shell classification recognizes plain echo; it is not semantic shell analysis.
+Shell classification excludes simple echo with quoted/escaped literals or variable
+expansion. Unquoted operators and command substitutions remain work attempts;
+the check does not perform semantic analysis of arbitrary shell programs.
 
 Checkpoint metadata and content must identify the same goal and carry the
 runtime UUID/sequence of its current, single-use issued receipt. Stops clear

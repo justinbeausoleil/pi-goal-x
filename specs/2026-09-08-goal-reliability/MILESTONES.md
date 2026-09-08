@@ -1692,3 +1692,18 @@
 - Type/lint, context28, provider7, historical NAF, ranking5, production audit
   and dry pack pass at956d4aa. Final repaired qualification and fresh B2/B7
   remain pending;009 acceptance is still open. No dependencies or live selection changed.
+
+- Frozen956d4aa totals are1292/1293 full and952/953 selfcheck, both exposing
+  the same successful-retry helper mismatch. Frozen04ec071 resolves it:
+  repaired-full.log passes1295/1295 (76 files), repaired-selfcheck.log953/953
+  (71 files); type/lint and53 B2/B7 benchmarks pass at unchanged timing limits.
+  repair-check.log retains the unsupported ES2022 findLast failure; using find
+  restores the existing target (repair-final-check.log). No target relaxation.
+- Both independent reviewers clear the selected-fingerprint/reopen repair.
+  Spec's quoted-echo reproduction still blocks after mere inspection at04ec071;
+  echo-quoted-registered-red.log registers that failure. Replace raw punctuation
+  matching with quote/escape-aware scanning in the existing shared classifier.
+  Echo-quoted-native-green.log passes5 native checks: quoted/escaped literals,
+  variable expansion, redirection and both command-substitution forms. Actual
+  files verify that shell writes still earn continuation. Full qualification and
+  final delta reviews remain required before009 acceptance.
