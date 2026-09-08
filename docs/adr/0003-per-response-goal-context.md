@@ -2,12 +2,13 @@
 
 Status: proposed; supported by the triage reproduction.
 
-Use Pi's per-response context seam to project authoritative goal state, while
-removing obsolete dynamic system state and validating actual custom/user
-starts. Keep native compaction and tiny continuation triggers. This makes task
-continuity independent of whether a lossy summary remembers the current task.
+Use Pi's per-response context seam for authoritative executor goal state and
+validate custom/user starts, removing obsolete dynamic system state while
+keeping native compaction and tiny continuation triggers. The projection covers
+every lifecycle status and applicable steering, not only objective/current task;
+its exact bounds and composition are defined in [plan D1](../../plan.md#d1--start-and-per-response-context-contract).
 
 Startup-only injection misses custom kickoff and same-run compaction on Pi
-0.85.1. Restoring full checkpoints would reintroduce transcript growth. Full
-objective/task details remain available through bounded, revision-aware
-retrieval; the projection is ephemeral and cannot itself become stored truth.
+0.85.1; full checkpoints would reintroduce transcript growth. Keep projections
+ephemeral, details losslessly paged, and summarizer/reviewer/child contexts
+separate; none of these projections becomes stored truth.

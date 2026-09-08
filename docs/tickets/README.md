@@ -1,24 +1,44 @@
 # Development tickets: goal reliability
 
-These tickets repair the goal-management package. They are not tasks the
-package generates for its users.
+These are development tickets for the goal package, not tasks it generates.
+Status: red-team complete; all implementation remains draft pending approval.
+Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
+[source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
-All implementation tickets are draft until the spec, plan, and test seams
-receive review. The owner is the maintainer. Work the dependency frontier;
-record an assignee when starting a ticket.
-
-| ID | Outcome | Blocked by | Status | Spec |
+| ID | Observable outcome | Blocked by | Status | Spec |
 | --- | --- | --- | --- | --- |
-| [001](001-reliable-start.md) | Reliable goal startup and checkpoints | None | draft | G1 |
-| [002](002-compaction-continuity.md) | Task continuity through compaction | 001 | draft | G2, G4 |
-| [003](003-large-task-plans.md) | Incremental 200-node public task plans | 002 | draft | G3, G4 |
-| [004](004-session-and-stop-controls.md) | Session recovery and safe stop controls | 002 | draft | G5, G6 |
-| [005](005-completion-integrity.md) | Requirement/evidence completion integrity | 003, 004 | draft | G7 |
-| [006](006-qwen-validation.md) | Both Qwen models complete real fixtures | 005 | draft | G8 |
-| [007](007-package-trial.md) | Isolated package trial and rollback | 006, trial authorization | draft | G9 |
+| [001](001-reliable-start.md) | reliably start and continue a goal | None | draft | G1 |
+| [002](002-compaction-continuity.md) | preserve every lifecycle state through compaction | 001 | draft | G2, G4 |
+| [003](003-large-task-plans.md) | incrementally build a 200-node task plan | 002 | draft | G3 |
+| [004](004-large-plan-details.md) | inspect and continue large plans losslessly | 003 | draft | G2, G4 |
+| [005](005-guided-scope.md) | confirm drafts and revise scope without losing requirements | 004 | draft | G7, G10 |
+| [006](006-session-recovery.md) | recover sessions without inherited autonomous authority | 002 | draft | G6, G13 |
+| [007](007-stop-controls.md) | stop queued goal work and prioritize user steering | 006 | draft | G5 |
+| [008](008-budget-accounting.md) | exhaust a budget once and preserve accurate usage | 007 | draft | G2, G11 |
+| [009](009-blocker-oracle.md) | retain blocker and Oracle recovery through compaction | 007 | draft | G2, G12 |
+| [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | draft | G5, G12 |
+| [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | draft | G6, G7 |
+| [012](012-package-compatibility.md) | qualify the packed fork and rollback across existing surfaces | 004, 005, 006, 008, 009, 010, 011 | draft | G9, G13 |
+| [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | draft | G8 |
+| [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | draft | G9 |
 
-Before marking done, replace the ticket's evidence-pending line with commands,
-results, artifact locators, and limitations; record review findings. Use the
-[tracker policy](../agents/issue-tracker.md). The
-[milestone log](../../specs/2026-09-08-goal-reliability/MILESTONES.md)
-records setup, decisions, setbacks, and integration.
+The available frontier after implementation approval is **001**. After 002,
+003 and 006 are independently eligible; later tickets follow only their
+listed blockers. Use one writer unless parallel work is explicitly requested.
+Blockers are numbered before dependents; approval is a shared entry condition,
+not a repeated gate inside every slice.
+
+012 qualifies the packed candidate before 013 spends real model time.
+A completed 013 experiment with failed cases blocks 014; completion of the
+experiment and passing behavioral acceptance are separate facts.
+014 prepares a live trial but does not execute it. No ticket needs live-install
+authorization to run isolated tests or prepare a concrete configuration diff.
+
+Each ticket includes its entry documents, precise contract references,
+end-to-end demo, exclusions, and acceptance evidence. Assignee: maintainer
+until delegated; record the executor when work starts. Before marking done,
+fill evidence and review findings under the [tracker policy](../agents/issue-tracker.md).
+
+The original seven drafts were split and renumbered before implementation.
+Their [mapping and review resolutions](../reviews/2026-09-08-ticket-red-team.md)
+preserve provenance; historical milestone counts describe the earlier packet.

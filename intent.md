@@ -14,7 +14,8 @@ stale current-task context after threshold and overflow compaction, and a
 ## Proposed outcome
 
 Maintain a focused fork of pi-goal-x that preserves its goal creation,
-continuation, task tracking, controls, and completion audit while correcting
+continuation, task tracking, budgets, blocker recovery, maintenance, controls,
+and completion audit while correcting
 those failures. Users should resume meaningful work from durable goal state,
 without repeating completed tasks, losing pending requirements, or claiming
 completion early.
@@ -47,5 +48,7 @@ configuration form the compatibility baseline.
 
 The concrete proposal is in [spec.md](spec.md), the delivery order and test
 seams in [plan.md](plan.md), and decisions in [docs/adr](docs/adr).
-The initial tested capacity proposed is 200 total task nodes. The exact npm
-distribution name is deferred until release; it does not block a Git fork.
+The proposed capacity is 200 total task nodes. The red-team review maps every
+current lifecycle phase and original numbered development stage to a ticket.
+The proposed candidate identity and isolated distribution route are specified
+in plan D6; publication and live package selection remain separate actions.

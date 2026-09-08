@@ -56,3 +56,23 @@ concrete attempts. _Avoid_: unfinished work, pause.
 **Pause**:
 A deliberate suspension of autonomous goal work while preserving its progress.
 _Avoid_: completion, abandonment.
+
+**Retained scope**:
+The objective and requirements still owed to the user, regardless of changes
+to the task plan. _Avoid_: current task list, conversation summary.
+
+**Scope revision**:
+A human-confirmed change to retained requirements, with a record of what
+changed and why. _Avoid_: task deletion, auditor bypass.
+
+**Audit-skipped completion**:
+A completion recorded under the user's choice to bypass independent review.
+_Avoid_: verified completion, waived scope.
+
+**Budget limit**:
+A stop on autonomous goal work after its allotted token usage is reached.
+_Avoid_: completion, blocker.
+
+**Oracle consultation**:
+Optional independent advice about a concrete blocker and possible next work.
+_Avoid_: completion audit, progress evidence.

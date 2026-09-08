@@ -20,3 +20,24 @@
   tests, manifests, workflows, and license match the reviewed base exactly.
 - No runtime tests were rerun for this documentation-only change. Existing
   triage outcomes are cited as baseline evidence, not as proof of fork repairs.
+
+- 2026-09-08 ticket red team: reviewed the planning commit f8dfb23 against the
+  unchanged upstream source and original PRD/runtime-follow-up stages.
+  Independent standards and specification reviews found seven agent-readiness
+  findings and six lifecycle-coverage findings; all received explicit document
+  resolutions. A second pass resolved draft tombstones, cross-path task
+  reopening, external scope edits, branch-bound drafts, archival restart
+  recovery, and tweak status semantics.
+- Replaced the seven broad draft tickets with 14 narrower drafts; expanded
+  G1–G9 to G1–G13, added D1–D6 public/ownership/validation contracts, a complete
+  source-backed phase matrix and original-stage mapping, and proposed ADR 0004.
+  Preserved historical records and mapped old ticket IDs to their replacements.
+- Document validation passed: 14 unique tickets, G1–G13 covered, all blockers
+  point to existing lower-numbered tickets (acyclic), local links/anchors
+  resolve, exact CLAUDE.md import retained, and git diff --check clean.
+  The source, tests, scripts, manifests, CI, and license still match fe430b25.
+  No runtime test or real-model trial was run in this document-only review.
+- Isolated package qualification now precedes the fixed six-run Qwen matrix;
+  adoption preparation is independent of live-install permission. The user
+  authorized this red-team/document repair; implementation approval and
+  runtime acceptance remain pending.

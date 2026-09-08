@@ -1,8 +1,9 @@
 # Specification: compaction-safe, large-task goals
 
-Status: draft for review; no implementation acceptance criterion is complete.
+Status: red-teamed draft; implementation approval and evidence are pending.
 Source: [intent](intent.md). Vocabulary: [CONTEXT.md](CONTEXT.md).
 Evidence: [triage](docs/research/goal-reliability.md).
+Coverage and review: [lifecycle review](docs/reviews/2026-09-08-ticket-red-team.md).
 
 ## Problem statement
 
@@ -14,83 +15,111 @@ not a demonstrated Qwen-specific defect.
 
 ## Solution
 
-Make each model response receive a bounded, current view of its focused goal.
-Keep the full goal and task requirements authoritative outside conversation
-summaries. Support at least 200 task nodes through public, incremental
-operations and lossless paged reads. Preserve goal controls and require
-workspace evidence before global completion.
+Give each executor response a bounded, current view of the focused goal.
+Keep objectives, task contracts, progress, and outstanding audit findings
+durable outside conversation summaries. Support 200 nodes through incremental
+public operations and lossless paged reads. Preserve the original lifecycle,
+including drafting, budgets, blockers, user controls, maintenance, and explicit
+auditor bypasses. The lifecycle review assigns every phase an owner and proof.
 
-The package manages goals. The intent, spec, tickets, and ADRs describe how we
-develop it; no SDLC behavior is added to the package.
+SDLC documents describe development of this goal package. They do not add SDLC
+behavior to the product.
 
 ## User stories
 
-1. As a user, I can draft and confirm a goal so the first autonomous response
-   knows the objective I approved.
-2. As a user, I can create a goal directly and have it start with the same
-   reliable context as a guided goal.
-3. As a user, I can decompose work into at least 200 tasks/subtasks and extend
-   the plan without replacing unrelated progress.
-4. As a user, I can compact repeatedly and continue the current task with the
-   correct requirements while completed work stays completed.
-5. As a user, I can use ordered goals and hierarchy without weakening their
-   existing ordering and parent-completion semantics.
-6. As a user, I can retrieve any omitted objective, task, or evidence exactly.
-7. As a user, I can pause, resume, clear, or change focus without a stale
-   continuation doing more work for an earlier goal.
-8. As a user, I can reopen a session and recover durable work; moving backward
-   in conversation history does not silently undo project progress.
-9. As a user, I can trust that a changed plan does not silently erase original
-   requirements or unresolved completion-audit findings.
-10. As a user of either configured local Qwen model, I can see measured
-    end-to-end results and limitations before adopting the fork.
+1. As a user, I can clarify, refine, confirm, cancel, and resume a draft without
+   an unconfirmed proposal becoming autonomous work.
+2. As a user, I can start a regular or ordered goal directly or through drafting
+   and have the first response know the approved objective.
+3. As a user, I can build a 200-node plan incrementally without resending or
+   erasing unrelated tasks, progress, or evidence.
+4. As a user, I can compact repeatedly and continue the current task from
+   durable requirements while completed work stays completed.
+5. As a user, I retain ordered steps, normal parent gates, lightweight subtasks,
+   and optional task tracking.
+6. As a user, I can retrieve all omitted objective, task, evidence, scope, and
+   audit information exactly, even when one field exceeds a page.
+7. As a user, I can confirm a goal revision knowing exactly which requirements
+   change; deleting or skipping a planning step alone does not waive scope.
+8. As a user, I can pause, resume, unfocus, switch, or clear goals without an old
+   continuation starting more tool work.
+9. As a user, I can reopen or navigate sessions without rewinding project
+   progress or silently starting work from an inherited fork.
+10. As a user, I can reach a token budget, see a truthful wrap-up, and retain
+    work without false completion or repeated charging.
+11. As a user, I retain concrete blocker reporting, optional Oracle advice,
+    provider recovery, and the ability to stop them.
+12. As a user, I can distinguish audited completion, rejected/error/cancelled
+    review, and my explicit choice to complete without independent review.
+13. As a user, I retain status, dashboards, settings, diagnosis, confirmed
+    repair, and safe archival, including recoverable failures.
+14. As the maintainer, I can evaluate the packed fork on both local Qwen models
+    using real artifacts and summaries, then choose adoption with a tested rollback.
 
 ## Acceptance criteria
 
-| ID | Observable behavior | Delivery ticket |
+Ticket IDs and blocking edges are canonical in the [ticket index](docs/tickets/README.md).
+
+| ID | Observable behavior | Tickets |
 | --- | --- | --- |
-| G1 | Pi 0.85.1 loads the fork; guided/direct creation and every autonomous checkpoint deliver the exact focused objective or an explicit lossless retrieval reference before work. Unfocused/stale checkpoints cannot act as active goals. | [001](docs/tickets/001-reliable-start.md) |
-| G2 | Each next model request after task changes, manual compaction, threshold compaction, or overflow recovery reflects the current task/status/contracts. Three successive compactions cannot erase required work or repeat completed task transitions. | [002](docs/tickets/002-compaction-continuity.md) |
-| G3 | Public tools create and extend at least 200 total nodes, preserve stable IDs and untouched status/evidence, and reject duplicate IDs, invalid parents, cycles, excessive depth, and stale revisions without partial writes. Ordered mode remains ordered. | [003](docs/tickets/003-large-task-plans.md) |
-| G4 | Goal-added context is bounded to 10,000 characters per model request for the supported fixtures, independent of total plan size. Omitted content is explicitly marked and available through lossless revision-aware pages. Projections never accumulate in persisted chat. | [002](docs/tickets/002-compaction-continuity.md), [003](docs/tickets/003-large-task-plans.md) |
-| G5 | Pause, abort, clear, focus change, pending user steering, and failed compaction stop or supersede autonomous work correctly. A successful overflow retry does not also spawn a duplicate continuation. | [004](docs/tickets/004-session-and-stop-controls.md) |
-| G6 | Reload, process reopen, new session, fork, and backward tree navigation obey the documented project-goal/session-focus ownership policy. Corrupt records and conflicting mutations fail visibly without replacing valid progress. | [004](docs/tickets/004-session-and-stop-controls.md) |
-| G7 | Completion is rejected while a required task/requirement is unresolved or lacks its required evidence. Plan deletion/skipping alone cannot waive original requirements. Audit rejection/error remains durable; only verified satisfaction or an explicit user-approved scope revision can discharge a requirement. | [005](docs/tickets/005-completion-integrity.md) |
-| G8 | Both local Qwen models complete representative multi-stage fixtures with real model-generated summaries and at least three compactions. Record all attempts, thinking settings, artifact checks, tokens, retries, and failures. | [006](docs/tickets/006-qwen-validation.md) |
-| G9 | A package trial preserves existing goal data, user package choices, settings, and credentials, and has a tested rollback. The fork is distinguishable from upstream; both cannot register conflicting goal commands in the same trial. | [007](docs/tickets/007-package-trial.md) |
+| G1 | Pi 0.85.1 loads the fork. All four guided/direct regular/ordered starts and subsequent checkpoints deliver focused identity and objective or an exact retrieval reference before work. Stale/unfocused checkpoints cannot execute goal work. | 001 |
+| G2 | After tool mutations and manual, threshold, or overflow compaction, the next executor request contains current lifecycle state, task, contracts, and applicable steering. Three successive compactions preserve required work and completed transitions. | 002, 004, 008, 009 |
+| G3 | Public operations build 180 nodes and extend to 200, preserve untouched IDs/status/evidence, and atomically reject duplicate IDs, invalid parents, cycles, excessive depth, capacity overflow, and stale work revisions. Ordered and parent semantics remain intact. | 003 |
+| G4 | Automatically supplied goal instructions, projections, and retained checkpoint text total at most 10,000 JavaScript string characters per executor request for every accepted input. Explicit detail results have at most 4,000 content characters per page. Omitted content has lossless content-bound retrieval; ephemeral projections never accumulate in persisted chat. | 002, 004 |
+| G5 | User/agent pause, abort, unfocus, clear, focus change, and pending steering invalidate stale continuations and block new goal work-tool dispatch. Host overflow recovery cannot also spawn a duplicate continuation. Already-dispatched effects are reported, not claimed undone. | 007, 010 |
+| G6 | Reload, reopen, new session, fork, and tree navigation follow the explicit ownership table. Goal records remain authoritative. Corruption, conflicting writes, and failed repair/archive operations cannot silently replace valid progress. Child sessions cannot acquire parent goal controls. | 006, 011 |
+| G7 | Completion enforces configured task gates and required contract evidence; plan deletion, skipping, lightweight flags, or disabling display/tools cannot waive retained scope. Audit findings survive compaction/reopen. Audited completion requires approval; user-owned bypass remains available but is durably labelled unverified/audit-skipped. | 005, 011 |
+| G8 | The fixed six-run Qwen matrix uses real work and model summaries with at least three real compactions per run. Every scheduled attempt is reported. Behavioral acceptance requires all six to satisfy artifact, state, and completion checks within the declared limits. | 013 |
+| G9 | The exact packed artifact loads alone, preserves supported legacy records, and has a tested backup/rollback procedure. Package identity, supported versions, and installation instructions distinguish the fork. Live adoption is separate from isolated verification and preparation. | 012, 014 |
+| G10 | Draft questions, questionnaires, proposal/refinement, cancellation, auditor choice, and tweak confirmation survive compaction/reopen appropriately. Cancelled proposals preserve approved goal/focus/scope; explicit draft cancellation persists a tombstone so it cannot return on reopen. Stale confirmation cannot modify a changed goal. | 005 |
+| G11 | Usage is attributed once to the goal that incurred it across custom starts, retries, aborts, compaction, and focus changes. Budget exhaustion produces one durable limited transition and at most one wrap-up; resuming without increasing/removing an exhausted budget cannot restart work. | 008 |
+| G12 | Immediate agent pause remains distinct from blocked. Three-consecutive-blocker guidance, optional Oracle consultation/follow-up, stall steering, and configured network recovery survive the context change without new automatic authority. | 009, 010 |
+| G13 | Existing command/tool profiles, layered settings, UI/keybindings, refresh, health checks, and confirmed recovery remain usable through the packed extension. Disabled features do not erase existing records or requirements. | 006, 012 |
+
+For G4 the bound includes all extension-injected system/message goal text,
+including lifecycle warnings and audit/Oracle excerpts. Explicit user-requested
+tool results and static tool schemas are measured separately by existing payload
+checks; this is not a bound on the entire conversation or model tokenizer.
+
+For G7, free-text objectives/contracts remain the requirements model.
+An optional, uncontracted planning task may still be skipped with a reason.
+A nonempty evidence claim is a structural prerequisite, not independent proof.
+Auditor opt-out is not a scope waiver and never earns an audited/verified label.
 
 ## Implementation decisions
 
-- Reuse the existing mutation module, durable project goal records, ledger,
-  public commands, UI, and auditor. Retain one coherent mutation interface.
-- Deliver dynamic goal context at the per-response seam and remove obsolete
-  dynamic system state. Repair custom-start ownership setup as well as text
-  delivery; a sender swap or an extra reminder alone is insufficient.
-- Keep native Pi compaction. A summary is conversation context, never authority
-  for goal progress or completion.
-- Extend existing task operations with explicit incremental mutations and
-  revision checks; preserve existing replacement semantics only where user
-  confirmation explicitly requests structural replacement.
-- Use the ownership policy in [ADR 0002](docs/adr/0002-goal-and-session-ownership.md).
-  Do not introduce autonomous multi-agent scheduling.
-- Pin the supported Pi line during implementation rather than widening a peer
-  range without validation. Keep upstream attribution and storage compatibility.
+- Reuse the existing mutation service, project goal files, ledger, commands,
+  dialogs, and auditor; do not add a database or generalized requirements engine.
+- Move dynamic goal text to the per-response seam and repair custom-start
+  ownership/validation. Retain tiny checkpoints and native Pi compaction.
+- Preserve a current approved scope and retained task contracts in the
+  authoritative goal record. Human-confirmed scope changes and latest review
+  outcomes must not depend solely on best-effort ledger appends.
+- Extend existing task tools with explicit incremental semantics and a
+  content-based work revision that accounting alone does not invalidate.
+- Preserve settings and bypass authority. Headless auto-confirmation of task
+  structure does not authorize scope removal.
+- Apply [ADR 0002](docs/adr/0002-goal-and-session-ownership.md) for session ownership
+  and [ADR 0003](docs/adr/0003-per-response-goal-context.md) for context.
+- Support exactly the tested Pi 0.85.1 line initially. Broader compatibility
+  needs evidence; preserve upstream attribution and legacy reads.
 
 ## Testing decisions
 
-Proposed seams S1–S3 are defined in [plan.md](plan.md) for user review before
-new tests are written. Test observable behavior at the actual Pi session and
-public goal-tool interfaces, with final model requests as the observation
-point. Replace provider work with deterministic adapters for lifecycle cases;
-use real local models for behavioral acceptance.
+The concrete S1–S3 seams, contracts, fixture, and gates are in [plan.md](plan.md).
+Test through real Pi sessions and public commands/tools; inspect actual outbound
+requests. Deterministic adapters control model output for lifecycle tests.
+Use real local models for behavioral acceptance. Existing regression suites
+supply preservation coverage; extend them only where the changed behavior needs it.
 
-Existing helper suites remain useful regression checks but cannot substitute
-for the lifecycle seam. The earlier 200-task probe seeded storage and scripted
-summaries; it is evidence for feasibility, not completion of G3 or G8.
+The earlier 200-node probe seeded storage and scripted summaries. It proves
+feasibility, not G3 or G8. Completing the experiment with failures does not mean
+behavioral acceptance passed.
 
 ## Out of scope
 
-SDLC commands, plan-template generation for users, a general project manager,
-new dashboard features, autonomous multi-agent orchestration, a custom
-compactor/database, cloud fallback, and publishing under upstream's npm name.
-Installation and publication do not follow automatically from a passing test.
+SDLC commands, plan-template generation, a general project manager, new
+dashboard features, autonomous multi-agent scheduling, exactly-once external
+side effects across independent sessions, a custom compactor/database, cloud
+fallback, and publishing under upstream's npm name. Existing delegated-child
+isolation remains in scope. Installation does not follow from a passing test.
