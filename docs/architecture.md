@@ -256,6 +256,10 @@ activity. Inspection, executor projections, and task mutation results expose
 the current value. Initial empty-plan creation may omit it. The mutation
 module checks it against reconciled work in both immediate and buffered paths;
 the existing per-goal lock and numeric storage CAS still protect disk writes.
+At turn flush, a concurrent accounting-only write is rebased under that lock:
+only usage, updatedAt and numeric revision may differ from the original base.
+The local usage delta is added to the fresh record before the single write and
+ledger append. Work, lifecycle and budget changes still reject the buffer.
 UI task dialogs capture it before waiting for evidence. Whole-record structural
 mutations currently reject removing/changing contracts or changing completed
 task requirements; ticket 005 owns retained-scope metadata and human revision.

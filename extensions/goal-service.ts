@@ -1,4 +1,5 @@
-import { cloneGoal, nowIso, workRevisionError, type GoalFocusReason, type GoalRecord, type GoalTask, type GoalUsage } from "./goal-record.ts";
+import { isDeepStrictEqual } from "node:util";
+import { cloneGoal, normalizeGoalRecord, nowIso, workRevisionError, type GoalFocusReason, type GoalRecord, type GoalTask, type GoalUsage } from "./goal-record.ts";
 import { appendGoalEvent, appendGoalEvents, type GoalLedgerEvent } from "./goal-ledger.ts";
 import { findTaskInTree, updateTaskInTree } from "./goal-policy.ts";
 import {
@@ -236,7 +237,14 @@ export class GoalService {
 		try {
    const freshDisk = this.readFreshDiskGoal(ctx, goal);
    const expected = this.turnBase ?? goal;
-   if (!freshDisk || (freshDisk.revision ?? 0) !== (expected.revision ?? 0)) {
+   const revisionChanged = freshDisk && (freshDisk.revision ?? 0) !== (expected.revision ?? 0);
+   // Only accounting may be rebased. The work fingerprint intentionally
+   // excludes lifecycle/budget controls, which must still reject stale writes.
+   const accountingOnly = revisionChanged && freshDisk && isDeepStrictEqual(
+    {...freshDisk, usage: undefined, revision: undefined, updatedAt: undefined},
+    {...normalizeGoalRecord(expected), usage: undefined, revision: undefined, updatedAt: undefined},
+   );
+   if (!freshDisk || (revisionChanged && !accountingOnly)) {
     this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
     // Reject the speculative transaction, never overwrite another writer.
     this.turn.active = false;
@@ -258,7 +266,10 @@ export class GoalService {
     return null;
    }
    const base = freshDisk;
-			const next = { ...goal, revision: (base.revision ?? 0) + 1 };
+			const next = { ...goal, revision: (base.revision ?? 0) + 1, usage: revisionChanged ? {
+				tokensUsed: base.usage.tokensUsed + Math.max(0, goal.usage.tokensUsed - expected.usage.tokensUsed),
+				activeSeconds: base.usage.activeSeconds + Math.max(0, goal.usage.activeSeconds - expected.usage.activeSeconds),
+			} : goal.usage };
 			const written = this.turn.archive || next.status === "complete"
 				? archiveGoalFile(ctx, next)
 				: writeActiveGoalFile(ctx, next);
@@ -377,6 +388,9 @@ export class GoalService {
 		const reconciled = current && opts.preserveMemoryUsage
 			? mergeFocusedGoalWithDisk({ memoryGoal: current, diskGoal })
 			: diskGoal;
+		// Before any buffered write, reconciliation can adopt another session's
+		// accounting. It becomes the base, not additional locally incurred usage.
+		if (this.turn.active && !this.turn.goal) this.turnBase = { ...diskGoal, usage: { ...diskGoal.usage } };
 		this.ref.replacePool(fresh);
 		fresh.set(reconciled.id, reconciled);
 		this.ref.assignFocusedGoalId(reconciled.id);

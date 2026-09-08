@@ -18,6 +18,9 @@ writeFileSync(join(cwd, ".pi/pi-goal-x-settings.json"), JSON.stringify({ disable
 const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const errors = [], results = [];
+const concurrentAccounting = process.argv.includes("--concurrent-accounting");
+let clock = Date.now(), accountingUsage, history = "";
+if (concurrentAccounting) Date.now = () => clock;
 let session, failure, deadline, requests = 0, completedTask, lastGoal, firstRevision, resolveFinished;
 const finished = new Promise(resolve => { resolveFinished = resolve; });
 const tasks = (start, count) => Array.from({ length: count }, (_, i) => ({ id: `t${start + i}`, title: `Task ${start + i}`, verification_contract: `Preserve evidence for task ${start + i}.` }));
@@ -62,10 +65,27 @@ const steps = [
     assert.equal(goal.currentTaskId, "t175");
   } },
   { name: "get_goal", args: { verbose: true }, final: true },
+  ...(concurrentAccounting ? [{ name: "get_goal", args: { section: "history" } }] : []),
   { name: "update_goal", args: { status: "paused", reason: "Public plan is ready for reopening." } },
 ];
 let inFlight;
-function record(event) {
+async function accountOtherSession() {
+  const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPrompt: "Report briefly.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))] });
+  await loader.reload({ resolveProjectTrust: async () => true });
+  assert.deepEqual(loader.getExtensions().errors, []);
+  const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
+  await runtime.setRuntimeApiKey("openai", "synthetic-unused");
+  const { session: other } = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: SessionManager.open(session.sessionManager.getSessionFile()), settingsManager: settings });
+  await other.bindExtensions({ onError: error => errors.push(error) });
+  other.agent.streamFunction = requestedModel => {
+    clock += 2000;
+    const value = { role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content: [{ type: "text", text: "Accounting-only response." }], usage: { input: 10, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 11, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() };
+    const stream = new AssistantMessageEventStream(); stream.push({ type: "start", partial: value }); stream.push({ type: "done", reason: "stop", message: value }); return stream;
+  };
+  try { await other.prompt("Respond briefly without changing any goal or task."); }
+  finally { await other.abort(); other.dispose(); }
+}
+async function record(event) {
   results.push(event);
   try {
     assert.equal(event.isError, false, JSON.stringify(event));
@@ -75,6 +95,21 @@ function record(event) {
       assert.equal(typeof event.details.work_revision, "string", "public results must expose work_revision");
       const goal = event.details.goal;
       firstRevision ??= event.details.work_revision;
+      if (accountingUsage) {
+        assert.equal(goal.usage.tokensUsed, accountingUsage.tokensUsed + 121, "both responses' 110 + 11 tokens are retained exactly once");
+        assert.equal(goal.usage.activeSeconds, 8, "four main-session seconds plus two seconds in each concurrent response are retained");
+        accountingUsage = undefined;
+      }
+      if (step.args.section === "history") {
+        history += event.details.page.content;
+        if (event.details.page.nextCursor) steps.unshift({ name: "get_goal", args: { section: "history", cursor: event.details.page.nextCursor } });
+        else {
+          const events = history.split("\n").map(line => JSON.parse(line));
+          assert.equal(events.filter(e => e.type === "task_complete" && e.taskId === "t1").length, 1);
+          assert.equal(events.filter(e => e.type === "task_started" && e.taskId === "t175").length, 1);
+        }
+      }
+      if (completedTask) assert.equal(goal.taskList.tasks[0].status, "complete", "another session's accounting must not discard successful completion");
       if (step.reject) {
         assert.match(event.content.map(c => c.text ?? "").join(""), step.reject);
         assert.deepEqual(JSON.parse(JSON.stringify(goal.taskList)), lastGoal.taskList, "rejected operation commits no member");
@@ -99,13 +134,19 @@ function record(event) {
       step.check?.(goal);
       lastGoal = JSON.parse(JSON.stringify(goal));
     }
+    if (step.completed && concurrentAccounting) { accountingUsage = { ...event.details.goal.usage }; await accountOtherSession(); }
   } catch (error) { failure = error; }
 }
 function flatten(tasks) { return tasks.flatMap(task => [task, ...flatten(task.subtasks ?? [])]); }
 async function open(manager) {
   const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPrompt: "Perform the authorized synthetic fixture.",
     additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
-    extensionFactories: [pi => { pi.on("tool_result", record); }],
+    extensionFactories: [pi => {
+      pi.on("tool_result", record);
+      // One accounting save before execution is adopted; another after the
+      // successful result must be merged when the original turn flushes.
+      pi.on("tool_call", async () => { if (concurrentAccounting && inFlight?.completed) await accountOtherSession(); });
+    }],
   });
   await loader.reload({ resolveProjectTrust: async () => true });
   assert.deepEqual(loader.getExtensions().errors, []);

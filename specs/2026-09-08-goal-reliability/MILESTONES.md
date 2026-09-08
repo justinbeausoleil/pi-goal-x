@@ -308,3 +308,23 @@
   red/green test through public progress tools in an open turn, plus passing
   lightweight-child preservation. The shared current-task resolver now clears
   terminal descendants too, so immediate, single, and ordered batch paths agree.
+- Independent Standards review cleared 9a16d35...3eb7feb and the cc6714f
+  descendant-focus repair. Spec review independently passed the 200-node worker
+  but reproduced an accounting-only concurrent save discarding the successful
+  buffered completion/start batch. The native reproduction is retained as
+  concurrent-accounting-red.log; it fails with t1 reverted to pending.
+- The existing flush now distinguishes accounting-only revision changes from
+  work/control changes under its lock and merges the local usage delta. The
+  pre-mutation reconciliation refreshes its base so adopted remote usage is not
+  counted twice. Native regression performs accounting saves both before task
+  execution and after its success but before flush, verifies exact combined
+  tokens and seconds, and reads public history to check single completion/start
+  events. It then completes the 200-node proof and reopens successfully.
+- The first precise-clock assertion omitted the main session's first two
+  elapsed seconds: accounting-final evidence retains that failed expectation.
+  Correct independent total is eight seconds (four main, two per other-session
+  response), with 110+11 tokens added after the successful result. The final
+  native concurrent-accounting-green.log passes (33 requests, one work effect).
+  Existing conflict characterization now also covers pause and budget changes;
+  41 targeted storage/transaction/progress checks pass. Full qualification and
+  independent review of this repair are pending; 003 remains in progress.
