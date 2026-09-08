@@ -90,6 +90,39 @@ function fixture() {
 	return { cwd, written, ref, log, service, cleanup };
 }
 
+for (const locked of [false, true]) for (const foreignTokens of [0, 77]) it(`external scope reconciliation preserves incurred buffered usage on rejection (locked=${locked}, foreign=${foreignTokens})`, () => {
+	const f = fixture();
+	try {
+		f.service.persist(f);
+		const original = f.ref.getFocused()!;
+		f.service.beginTurn(f, original.id);
+		f.ref.getFocused()!.usage = {tokensUsed: 121, activeSeconds: 8};
+		f.service.persist(f);
+		const file = path.join(f.cwd, original.activePath!);
+		const external = parseGoalFile(file)!;
+		external.objective = "Externally revised objective";
+		external.usage.tokensUsed += foreignTokens;
+		writeFileSync(file, serializeGoalFile(external));
+		if (locked) {
+			const lock = acquireGoalLock(f, original.id);
+			try {
+				f.service.reconcileFocused(f);
+				assert.equal(f.ref.getFocused()!.objective, "Externally revised objective", "locked stale buffer cannot hide a pending proposal");
+				f.service.persist(f);
+			} finally { lock.release(); }
+		}
+		f.service.reconcileFocused(f);
+		f.service.reconcileFocused(f);
+		f.service.persist(f);
+		f.service.endTurn(f);
+		const disk = parseGoalFile(file)!;
+		assert.deepEqual(disk.usage, {tokensUsed: 121 + foreignTokens, activeSeconds: 8});
+		assert.equal(disk.objective, "Externally revised objective");
+		assert.equal(disk.retainedScope!.objective, original.objective);
+		assert(f.log.diagnostics.some(d => /buffered changes were rejected/.test(d.message)));
+	} finally { f.cleanup(); }
+});
+
 function activeFiles(cwd: string): string[] {
 	try {
 		return readdirNames(path.join(cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"));

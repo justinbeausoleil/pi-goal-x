@@ -58,6 +58,7 @@ function goalWith(id, overrides) {
 export const FIXTURES = {
 	"pending-external-scope": () => externalScopeFixture("active"),
 	"pending-external-scope-blocked": () => externalScopeFixture("blocked"),
+	"pending-external-scope-budget": () => externalScopeFixture("budget_limited"),
 	"active-regular-no-tasks": () => ({
 		goal: stableGoal("no-tasks", { objective: "Write the migration guide page.", autoContinue: true, sisyphus: false }),
 		trigger: "continue",
@@ -130,11 +131,15 @@ function externalScopeFixture(status) {
 		verificationContract: `Approved contract sentinel ${"verify original output ".repeat(400)}`,
 		taskList: list(Array.from({length: 200}, (_, i) => ({id: `required-${i}`, title: `Requirement ${i} ${"long title ".repeat(80)}`, status: "pending", verificationContract: `Contract ${i} ${"proof required ".repeat(250)}`}))),
 		currentTaskId: "required-142", status,
+		...(status === "budget_limited" ? {tokenBudget: 100, usage: {tokensUsed: 110, activeSeconds: 8}} : {}),
 		pauseReason: status === "blocked" ? `Pending stop reason sentinel ${"missing input ".repeat(400)}` : undefined,
 		pauseSuggestedAction: status === "blocked" ? `Pending action sentinel ${"provide input ".repeat(400)}` : undefined,
 	}));
 	goal.objective = `Proposed objective sentinel ${"changed requirement ".repeat(600)}`;
-	return {goal, pendingScope: true, trigger: status === "active" ? `<pi_goal_continuation goal_id="${goal.id}" kind="checkpoint" v="2"/>` : "Inspect the pending scope."};
+	return {goal, pendingScope: true, settings: {oracle: {enabled: true}}, ledgerEvents: [
+		{type: "audit_result", goalId: goal.id, verdict: "disapproved", report: `Pending audit objection sentinel ${"missing proof ".repeat(500)}`, at: iso(120)},
+		{type: "oracle_result", goalId: goal.id, fingerprint: "pending-blocker", adviceId: "pending-advice", disposition: "actionable", summary: "Diagnosis", advice: `Pending Oracle step sentinel ${"inspect required evidence ".repeat(500)}`, at: iso(121)},
+	], trigger: status === "active" ? `<pi_goal_continuation goal_id="${goal.id}" kind="checkpoint" v="2"/>` : "Inspect the pending scope."};
 }
 
 function budgetGoal(seed, budget, used) {

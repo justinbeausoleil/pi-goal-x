@@ -156,7 +156,7 @@ function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string |
 function taskStructureError(before: GoalRecord, after: GoalRecord, confirmedScope = false): string | undefined {
 	if (before.taskList?.tasks === after.taskList?.tasks) return;
 	const proposal = scopeProposalWarning(before);
-	if (proposal && !confirmedScope && !isDeepStrictEqual(normalizeGoalRecord(before)?.taskList, normalizeGoalRecord(after)?.taskList)) return proposal;
+	if (proposal && !confirmedScope) return isDeepStrictEqual(normalizeGoalRecord(before)?.taskList, normalizeGoalRecord(after)?.taskList) ? undefined : proposal;
 	const incoming = taskIndex(after.taskList?.tasks).byId;
 	for (const [id, task] of Object.entries(retainedGoalScope(after).tasks)) {
 		const next = incoming.get(id);
@@ -245,24 +245,7 @@ export class GoalService {
     {...normalizeGoalRecord(expected), retainedScope: retainedGoalScope(normalizeGoalRecord(expected)!), usage: undefined, revision: undefined, updatedAt: undefined},
    );
    if (!freshDisk || !accountingOnly) {
-    this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
-    // Reject the speculative transaction, never overwrite another writer.
-    this.turn.active = false;
-    this.turn.goal = null;
-    this.turn.ledger = [];
-    if (freshDisk && this.ref.getFocusedGoalId() === goal.id) {
-     const tokens = Math.max(0, goal.usage.tokensUsed - expected.usage.tokensUsed);
-     const seconds = Math.max(0, goal.usage.activeSeconds - expected.usage.activeSeconds);
-     this.ref.setFocused({ ...freshDisk, usage: {tokensUsed: freshDisk.usage.tokensUsed + tokens, activeSeconds: freshDisk.usage.activeSeconds + seconds} });
-     this.trackBaseline(freshDisk.id, freshDisk.usage);
-    } else if (!freshDisk) {
-     this.ref.getPool().delete(goal.id);
-     if (this.ref.getFocusedGoalId() === goal.id) {
-      this.ref.assignFocusedGoalId(null);
-      this.ref.onFocusedGoalLost(goal.id, ctx);
-     }
-    }
-    this.ref.onDiagnostic({ severity: "warning", source: "storage", goalId: goal.id, message: this.flushError });
+    this.rejectBufferedWork(ctx, freshDisk);
     return null;
    }
    const base = freshDisk;
@@ -282,6 +265,29 @@ export class GoalService {
 		} finally {
 			lock.release();
 		}
+	}
+
+	/** Discard stale work independently of the lock; incurred usage is still owed. */
+	private rejectBufferedWork(ctx: GoalServiceContext, disk: GoalRecord | null): void {
+		const goal = this.turn.goal!;
+		const expected = this.turnBase ?? goal;
+		this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
+		this.turn.active = false;
+		this.turn.goal = null;
+		this.turn.ledger = [];
+		if (disk && this.ref.getFocusedGoalId() === goal.id) {
+			const tokens = Math.max(0, goal.usage.tokensUsed - expected.usage.tokensUsed);
+			const seconds = Math.max(0, goal.usage.activeSeconds - expected.usage.activeSeconds);
+			this.ref.setFocused({...disk, usage: {tokensUsed: disk.usage.tokensUsed + tokens, activeSeconds: disk.usage.activeSeconds + seconds}});
+			this.trackBaseline(disk.id, disk.usage);
+		} else if (!disk) {
+			this.ref.getPool().delete(goal.id);
+			if (this.ref.getFocusedGoalId() === goal.id) {
+				this.ref.assignFocusedGoalId(null);
+				this.ref.onFocusedGoalLost(goal.id, ctx);
+			}
+		}
+		this.ref.onDiagnostic({severity: "warning", source: "storage", goalId: goal.id, message: this.flushError});
 	}
 
 	/** Completion must never audit state that failed to flush. */
@@ -348,7 +354,7 @@ export class GoalService {
 
 	/** Safe focused record reconciliation from disk. */
 	reconcileFocused(ctx: GoalServiceContext, opts: { preserveMemoryUsage?: boolean } = {}): boolean {
-		const current = this.ref.getFocused();
+		let current = this.ref.getFocused();
   const source = new Map(readActiveGoalPoolView(ctx));
   // A persisted pool snapshot cannot detect edits inside an existing file.
   // Migrated focused records require a direct read at every reconciliation.
@@ -356,7 +362,10 @@ export class GoalService {
    const disk = this.readFreshDiskGoal(ctx, current);
    if (disk?.id === current.id) {
     source.set(current.id, disk);
-    if (this.turn.goal && scopeProposalWarning(disk) && goalWorkRevision(disk) !== goalWorkRevision(this.turnBase ?? current)) this.flushTurn(ctx);
+    if (this.turn.goal && scopeProposalWarning(disk) && goalWorkRevision(disk) !== goalWorkRevision(this.turnBase ?? current)) {
+     this.rejectBufferedWork(ctx, disk);
+     current = this.ref.getFocused(); // Rejected work retains incurred usage against the fresh baseline.
+    }
    } else source.delete(current.id);
   }
   const focused = this.ref.getFocusedGoalId();
@@ -374,7 +383,7 @@ export class GoalService {
   const fresh = new Map(source);
 		// P1-3: overlay the buffered goal so in-turn mutations are visible to
 		// every read (reconcile, get_goal, prompts) without a disk round trip.
-		if (this.turn.active && this.turn.goal) fresh.set(this.turn.goal.id, this.turn.goal);
+		if (buffered) fresh.set(buffered.id, buffered);
 		const focusedGoalId = this.ref.getFocusedGoalId();
 		if (!focusedGoalId) {
 			this.ref.replacePool(fresh);
@@ -394,7 +403,11 @@ export class GoalService {
 			this.ref.onFocusedGoalLost(lostGoalId, ctx);
 			return false;
 		}
-		const reconciled = current && opts.preserveMemoryUsage
+		const pendingScope = scopeProposalWarning(diskGoal);
+		const delta = current && pendingScope ? this.usageDelta(current, diskGoal) : undefined;
+		const reconciled = delta
+			? {...diskGoal, usage: {tokensUsed: diskGoal.usage.tokensUsed + delta.tokens, activeSeconds: diskGoal.usage.activeSeconds + delta.seconds}}
+			: current && opts.preserveMemoryUsage
 			? mergeFocusedGoalWithDisk({ memoryGoal: current, diskGoal })
 			: diskGoal;
 		// Before any buffered write, reconciliation can adopt another session's
@@ -404,7 +417,7 @@ export class GoalService {
 		fresh.set(reconciled.id, reconciled);
 		this.ref.assignFocusedGoalId(reconciled.id);
 		this.ref.onReconciled(reconciled);
-		this.trackBaseline(reconciled.id, reconciled.usage);
+		this.trackBaseline(reconciled.id, pendingScope ? diskGoal.usage : reconciled.usage);
 		return true;
 	}
 

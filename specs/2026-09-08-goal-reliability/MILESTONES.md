@@ -760,3 +760,29 @@
   unchanged. Final qualification now runs against the frozen external subset;
   approved retained auditor input and the remaining human tweak lifecycle matrix
   still have to be implemented/verified before ticket 005 can close.
+
+### Ticket 005 external subset independent findings
+
+- Frozen 7324d98 passed 1059/1059 tests (76 files, 103.1s), type/lint,
+  discovery/self-check, context26/provider6 and dry pack. Both independent axes
+  then identified a pending-review early return hiding applicable guidance;
+  Spec additionally reproduced buffered usage loss (121 tokens/8 seconds became
+  zero), and public pause reporting success while the pending task-contract
+  proposal remained active. These findings prevent integration despite the pass.
+- Permanent red checks reproduce all three. Pending review now shares audit,
+  Oracle, stall and compaction additions, with final hold guidance and its size
+  reserved; a third pending fixture covers exhausted-budget wrap-up. Unchanged
+  pending task trees bypass the ordinary contract-change guard for explicit
+  lifecycle controls; public pause/resume is exercised while review is pending.
+- Reconciliation now uses the common stale-buffer rejection path without
+  needing a write lock, retains incurred usage against the fresh disk baseline,
+  and preserves it through repeated reads. Four service variants cover free/
+  held locks and independent 77-token disk accounting; all retain the local
+  121 tokens/8 seconds, raw proposal, approved scope and rejection diagnostic.
+  An intermediate locked-buffer overlay fix hid an accepted human receipt;
+  scope-external-guidance-native.log retains that failure. Removing the stale
+  buffer through the existing rejection behavior resolves both sides.
+- Targeted service/presentation checks and native task-contract/goal plus
+  objective/Sisyphus follow-ups pass; final follow-up type/lint/context/full and
+  fixed-base re-review remain in progress. Auditor approved-input red is retained
+  in scope-audit-input-red.log; its implementation is still next, not complete.

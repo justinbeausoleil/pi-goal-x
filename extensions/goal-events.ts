@@ -423,19 +423,21 @@ export function registerGoalEvents(core: GoalCore): void {
 		if (core.state.goal.status === "complete") return;
 		const settings = loadGoalSettings(ctx.cwd);
 		const proposal = scopeProposalWarning(core.state.goal);
+		let scopePrompt: string | undefined;
 		if (proposal) {
 			const goal = core.state.goal, approved = retainedGoalScope(goal);
-			return [`[PI GOAL SCOPE REVIEW goalId=${goal.id}]`, `Approved lifecycle: ${goal.status}. work_revision: ${goalWorkRevision(goal)}`,
+			scopePrompt = [`[PI GOAL SCOPE REVIEW goalId=${goal.id}]`, `Approved lifecycle: ${goal.status}. work_revision: ${goalWorkRevision(goal)}`,
 				proposal, "Approved objective:", untrustedObjectiveBlock({...goal, objective: approved.objective}),
 				`Approved goal contract: ${excerpt(approved.verificationContract ?? "(none)", 600, "scope")}`,
 				`Current edited objective: ${excerpt(goal.objective, 1000, "objective")}`,
 				"Current planning tree (edited requirements are proposals):", taskListBlock(goal, settings, 0),
 				goal.pauseReason ? `Stop reason: ${excerpt(goal.pauseReason, 600, "history")}` : "",
 				goal.pauseSuggestedAction ? `Suggested action: ${excerpt(goal.pauseSuggestedAction, 600, "history")}` : "",
+				goal.status === "budget_limited" ? "Budget exhausted: summarize what was accomplished and what remains; do not start substantive work. Raise or remove the budget and resume before goal work can continue." : "",
 				budgetLine(goal), "Continue discussion or read-only review; do not implement the pending proposal."].filter(Boolean).join("\n");
 		}
 		const discussionHeld = hasActiveDraft(core) || core.draftContinuationHeld;
-		const stoppedContext = core.state.goal.status === "active" && !discussionHeld ? "" : [
+		const stoppedContext = scopePrompt || (core.state.goal.status === "active" && !discussionHeld) ? "" : [
 			`work_revision: ${goalWorkRevision(core.state.goal)}`,
 			'Retained requirements: get_goal(section="scope"). Plan removal and settings do not waive them.',
 			untrustedObjectiveBlock(core.state.goal), taskListBlock(core.state.goal, settings, 0),
@@ -449,7 +451,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		} catch {
 			auditorExtra = '\n\n[AUDIT STATE UNAVAILABLE]\nRetrieve get_goal(section="history") before requesting completion. Do not assume a missing audit approved the work.';
 		}
-		if (core.state.goal.status === "paused") {
+		if (!scopePrompt && core.state.goal.status === "paused") {
 			const current = core.state.goal;
 			const pauseExtras: string[] = [];
 			if (current.stopReason === "agent") {
@@ -461,7 +463,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		}
 		// Token-budget-limited goals get one-time wrap-up steering: summarize,
 		// do not start new substantive work, never claim completion unless real.
-		if (core.state.goal?.status === "budget_limited") {
+		if (!scopePrompt && core.state.goal?.status === "budget_limited") {
 			const limitedGoal = core.state.goal;
 			const budgetText = budgetLine(limitedGoal);
 			// E4: surface the remaining-vs-overshoot fact in the wrap-up steering.
@@ -476,14 +478,17 @@ export function registerGoalEvents(core: GoalCore): void {
 				: "";
 			return `[PI GOAL BUDGET LIMITED goalId=${limitedGoal.id}]\n${stoppedContext}${auditorExtra}\nDo not start new substantive work. The user must raise or remove the budget and resume the goal.${reminder}`;
 		}
-  if (core.state.goal.status === "blocked") {
+  if (!scopePrompt && core.state.goal.status === "blocked") {
    const blocked = core.state.goal;
    return `[PI GOAL BLOCKED goalId=${blocked.id}]\n${stoppedContext}\nBlocker: ${excerpt(blocked.pauseReason ?? "unspecified", 600, "history")}${auditorExtra}\nThe goal is blocked; the user must run /goal-resume before goal work continues.`;
   }
 		const activeGoal = core.state.goal;
-		let prompt = (discussionHeld
+		const holdReminder = scopePrompt
+			? "\n\nAny work described above waits for human scope confirmation. Review the proposed changes and retained requirements; do not implement them yet."
+			: discussionHeld ? "\n\nAny work described above waits for confirmation or explicit resumption. This discussion grants no new implementation authority." : "";
+		let prompt = (scopePrompt ?? (discussionHeld
 			? `[PI GOAL DISCUSSION goalId=${activeGoal.id}]\nApproved lifecycle: active.\n${stoppedContext}\n${hasActiveDraft(core) || draftingRun ? "Continue clarification or read-only reconnaissance; do not start implementation. After cancellation, yield for fresh user intent." : "Respond only to the user's fresh request; automatic goal work remains held."}`
-			: goalPrompt(activeGoal, settings)) + auditorExtra;
+			: goalPrompt(activeGoal, settings))) + auditorExtra;
 		// F5: [GOAL STALLED] steering note when the detector fired.
 		if (pendingStall?.goalId === activeGoal.id) prompt += pendingStall.text;
 		pendingStall = undefined;
@@ -507,12 +512,12 @@ export function registerGoalEvents(core: GoalCore): void {
 				const ledger = getPromptLedger();
 				const otherOpenCount = core.openGoals().filter((g) => g.id !== activeGoal.id).length;
 				const delta = buildPostCompactionGoalDelta({ goal: activeGoal, ledgerEvents: ledger.events, otherOpenCount });
-				prompt = `${prompt}\n\n${prompt.length + delta.length <= MAX_PROMPT_FRAGMENT_CHARS - 162 ? delta : `[POST-COMPACTION RESYNC goalId=${activeGoal.id}]\nRecent activity omitted. Retrieve with get_goal(section="history"); continue from authoritative files and goal storage.`}`;
+				prompt = `${prompt}\n\n${prompt.length + delta.length + holdReminder.length <= MAX_PROMPT_FRAGMENT_CHARS - 162 ? delta : `[POST-COMPACTION RESYNC goalId=${activeGoal.id}]\nRecent activity omitted. Retrieve with get_goal(section="history"); continue from authoritative files and goal storage.`}`;
 			} catch {
 				prompt = `${prompt}\n\n[POST-COMPACTION RESYNC goalId=${core.state.goal.id}]\nThe conversation was just compacted. Re-read the objective and continue from the actual artifacts/state; do not rely on memory of the prior chat.`;
 			}
 		}
-		return discussionHeld ? `${prompt}\n\nAny work described above waits for confirmation or explicit resumption. This discussion grants no new implementation authority.` : prompt;
+		return prompt + holdReminder;
 	}
 
 	pi.on("agent_end", async (event, ctx) => {

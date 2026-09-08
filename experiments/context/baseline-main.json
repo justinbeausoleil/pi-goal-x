@@ -1,5 +1,5 @@
 {
-  "generatedAtCommit": "ticket-005-external-scope",
+  "generatedAtCommit": "ticket-005-pending-review-guidance",
   "measuredAt": "2026-09-08",
   "fixtures": [
     {
@@ -584,24 +584,24 @@
         "sdkGuidanceChars": 1563,
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
-        "extensionMessageChars": 5571,
-        "extensionAttributableChars": 11746,
+        "extensionMessageChars": 7386,
+        "extensionAttributableChars": 13561,
         "baseSystemChars": 3966,
         "extensionSystemChars": 0,
-        "goalStateChars": 5142,
+        "goalStateChars": 6941,
         "checkpointChars": 77,
         "historicalCheckpointChars": 0,
         "toolSchemaChars": 4612,
-        "messageChars": 5969,
-        "totalSerializedChars": 17105,
-        "estimatedTokens": 4277
+        "messageChars": 7784,
+        "totalSerializedChars": 18920,
+        "estimatedTokens": 4730
       },
       "semantic": {
         "objective": 0,
         "verificationContract": 0,
         "currentTask": 0,
         "lifecyclePolicyThirdBlocker": 0,
-        "independentAuditor": 0,
+        "independentAuditor": 1,
         "neverEditObjective": 0,
         "blockerPolicyUpdateGoal": 0,
         "completionPolicyUpdateGoal": 0,
@@ -620,24 +620,60 @@
         "sdkGuidanceChars": 407,
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
-        "extensionMessageChars": 6903,
-        "extensionAttributableChars": 8478,
+        "extensionMessageChars": 8720,
+        "extensionAttributableChars": 10295,
         "baseSystemChars": 2810,
         "extensionSystemChars": 0,
-        "goalStateChars": 6469,
+        "goalStateChars": 8270,
         "checkpointChars": 78,
         "historicalCheckpointChars": 0,
         "toolSchemaChars": 1168,
-        "messageChars": 7301,
-        "totalSerializedChars": 13837,
-        "estimatedTokens": 3460
+        "messageChars": 9118,
+        "totalSerializedChars": 15654,
+        "estimatedTokens": 3914
       },
       "semantic": {
         "objective": 0,
         "verificationContract": 0,
         "currentTask": 0,
         "lifecyclePolicyThirdBlocker": 0,
-        "independentAuditor": 0,
+        "independentAuditor": 1,
+        "neverEditObjective": 0,
+        "blockerPolicyUpdateGoal": 0,
+        "completionPolicyUpdateGoal": 0,
+        "goalActiveMarker": 0,
+        "checkpointMarker": 1,
+        "unfocusedSafety": 0,
+        "pausedMarker": 0,
+        "budgetLimitedMarker": 0,
+        "staleMarker": 0,
+        "postCompactionMarker": 0
+      }
+    },
+    {
+      "fixture": "pending-external-scope-budget",
+      "breakdown": {
+        "sdkGuidanceChars": 466,
+        "hostToolSchemaChars": 2555,
+        "childRequestChars": 0,
+        "extensionMessageChars": 7655,
+        "extensionAttributableChars": 10141,
+        "baseSystemChars": 2869,
+        "extensionSystemChars": 0,
+        "goalStateChars": 7181,
+        "checkpointChars": 85,
+        "historicalCheckpointChars": 0,
+        "toolSchemaChars": 2020,
+        "messageChars": 8053,
+        "totalSerializedChars": 15500,
+        "estimatedTokens": 3875
+      },
+      "semantic": {
+        "objective": 0,
+        "verificationContract": 0,
+        "currentTask": 0,
+        "lifecyclePolicyThirdBlocker": 0,
+        "independentAuditor": 1,
         "neverEditObjective": 0,
         "blockerPolicyUpdateGoal": 0,
         "completionPolicyUpdateGoal": 0,
@@ -940,10 +976,10 @@
     }
   ],
   "totals": {
-    "totalSerializedChars": 298050,
-    "estimatedTokens": 74525,
+    "totalSerializedChars": 317182,
+    "estimatedTokens": 79307,
     "childRequestChars": 15230,
-    "combinedSerializedChars": 313280,
-    "extensionAttributableChars": 175191
+    "combinedSerializedChars": 332412,
+    "extensionAttributableChars": 188964
   }
 }

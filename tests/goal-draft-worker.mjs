@@ -159,6 +159,12 @@ try {
     assert.equal(pending.objective, changedObjective, "edited body remains readable");
     assert.deepEqual(JSON.parse(JSON.stringify(pending.retainedScope)), approved.retainedScope, "external text does not become approved scope");
     assert.equal(pending.autoContinue, true, "the pending scope gate suppresses an otherwise eligible active goal");
+    await session.prompt("/goal-pause");
+    await run("Inspect the explicitly paused pending proposal.", [{name: "get_goal", args: {}}]);
+    assert.equal(results.at(-1).details.goal.status, "paused", "pending scope must not reject explicit user pause");
+    await session.prompt("/goal-resume");
+    await run("Inspect the pending proposal after explicit resume.", [{name: "get_goal", args: {}}]);
+    assert.equal(results.at(-1).details.goal.status, "active");
     const requestsBeforeWait = requests;
     await delay(150);
     assert.equal(requests, requestsBeforeWait, "pending scope must not queue automatic executor requests");
@@ -167,7 +173,7 @@ try {
     assert.equal(requests, requestsBeforeWait, "reopening a pending proposal must not queue an executor request");
     await session.compact();
     assert(summaries > 0, "the pending proposal passes through native compaction");
-    await run("Inspect the pending proposal after reopen and compaction.", [{name: "get_goal", args: {verbose: true}, contextIncludes: ["SCOPE REVIEW", approved.objective]}]);
+    await run("Inspect the pending proposal after reopen and compaction.", [{name: "get_goal", args: {verbose: true}, contextIncludes: ["SCOPE REVIEW", "POST-COMPACTION RESYNC", approved.objective]}]);
     assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /Scope review required/);
     assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), approved.retainedScope);
     const heldFile = readFileSync(file, "utf8"), heldBoundary = heldFile.indexOf("\n\n# Goal Prompt");

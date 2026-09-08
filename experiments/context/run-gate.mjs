@@ -95,11 +95,12 @@ for (const fixtureId of expectedFixtureIds) {
 	// correctly aborts and injects GOAL STALE instead).
 	const hasActiveBlock = /\[PI GOAL ACTIVE goalId=/.test(goalText);
 	if (scenario.pendingScope) {
-		for (const needle of ["PI GOAL SCOPE REVIEW", "Approved objective sentinel", "Approved contract sentinel", "Proposed objective sentinel", 'get_goal(section="scope")', "required-142"])
+		for (const needle of ["PI GOAL SCOPE REVIEW", "Approved objective sentinel", "Approved contract sentinel", "Proposed objective sentinel", 'get_goal(section="scope")', "required-142", "Pending audit objection sentinel", "Pending Oracle step sentinel"])
 			if (!goalText.includes(needle)) failures.push(`${fixtureId}: pending review lost ${needle}`);
 		if (hasActiveBlock || goalText.includes("Use work tools directly")) failures.push(`${fixtureId}: pending review grants implementation authority`);
 		if (scenario.goal.status === "blocked") for (const needle of ["Pending stop reason sentinel", "Pending action sentinel"])
 			if (!goalText.includes(needle)) failures.push(`${fixtureId}: pending review lost ${needle}`);
+		if (scenario.goal.status === "budget_limited" && !goalText.includes("Budget exhausted: summarize what was accomplished and what remains")) failures.push(`${fixtureId}: pending review lost budget wrap-up`);
 	}
 	if (hasActiveBlock && !goalText.includes('get_goal(section="scope")')) failures.push(`${fixtureId}: retained scope retrieval missing`);
 	if (scenario.goal?.status === "active" && !scenario.pendingScope && fixtureId !== "stale-checkpoint" && !hasActiveBlock) failures.push(`${fixtureId}: active goal projection missing`);

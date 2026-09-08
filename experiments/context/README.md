@@ -99,3 +99,10 @@ They require the pending-review projection, approved authority, raw proposal,
 current task, scope retrieval, and the unchanged aggregate 10,000-character
 limit. A same-goal stale checkpoint retains review guidance while dispatch
 remains held. The original 24 breakdowns and semantic counts are unchanged.
+
+Independent review added long unresolved audit and Oracle guidance to both
+pending fixtures, plus an exhausted-budget pending fixture. Their projections
+now pass through the shared guidance and compaction additions with an explicit
+hold reminder; the compaction size calculation reserves room for that reminder.
+The new guidance deliberately changes those pending-fixture semantic counts;
+the original 24 remain unchanged. No limits were raised.
