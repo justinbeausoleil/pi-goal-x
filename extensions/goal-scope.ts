@@ -13,8 +13,21 @@ export function retainedGoalScope(goal: GoalRecord): GoalRetainedScope {
 	return goal.retainedScope ?? {objective: goal.objective, verificationContract: goal.verificationContract, tasks: taskContracts(goal), changes: []};
 }
 
+/** Migrated file edits are proposals; only the bound human transaction changes authority. */
+export function scopeProposalWarning(goal: GoalRecord): string | undefined {
+	const scope = goal.retainedScope;
+	if (!scope) return;
+	const changed = goal.objective.trim() !== scope.objective.trim() || (goal.verificationContract?.trim() ?? "") !== (scope.verificationContract?.trim() ?? "")
+		|| taskIndex(goal.taskList?.tasks).ordered.some(({task}) => {
+			const prior = Object.hasOwn(scope.tasks, task.id) ? scope.tasks[task.id] : undefined;
+			return prior ? prior.title.trim() !== task.title.trim() || prior.verificationContract.trim() !== (task.verificationContract?.trim() ?? "") : !!task.verificationContract?.trim();
+		});
+	if (changed) return 'Scope review required: external objective or task/goal requirement edits are pending proposals. Automatic goal work is stopped. Read the edited objective/tasks and approved get_goal(section="scope"), then use human /goal-tweak confirmation to accept or reject the exact revision.';
+}
+
 /** Called only at the service mutation boundary; deletion cannot erase a prior snapshot. */
 export function retainGoalScope(before: GoalRecord, after: GoalRecord = before, revision?: Omit<GoalScopeChangeReceipt, "priorText" | "newText"> & {replaceTasks: boolean}): GoalRecord {
+	if (!revision && scopeProposalWarning(before)) return {...after, retainedScope: before.retainedScope};
 	const scope = retainedGoalScope(before);
 	const tasks = new Map(Object.entries(scope.tasks));
 	for (const goal of [before, after]) for (const [id, task] of Object.entries(taskContracts(goal))) {
@@ -42,12 +55,12 @@ export function revisedGoalScope(before: GoalRecord, after: GoalRecord, replaceT
 }
 
 /** Every structural path invalidates current proof when completed requirements change. */
-export function reopenChangedTasks(before: GoalRecord, after: GoalRecord): GoalRecord {
-	if (!after.taskList) return after;
+export function reopenChangedTasks(before: GoalRecord, after: GoalRecord, confirmedScope = false): GoalRecord {
+	if (!after.taskList || (!confirmedScope && scopeProposalWarning(before))) return after;
 	const previous = taskIndex(before.taskList?.tasks).byId;
 	const reopen = (tasks: GoalTask[]): GoalTask[] => tasks.map(task => {
 		const retained = before.retainedScope?.tasks;
-		const prior = previous.get(task.id) ?? (retained && Object.hasOwn(retained, task.id) ? retained[task.id] : undefined);
+		const prior = (retained && Object.hasOwn(retained, task.id) ? retained[task.id] : undefined) ?? previous.get(task.id);
 		const changed = prior?.status === "complete" && (prior.title.trim() !== task.title.trim() || (prior.verificationContract?.trim() ?? "") !== (task.verificationContract?.trim() ?? ""));
 		return {...task, ...(changed ? {status: "pending", evidence: undefined, completedAt: undefined} as const : {}), ...(task.subtasks ? {subtasks: reopen(task.subtasks)} : {})};
 	});
@@ -56,11 +69,15 @@ export function reopenChangedTasks(before: GoalRecord, after: GoalRecord): GoalR
 
 /** Planning flags and auditor bypass cannot supply missing required evidence. */
 export function retainedScopeCompletionWarning(goal: GoalRecord): string | undefined {
+	const proposal = scopeProposalWarning(goal);
+	if (proposal) return proposal;
 	const unresolved = Object.entries(retainedGoalScope(goal).tasks).filter(([, task]) => task.status !== "complete" || !task.evidence?.trim());
 	if (unresolved.length) return `Retained requirements remain unresolved: ${unresolved.map(([id]) => id).join(", ")}. Recreate removed tasks with their original IDs and contracts and supply evidence through update_goal_task, or request a human /goal-tweak scope revision. Read all requirements with get_goal(section="scope").`;
 }
 
 export function retainedTaskEvidenceError(goal: GoalRecord, task: GoalTask): string | undefined {
+	const proposal = scopeProposalWarning(goal);
+	if (proposal) return proposal;
 	const retained = goal.retainedScope?.tasks;
 	const contract = task.verificationContract?.trim() || (retained && Object.hasOwn(retained, task.id) ? retained[task.id]!.verificationContract : undefined);
 	if (contract && task.status === "complete" && !task.evidence?.trim()) return `Task "${task.id}" has a retained verification contract; provide evidence to complete it. Settings cannot waive retained requirements.`;

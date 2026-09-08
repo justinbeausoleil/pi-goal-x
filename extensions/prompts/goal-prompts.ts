@@ -157,7 +157,7 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings, preview
 }
 
 /** Bounded verification-contract block. */
-export function excerpt(text: string, cap: number, section: "objective" | "tasks" | "history"): string {
+export function excerpt(text: string, cap: number, section: "objective" | "tasks" | "scope" | "history"): string {
  const safe = promptSafeObjective(text);
  return safe.length <= cap ? safe : `${safe.slice(0, cap)}… [excerpt; more: get_goal(section="${section}")]`;
 }

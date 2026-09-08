@@ -700,3 +700,63 @@
   cf9c777 and preceding retained-scope repairs are pushed to origin. The human
   subset is ready for fixed-base independent review from cf9c777; external
   proposal handling and final native lifecycle matrix still remain for 005.
+
+### Ticket 005 external proposal checkpoint (implementation incomplete)
+
+- Both independent axes cleared the human-revision subset at 0af6cda, now
+  pushed to origin. Spec independently exercised both native 22-request modes,
+  74 targeted checks and full before/after terminal rendering at two sizes.
+- External body/goal-contract/task-contract/title/new-required-task edits now
+  derive pending review from raw versus retained scope. Automatic continuation
+  and ordinary task/completion mutations are held until bound human revision.
+  Five native variants pass in both modes; cancellation retains authority and
+  confirmation records the exact revision after reopen. Additional automatic
+  stop and ordinary-plan overwrite checks are included in the latest run.
+- Native failures exposed two stale cache paths: a pool snapshot keyed by
+  directory metadata, then prompt merge restoring its cached objective. Focused
+  migrated goals now read their file directly; atomic mutations use that fresh
+  record and accounting cannot overwrite pending raw edits. Legacy reads retain
+  existing behavior. External task confirmation also exposed stale completion
+  proof; reopening now compares against approved retained requirements.
+- First full external run passed 1057/1058. Its sole failure was an overlay
+  fixture injecting tasks only into private memory before persisting usage;
+  the fixture now writes the same initial task state before loading. Its UI
+  and full-evidence assertions remain. Targeted follow-up passes 113/113.
+  Logs scope-external-* under Data/005 retain failed attempts, including a
+  syntax-error attempt clearly distinct from the later passing overwrite test.
+  Latest full/type/lint results are being inspected. Pending: inspection/UI
+  labeling, retained audit input, pending reopen/compaction/races, fresh-read
+  cost checks, independent review and remaining tweak lifecycle qualification.
+  No additional ticket checkbox is complete.
+
+- The first external full follow-up passed 1058/1058, plus type/lint. Expanded
+  native cases now observe zero automatic requests after cold reopen and after
+  pending-state reopen/compaction; the objective case rejects a same-revision
+  file edit during confirmation. Existing inspection and dashboard views label
+  scope review with the existing tweak action. The initial UI assertion assumed
+  uppercase status text; the corrected check covers its actual lowercase footer
+  and the action in both bounded views, with tasks enabled/disabled.
+- Two large pending fixtures exposed a same-goal stale checkpoint suppressing
+  approved review context. It now retains review guidance while work dispatch
+  stays held. All 26 context fixtures and six provider payloads pass; original
+  24 measurements/semantics are unchanged, and no ceilings changed. The cold
+  reopen log named scope-external-cold-reopen-red.log is a passing preservation
+  characterization, not a reproduced failure.
+- Caller tracing reproduced explicit /goal-resume reverting to paused after
+  the fresh-record persist change (scope-external-resume-red.log). Persistence
+  now keeps explicit session controls while overlaying pending raw requirements;
+  its native follow-up passes. The original overlay fixture is restored unchanged:
+  its failure was a real persistence regression, not merely a fixture concern.
+  The intermediate full run overlaps these edits and is not final qualification.
+  A fresh final run follows the repaired tree. The first benchmark attempt used
+  a nonexistent naf-after.json; the corrected campaign path is baseline-naf-after.json.
+
+- Fresh B2/B7 measurements pass all 53 matched timing limits with zero guard
+  violations. Separate focused migrated-context probes (20 samples each) cost
+  one filesystem check after warmup, with local medians 0.017ms/0.186ms for
+  1/200 public contracted tasks. The first sample costs 9/8 operations. These
+  are synthetic local measurements, not native-host or model performance claims.
+  Evidence: scope-external-benchmark.{log,json}. Historical gates/artifacts remain
+  unchanged. Final qualification now runs against the frozen external subset;
+  approved retained auditor input and the remaining human tweak lifecycle matrix
+  still have to be implemented/verified before ticket 005 can close.

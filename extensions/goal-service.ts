@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { cloneGoal, normalizeGoalRecord, nowIso, workRevisionError, type GoalFocusReason, type GoalRecord, type GoalTask, type GoalUsage } from "./goal-record.ts";
+import { cloneGoal, goalWorkRevision, normalizeGoalRecord, nowIso, workRevisionError, type GoalFocusReason, type GoalRecord, type GoalTask, type GoalUsage } from "./goal-record.ts";
 import { appendGoalEvent, appendGoalEvents, type GoalLedgerEvent } from "./goal-ledger.ts";
 import { findTaskInTree, updateTaskInTree } from "./goal-policy.ts";
 import {
@@ -20,7 +20,7 @@ import {
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
 import { taskIndex } from "./goal-task-index.ts";
-import { reopenChangedTasks, retainGoalScope, retainedGoalScope, retainedScopeCompletionWarning, retainedTaskEvidenceError } from "./goal-scope.ts";
+import { reopenChangedTasks, retainGoalScope, retainedGoalScope, retainedScopeCompletionWarning, retainedTaskEvidenceError, scopeProposalWarning } from "./goal-scope.ts";
 
 /**
  * Session state access + runtime glue hooks that the GoalService needs.
@@ -73,8 +73,6 @@ export interface GoalMutationSpec {
 	focusToken?: { goalId: string; revision: number };
 	/** Skip the leading disk reconciliation (used when the caller already reconciled or must not). */
 	reconcile?: boolean;
-	/** Merge the authoritative objective body from disk before mutating. */
-	refreshFromDisk?: boolean;
 	/** Mutate a clone of the focused goal. May ignore its input to produce a fixed record. */
 	mutate: (goal: GoalRecord) => GoalRecord;
 	/** Ledger events appended best-effort AFTER the authoritative file write. */
@@ -155,8 +153,10 @@ function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string |
 }
 
 /** Ordinary structural confirmation cannot waive a retained contract. */
-function taskStructureError(before: GoalRecord, after: GoalRecord): string | undefined {
+function taskStructureError(before: GoalRecord, after: GoalRecord, confirmedScope = false): string | undefined {
 	if (before.taskList?.tasks === after.taskList?.tasks) return;
+	const proposal = scopeProposalWarning(before);
+	if (proposal && !confirmedScope && !isDeepStrictEqual(normalizeGoalRecord(before)?.taskList, normalizeGoalRecord(after)?.taskList)) return proposal;
 	const incoming = taskIndex(after.taskList?.tasks).byId;
 	for (const [id, task] of Object.entries(retainedGoalScope(after).tasks)) {
 		const next = incoming.get(id);
@@ -240,11 +240,11 @@ export class GoalService {
    const revisionChanged = freshDisk && (freshDisk.revision ?? 0) !== (expected.revision ?? 0);
    // Only accounting may be rebased. The work fingerprint intentionally
    // excludes lifecycle/budget controls, which must still reject stale writes.
-   const accountingOnly = revisionChanged && freshDisk && isDeepStrictEqual(
+   const accountingOnly = freshDisk && isDeepStrictEqual(
     {...freshDisk, retainedScope: retainedGoalScope(freshDisk), usage: undefined, revision: undefined, updatedAt: undefined},
     {...normalizeGoalRecord(expected), retainedScope: retainedGoalScope(normalizeGoalRecord(expected)!), usage: undefined, revision: undefined, updatedAt: undefined},
    );
-   if (!freshDisk || (revisionChanged && !accountingOnly)) {
+   if (!freshDisk || !accountingOnly) {
     this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
     // Reject the speculative transaction, never overwrite another writer.
     this.turn.active = false;
@@ -349,7 +349,16 @@ export class GoalService {
 	/** Safe focused record reconciliation from disk. */
 	reconcileFocused(ctx: GoalServiceContext, opts: { preserveMemoryUsage?: boolean } = {}): boolean {
 		const current = this.ref.getFocused();
-  const source = readActiveGoalPoolView(ctx);
+  const source = new Map(readActiveGoalPoolView(ctx));
+  // A persisted pool snapshot cannot detect edits inside an existing file.
+  // Migrated focused records require a direct read at every reconciliation.
+  if (current?.retainedScope && current.activePath) {
+   const disk = this.readFreshDiskGoal(ctx, current);
+   if (disk?.id === current.id) {
+    source.set(current.id, disk);
+    if (this.turn.goal && scopeProposalWarning(disk) && goalWorkRevision(disk) !== goalWorkRevision(this.turnBase ?? current)) this.flushTurn(ctx);
+   } else source.delete(current.id);
+  }
   const focused = this.ref.getFocusedGoalId();
   const view = this.ref.getPool();
   const buffered = this.turn.active ? this.turn.goal : null;
@@ -476,8 +485,8 @@ export class GoalService {
 			const mutated = retainGoalScope(current, reopenChangedTasks(current, sanitizeGoalPaths(ctx, {
 				...spec.mutate(base),
 				revision: (current.revision ?? 0) + 1,
-			})), spec.scopeRevision);
-			const structureError = taskStructureError(current, mutated) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
+			}), !!spec.scopeRevision), spec.scopeRevision);
+			const structureError = taskStructureError(current, mutated, !!spec.scopeRevision) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 			if (spec.ledger) {
 				try {
@@ -514,17 +523,19 @@ export class GoalService {
 				return { ok: false, message: `Goal ${current.id} was modified by another process (revision ${capturedRevision} -> ${diskRevision}); current revision is ${diskRevision}. Refresh and retry; the mutation was not applied.` };
 			}
 
-			// 3. mutation on a clone (after an optional authoritative objective merge).
-			const base = cloneGoal(spec.refreshFromDisk ? mergeGoalPromptFromDisk(ctx, current) : current);
+			// Use the full fresh record: external contract edits need the same
+			// work-revision check as objective edits even without a numeric bump.
+			const source = {...freshDisk, usage: current.usage};
+			const base = cloneGoal(source);
 			const revisionError = workRevisionError(base, spec.expectedWorkRevision);
 			if (revisionError) return { ok: false, message: revisionError };
 			const invalid = spec.validate?.(base);
 			if (invalid) return invalid;
-			const mutated = retainGoalScope(current, reopenChangedTasks(current, {
+			const mutated = retainGoalScope(source, reopenChangedTasks(source, {
 				...spec.mutate(base),
 				revision: capturedRevision + 1,
-			}), spec.scopeRevision);
-			const structureError = taskStructureError(current, mutated) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
+			}, !!spec.scopeRevision), spec.scopeRevision);
+			const structureError = taskStructureError(source, mutated, !!spec.scopeRevision) ?? (mutated.status === "complete" && source.status !== "complete" && !spec.archive ? scopeProposalWarning(source) ?? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 
 			// 4. authoritative file write (active or archive). A failure here throws
@@ -731,7 +742,7 @@ export class GoalService {
 				}
 				return { ok: false, message: `Goal ${current.id} was modified by another process (revision ${capturedRevision} -> ${diskRevision}); current revision is ${diskRevision}. The task was not updated.` };
 			}
-			const base = mergeGoalPromptFromDisk(ctx, current);
+			const base = {...freshDisk, usage: current.usage};
 			if (base.status !== "active") return { ok: false, message: "Task progress requires an active goal." };
 			const revisionError = workRevisionError(base, spec.expectedWorkRevision);
 			if (revisionError) return { ok: false, message: revisionError };
@@ -817,7 +828,7 @@ export class GoalService {
 				// revision. All other fields stay authoritative from disk.
 				const { tokens, seconds } = this.usageDelta(current, freshDisk);
 				if (tokens === 0 && seconds === 0) return null;
-				const merged = retainGoalScope(mergeGoalPromptFromDisk(ctx, {
+				const merged = retainGoalScope({
 					...freshDisk,
 					usage: {
 						tokensUsed: freshDisk.usage.tokensUsed + tokens,
@@ -825,13 +836,20 @@ export class GoalService {
 					},
 					updatedAt: nowIso(),
 					revision: (freshDisk.revision ?? 0) + 1,
-				}));
+				});
 				const written = merged.status === "complete" ? archiveGoalFile(ctx, merged) : writeActiveGoalFile(ctx, merged);
 				this.trackBaseline(written.id, written.usage);
 				this.ref.setFocused(written);
 				return written;
 			}
-			const merged = retainGoalScope(mergeGoalPromptFromDisk(ctx, { ...current, updatedAt: nowIso(), revision: capturedRevision + 1 }));
+			// Keep explicit session controls, but never overwrite an unreviewed
+			// file proposal with the prior in-memory requirement text/tree.
+			const proposal = scopeProposalWarning(freshDisk);
+			const merged = retainGoalScope(freshDisk, {
+				...mergeGoalPromptFromDisk(ctx, current),
+				...(proposal ? {verificationContract: freshDisk.verificationContract, taskList: freshDisk.taskList, currentTaskId: freshDisk.currentTaskId, retainedScope: freshDisk.retainedScope} : {}),
+				updatedAt: nowIso(), revision: capturedRevision + 1,
+			});
 			const written = merged.status === "complete" ? archiveGoalFile(ctx, merged) : writeActiveGoalFile(ctx, merged);
 			this.trackBaseline(written.id, written.usage);
 			this.ref.setFocused(written);

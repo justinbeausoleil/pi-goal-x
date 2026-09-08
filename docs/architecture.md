@@ -308,6 +308,18 @@ preserves it. The tweak-only `verification_contract` field accepts full text,
 or null for explicit removal; omission retains the current goal contract.
 Task/contract settings cannot implicitly change this reviewed scope.
 
+For migrated goals, differences between the edited objective/contracts and
+retained scope are pending proposals. Existing inspection and dashboard views
+label the hold and point to `/goal-tweak`; automatic continuation and ordinary
+task/completion mutations cannot adopt or overwrite the proposal. The focused
+file is parsed at reconciliation, using the existing per-file mtime/size cache
+instead of trusting the directory-keyed pool snapshot. This adds filesystem
+checks for migrated focused goals. Legacy records retain their existing cache
+behavior until first successful mutation; budget-only edits remain independent.
+Atomic mutations also inspect the fresh whole record, and buffered writes reject
+concurrent work changes even when an external edit leaves numeric revision
+unchanged. Accounting preserves proposed text/tree and explicit user controls.
+
 The existing flat-tree converter validates the complete resulting plan. Upsert
 edits supplied fields, preserving omitted values; new IDs require a title and
 start pending at the root. `parent_id=null` moves to a root. Existing siblings

@@ -363,7 +363,6 @@ pi.registerTool(defineTool({
 		const applyResult = core.goalService.apply(ctx, {
 			expectedWorkRevision,
 			focusToken: taskListFocus,
-			refreshFromDisk: true,
 			validate: (goal) => {
 				if (goal.status !== "active" && goal.status !== "paused") return { ok: false, message: `Task list changes require an active or paused goal; current status is ${goal.status}.` };
 				const fresh = convertFlatTasks(params.tasks, { mode: params.mode, existing: goal.taskList?.tasks, maxSubtaskDepth: loadGoalSettings(ctx.cwd).subtaskDepth });

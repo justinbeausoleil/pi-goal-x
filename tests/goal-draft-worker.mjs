@@ -77,7 +77,7 @@ async function open(manager, sessionStartEvent) {
           assert.match(projection, /DISCUSSION|DRAFT/);
           assert.doesNotMatch(projection, /Use work tools directly/);
         }
-        for (const required of step.contextIncludes ?? []) assert(projection.includes(required), `current projection includes ${required}`);
+        for (const required of step.contextIncludes ?? []) assert(projection.includes(required), `current projection includes ${required}; received ${projection.slice(0, 1500)}`);
       } catch (error) { providerFailure = error; }
     }
     const args = step ? { ...step.args } : undefined;
@@ -120,7 +120,99 @@ try {
   ]);
   assert.equal(latestDraft().data.auditorEnabled, false, "per-draft auditor choice survives refinement");
   assert.deepEqual(files(), [], "discussion creates no approved goal");
-  if (scenario === "scope-tweak") {
+  if (scenario.startsWith("scope-external")) {
+    const kind = scenario.slice("scope-external".length + 1) || "objective";
+    decision = "Confirm";
+    const proposed = proposal(mode, "Approved external-edit fixture");
+    proposed.args.auto_continue = true;
+    proposed.args.objective += "\nVerification contract: Verify the original exact result.";
+    proposed.args.tasks = [{id: "proof", title: "Original task", verification_contract: "Verify the original task output."}];
+    await run("Confirm the original requirements.", [proposed]);
+    await run("Record original proof.", [{name: "update_goal_task", args: {expected_work_revision: "$current", task_id: "proof", status: "complete", evidence: "Original proof remains required."}}]);
+    await session.prompt("/goal-pause");
+    await session.prompt("/goal-resume");
+    await run("Inspect the explicitly resumed goal before external editing.", [{name: "get_goal", args: {}}]);
+    assert.equal(results.at(-1).details.goal.status, "active", "fresh scope reads must preserve explicit resume persistence");
+    const approved = JSON.parse(JSON.stringify(results.at(-1).details.goal));
+    const file = join(cwd, approved.activePath);
+    const changedObjective = kind === "objective" ? objective("Edited body awaiting human review") : approved.objective;
+    const original = readFileSync(file, "utf8"), boundary = original.indexOf("\n\n# Goal Prompt");
+    const metadata = JSON.parse(original.slice(0, boundary));
+    metadata.autoContinue = true;
+    const editedContract = "Externally proposed verification requirement.";
+    if (kind === "goal-contract") metadata.verificationContract = editedContract;
+    if (kind === "task-contract") metadata.taskList.tasks[0].verificationContract = editedContract;
+    if (kind === "task-title") metadata.taskList.tasks[0].title = "Externally retitled task";
+    if (kind === "new-task") metadata.taskList.tasks.push({id: "later", title: "Externally added requirement", verificationContract: editedContract, status: "pending"});
+    const edited = (JSON.stringify(metadata, null, 2) + original.slice(boundary)).replace(`# Goal Prompt\n\n${approved.objective}`, `# Goal Prompt\n\n${changedObjective}`);
+    assert(edited.includes(`# Goal Prompt\n\n${changedObjective}`));
+    writeFileSync(file, edited); // User edits the public goal body; retained metadata is unchanged.
+    const requestsBeforeReload = requests;
+    await reopen();
+    await delay(150);
+    assert.equal(requests, requestsBeforeReload, "cold reopen must detect file edits before starting an automatic request");
+    await session.prompt("/goal-refresh");
+    assert(readFileSync(file, "utf8").includes(`# Goal Prompt\n\n${changedObjective}`), "refresh must preserve the externally edited body for review");
+    await run("Inspect the pending external proposal.", [{name: "get_goal", args: {}, contextIncludes: ["SCOPE REVIEW", approved.objective]}]);
+    const pending = results.at(-1).details.goal;
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /Scope review required/);
+    assert.equal(pending.objective, changedObjective, "edited body remains readable");
+    assert.deepEqual(JSON.parse(JSON.stringify(pending.retainedScope)), approved.retainedScope, "external text does not become approved scope");
+    assert.equal(pending.autoContinue, true, "the pending scope gate suppresses an otherwise eligible active goal");
+    const requestsBeforeWait = requests;
+    await delay(150);
+    assert.equal(requests, requestsBeforeWait, "pending scope must not queue automatic executor requests");
+    await reopen();
+    await delay(150);
+    assert.equal(requests, requestsBeforeWait, "reopening a pending proposal must not queue an executor request");
+    await session.compact();
+    assert(summaries > 0, "the pending proposal passes through native compaction");
+    await run("Inspect the pending proposal after reopen and compaction.", [{name: "get_goal", args: {verbose: true}, contextIncludes: ["SCOPE REVIEW", approved.objective]}]);
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /Scope review required/);
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), approved.retainedScope);
+    const heldFile = readFileSync(file, "utf8"), heldBoundary = heldFile.indexOf("\n\n# Goal Prompt");
+    const heldMetadata = JSON.parse(heldFile.slice(0, heldBoundary));
+    heldMetadata.autoContinue = false; // User returns the fixture to manual stepping for the confirmation checks.
+    writeFileSync(file, JSON.stringify(heldMetadata, null, 2) + heldFile.slice(heldBoundary));
+    assert(readFileSync(file, "utf8").includes(`# Goal Prompt\n\n${changedObjective}`), "accounting preserves the edited body");
+    process.env.PI_GOAL_AUTO_CONFIRM = "1";
+    await run("Attempt to overwrite the unreviewed external task proposal through ordinary structural confirmation.", [{name: "set_goal_tasks", args: {mode: "replace", expected_work_revision: "$current", tasks: proposed.args.tasks}}]);
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /scope review required/i);
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.taskList.tasks)), JSON.parse(JSON.stringify(pending.taskList.tasks)), "ordinary tools preserve the edited proposal until human scope confirmation");
+    process.env.PI_GOAL_AUTO_CONFIRM = "0";
+    await run("Attempt completion without accepting the external proposal.", [{name: "update_goal", args: {status: "complete"}}]);
+    assert.equal(results.at(-1).details.goal.status, "active");
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /scope.*human|human.*scope/i);
+    decision = "Cancel";
+    const revision = proposal(mode, kind === "objective" ? "Edited body awaiting human review" : "Approved external-edit fixture");
+    if (kind === "goal-contract") revision.args.verification_contract = editedContract;
+    if (kind.startsWith("task-") || kind === "new-task") revision.args.tasks = metadata.taskList.tasks.map(t => ({id: t.id, title: t.title, verification_contract: t.verificationContract}));
+    await run("/goal-tweak Adopt the reviewed external objective.", [revision]);
+    assert.equal(results.at(-1).details.goal.retainedScope.objective, approved.objective);
+    decision = "Confirm";
+    if (kind === "objective") {
+      duringDialog = async () => {
+        const current = readFileSync(file, "utf8");
+        writeFileSync(file, current.replace(`# Goal Prompt\n\n${changedObjective}`, "# Goal Prompt\n\nA newer external proposal arrived during confirmation."));
+      };
+      await run("A file edit arrives while the human is reviewing the prior proposal.", [revision]);
+      assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /changed|stale|cancelled/i);
+      assert.equal(results.at(-1).details.goal.retainedScope.objective, approved.objective);
+      assert(readFileSync(file, "utf8").includes("A newer external proposal arrived during confirmation."));
+    }
+    await run("Confirm the exact external objective.", [revision]);
+    assert.equal(results.at(-1).details.goal.retainedScope.objective, changedObjective);
+    if (kind.startsWith("task-")) {
+      assert.equal(results.at(-1).details.goal.taskList.tasks[0].status, "pending", "external requirement revisions must invalidate the original completion");
+      assert.equal(results.at(-1).details.goal.taskList.tasks[0].evidence, undefined);
+      assert.equal(results.at(-1).details.goal.taskList.tasks[0].completedAt, undefined);
+    }
+    if (kind === "goal-contract") assert.equal(results.at(-1).details.goal.retainedScope.verificationContract, editedContract);
+    if (kind === "new-task") assert.equal(results.at(-1).details.goal.retainedScope.tasks.later.verificationContract, editedContract);
+    await reopen();
+    await run("Inspect the accepted external proposal receipt.", [{name: "get_goal", args: {}}]);
+    assert.equal(results.at(-1).details.goal.retainedScope.changes.at(-1).reason, "Adopt the reviewed external objective.");
+  } else if (scenario === "scope-tweak") {
     decision = "Confirm";
     const proposed = proposal(mode, "Original approved objective");
     proposed.args.objective += "\nVerification contract: Keep the exact approved output.";

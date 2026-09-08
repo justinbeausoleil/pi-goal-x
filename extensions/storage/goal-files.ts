@@ -496,7 +496,7 @@ export function mergeGoalPromptFromDisk(ctx: GoalFileContext, current: GoalRecor
 	// invalidated by a write), fall back to the mtime-keyed direct parse.
 	const root = path.resolve(ctx.cwd, GOALS_DIR);
 	const cached = goalPoolCache.get(root)?.get(current.id);
-	if (cached) return { ...current, objective: cached.objective };
+	if (cached && !current.retainedScope) return { ...current, objective: cached.objective };
 	try {
 		const parsed = parseGoalFile(resolveGoalPath(ctx, GOALS_DIR, current.activePath));
 		if (!parsed) return current;

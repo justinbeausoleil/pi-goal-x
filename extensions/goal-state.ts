@@ -44,6 +44,7 @@ import { GOAL_WIDGET_KEY, GoalWidgetComponent, liveDisplayGoal, makeGoalWidgetFa
 import type { AuditVerdict } from "./widgets/auditor-dashboard-model.ts";
 import { runGoalCompletionAuditor } from "./goal-auditor.ts";
 import { hasActiveDraft } from "./goal-drafting.ts";
+import { scopeProposalWarning } from "./goal-scope.ts";
 
 
 
@@ -209,7 +210,7 @@ export function createGoalCore(
 			updateUI(ctx as unknown as ExtensionContext);
 		},
 		onReconciled: (goal) => {
-			if (goal.status !== "active" || !goal.autoContinue) clearContinuationState();
+			if (goal.status !== "active" || !goal.autoContinue || scopeProposalWarning(goal)) clearContinuationState();
 			if (goal.status !== "active") clearActiveAccounting();
 		},
 		onFocusChanged: () => {
@@ -386,7 +387,7 @@ export function createGoalCore(
 	}
 
 	function isActionableContinuationGoal(goalId: string | null | undefined): goalId is string {
-		return !core.draftContinuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue;
+		return !core.draftContinuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue && !scopeProposalWarning(state.goal);
 	}
 
 	function isStaleCheckpointBlockedToolCall(toolName: string): boolean {
@@ -785,7 +786,6 @@ export function createGoalCore(
 		if (!state.goal) return null;
 		const result = goalService.apply(ctx, {
 			reconcile: false,
-			refreshFromDisk: true,
 			archive: true,
 			commitFocused: false,
 			mutate: (g) => {
@@ -800,7 +800,6 @@ export function createGoalCore(
 		if (!state.goal) return;
 		const result = goalService.apply(ctx, {
 			reconcile: false,
-			refreshFromDisk: true,
 			mutate: (g) => ({ ...g, status, stopReason: reason, updatedAt: nowIso() }),
 			ledger: (written) => status === "paused"
 				? [{
@@ -851,7 +850,6 @@ export function createGoalCore(
 		const nextEnabled = state.goal.skipAuditor === true;
 		const result = goalService.apply(ctx, {
 			reconcile: false,
-			refreshFromDisk: true,
 			mutate: (g) => ({ ...g, skipAuditor: g.skipAuditor === true ? undefined : true, updatedAt: nowIso() }),
 			ledger: (written) => [{ type: "auditor_toggled" as const, goalId: written.id, enabled: nextEnabled, at: written.updatedAt }],
 		});

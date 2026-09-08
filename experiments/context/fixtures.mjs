@@ -7,6 +7,7 @@
  */
 
 import { createGoal, safeIdPart } from "../../extensions/goal-record.ts";
+import { retainGoalScope } from "../../extensions/goal-scope.ts";
 
 const T0 = Date.UTC(2026, 7, 23, 12, 0, 0);
 
@@ -55,6 +56,8 @@ function goalWith(id, overrides) {
 }
 
 export const FIXTURES = {
+	"pending-external-scope": () => externalScopeFixture("active"),
+	"pending-external-scope-blocked": () => externalScopeFixture("blocked"),
 	"active-regular-no-tasks": () => ({
 		goal: stableGoal("no-tasks", { objective: "Write the migration guide page.", autoContinue: true, sisyphus: false }),
 		trigger: "continue",
@@ -120,6 +123,19 @@ export const FIXTURES = {
 };
 
 // ── scenario helpers ───────────────────────────────────────────────────────
+
+function externalScopeFixture(status) {
+	const goal = retainGoalScope(goalWith(`external-${status}`, {
+		objective: `Approved objective sentinel ${"original requirement ".repeat(600)}`,
+		verificationContract: `Approved contract sentinel ${"verify original output ".repeat(400)}`,
+		taskList: list(Array.from({length: 200}, (_, i) => ({id: `required-${i}`, title: `Requirement ${i} ${"long title ".repeat(80)}`, status: "pending", verificationContract: `Contract ${i} ${"proof required ".repeat(250)}`}))),
+		currentTaskId: "required-142", status,
+		pauseReason: status === "blocked" ? `Pending stop reason sentinel ${"missing input ".repeat(400)}` : undefined,
+		pauseSuggestedAction: status === "blocked" ? `Pending action sentinel ${"provide input ".repeat(400)}` : undefined,
+	}));
+	goal.objective = `Proposed objective sentinel ${"changed requirement ".repeat(600)}`;
+	return {goal, pendingScope: true, trigger: status === "active" ? `<pi_goal_continuation goal_id="${goal.id}" kind="checkpoint" v="2"/>` : "Inspect the pending scope."};
+}
 
 function budgetGoal(seed, budget, used) {
 	const goal = stableGoal(seed, { objective: `Stay within a ${budget}-token budget.`, autoContinue: true, sisyphus: false });

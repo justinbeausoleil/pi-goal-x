@@ -7,6 +7,7 @@ import {
 	truncateText,
 } from "./goal-core.ts";
 import { buildTaskSummary } from "./goal-policy.ts";
+import { scopeProposalWarning } from "./goal-scope.ts";
 import { countTaskSubtree } from "./goal-task-count.ts";
 import { latestAuditorResultForGoal, latestEventsForGoal, type GoalLedgerEvent } from "./goal-ledger.ts";
 import { GOAL_PROGRESS_TOOL_NAMES } from "./goal-tool-names.ts";
@@ -52,6 +53,8 @@ export function detailedSummary(goal: GoalRecord | null): string {
 		`Auto-continue: ${goal.autoContinue ? "on" : "off"}`,
 		...usageLines(goal),
 	];
+	const scopeWarning = scopeProposalWarning(goal);
+	if (scopeWarning) lines.push(scopeWarning);
 	if (goal.sisyphus) {
 		lines.push("Mode: Sisyphus (prompt/criteria variant; shared goal lifecycle)");
 	}

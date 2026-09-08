@@ -39,6 +39,7 @@ import { syncTerminalInputPause } from "./goal-widget.ts";
 import type { GoalCore } from "./goal-state.ts";
 import { filterGoalSessionContext } from "./goal-session-safety.ts";
 import type { GoalMutationOutcome } from "./goal-service.ts";
+import { scopeProposalWarning, retainedGoalScope } from "./goal-scope.ts";
 
 /**
  * Issue #30: provider-context checkpoint compaction (pure helper).
@@ -123,9 +124,9 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.runningGoalId = !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
 		const filtered = filterGoalSessionContext(event.messages);
 		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered ?? event.messages;
-		// A goal stopped during this run still needs its pause/budget wrap-up context.
-		const sameStoppedGoal = core.state.goal?.id === checkpoint && core.state.goal.status !== "active";
-		const projection = !stale || sameStoppedGoal ? goalContext(ctx) : undefined;
+		// A stopped or pending-review goal still needs its authoritative guidance.
+		const sameHeldGoal = core.state.goal?.id === checkpoint && (core.state.goal.status !== "active" || scopeProposalWarning(core.state.goal));
+		const projection = !stale || sameHeldGoal ? goalContext(ctx) : undefined;
 		const content = projection ?? (stale ? staleContinuationPrompt(checkpoint || "invalid-checkpoint", core.state.goal) : undefined);
 		const checkpointChars = messages.reduce<number>((chars, message) => {
 			const entry = message as { customType?: string; content?: unknown };
@@ -421,6 +422,18 @@ export function registerGoalEvents(core: GoalCore): void {
 		}
 		if (core.state.goal.status === "complete") return;
 		const settings = loadGoalSettings(ctx.cwd);
+		const proposal = scopeProposalWarning(core.state.goal);
+		if (proposal) {
+			const goal = core.state.goal, approved = retainedGoalScope(goal);
+			return [`[PI GOAL SCOPE REVIEW goalId=${goal.id}]`, `Approved lifecycle: ${goal.status}. work_revision: ${goalWorkRevision(goal)}`,
+				proposal, "Approved objective:", untrustedObjectiveBlock({...goal, objective: approved.objective}),
+				`Approved goal contract: ${excerpt(approved.verificationContract ?? "(none)", 600, "scope")}`,
+				`Current edited objective: ${excerpt(goal.objective, 1000, "objective")}`,
+				"Current planning tree (edited requirements are proposals):", taskListBlock(goal, settings, 0),
+				goal.pauseReason ? `Stop reason: ${excerpt(goal.pauseReason, 600, "history")}` : "",
+				goal.pauseSuggestedAction ? `Suggested action: ${excerpt(goal.pauseSuggestedAction, 600, "history")}` : "",
+				budgetLine(goal), "Continue discussion or read-only review; do not implement the pending proposal."].filter(Boolean).join("\n");
+		}
 		const discussionHeld = hasActiveDraft(core) || core.draftContinuationHeld;
 		const stoppedContext = core.state.goal.status === "active" && !discussionHeld ? "" : [
 			`work_revision: ${goalWorkRevision(core.state.goal)}`,

@@ -62,11 +62,10 @@ for (const fixtureId of expectedFixtureIds) {
 
 	// 1. deterministic equality
 	const baseRow = baselineById.get(fixtureId);
-	if (!baseRow) continue;
-	if (JSON.stringify(baseRow.breakdown) !== JSON.stringify(breakdown)) {
+	if (baseRow && JSON.stringify(baseRow.breakdown) !== JSON.stringify(breakdown)) {
 		failures.push(`${fixtureId}: breakdown drifted from committed baseline — update baseline-main.json WITH a spec rationale if intentional`);
 	}
-	if (JSON.stringify(baseRow.semantic) !== JSON.stringify(semantic)) {
+	if (baseRow && JSON.stringify(baseRow.semantic) !== JSON.stringify(semantic)) {
 		failures.push(`${fixtureId}: semantic counts drifted from committed baseline`);
 	}
 
@@ -95,8 +94,15 @@ for (const fixtureId of expectedFixtureIds) {
 	// actually dispatched with an active block (a stale-checkpoint trigger
 	// correctly aborts and injects GOAL STALE instead).
 	const hasActiveBlock = /\[PI GOAL ACTIVE goalId=/.test(goalText);
+	if (scenario.pendingScope) {
+		for (const needle of ["PI GOAL SCOPE REVIEW", "Approved objective sentinel", "Approved contract sentinel", "Proposed objective sentinel", 'get_goal(section="scope")', "required-142"])
+			if (!goalText.includes(needle)) failures.push(`${fixtureId}: pending review lost ${needle}`);
+		if (hasActiveBlock || goalText.includes("Use work tools directly")) failures.push(`${fixtureId}: pending review grants implementation authority`);
+		if (scenario.goal.status === "blocked") for (const needle of ["Pending stop reason sentinel", "Pending action sentinel"])
+			if (!goalText.includes(needle)) failures.push(`${fixtureId}: pending review lost ${needle}`);
+	}
 	if (hasActiveBlock && !goalText.includes('get_goal(section="scope")')) failures.push(`${fixtureId}: retained scope retrieval missing`);
-	if (scenario.goal?.status === "active" && fixtureId !== "stale-checkpoint" && !hasActiveBlock) failures.push(`${fixtureId}: active goal projection missing`);
+	if (scenario.goal?.status === "active" && !scenario.pendingScope && fixtureId !== "stale-checkpoint" && !hasActiveBlock) failures.push(`${fixtureId}: active goal projection missing`);
 	if (scenario.goal?.status === "active" && hasActiveBlock) {
 		if (semantic.goalActiveMarker !== 1) failures.push(`${fixtureId}: [PI GOAL ACTIVE] block count ${semantic.goalActiveMarker} != 1`);
 		// Long objectives are truncated to MAX_OBJECTIVE_BLOCK_CHARS — only the

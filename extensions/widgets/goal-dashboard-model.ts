@@ -14,6 +14,7 @@ import { displayObjectiveTitle, formatDuration, statusLabel } from "../goal-core
 import type { GoalLedgerEvent } from "../goal-ledger.ts";
 import type { GoalRecord, GoalTask } from "../goal-record.ts";
 import { deriveGoalActivity, type GoalActivityItem } from "../goal-activity.ts";
+import { scopeProposalWarning } from "../goal-scope.ts";
 
 // ---------------------------------------------------------------------------
 // Types (plan §6)
@@ -470,6 +471,11 @@ export function deriveGoalDashboardModel(
 	const { focused, otherOpenGoals, ledgerEvents = [], activityLimit, tasksDisabled = false } = options;
 
 	const status = deriveGoalStatus(goal);
+	if (scopeProposalWarning(goal)) {
+		status.label = `Scope review required · /goal-tweak · ${status.label}`;
+		status.footerLabel = "scope review required · /goal-tweak";
+		if (goal.status === "active") status.code = "idle";
+	}
 	// §9.5: with tasks disabled, omit task sections entirely (status,
 	// verification, usage, path, and focus remain).
  const {taskProgress, taskTree, currentTask, taskTitles} = taskPresentation(goal, tasksDisabled);

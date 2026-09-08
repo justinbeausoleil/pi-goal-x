@@ -1,4 +1,5 @@
 import { goalDetailPage, type GoalDetailSection } from "./goal-detail.ts";
+import { scopeProposalWarning } from "./goal-scope.ts";
 import { taskIndex } from "./goal-task-index.ts";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool, type AgentToolResult, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
@@ -85,9 +86,11 @@ pi.registerTool(defineTool({
    const {ok, text, ...detail} = page;
    return {content: [{type: "text", text}], details: {...goalDetails(view), ...(ok ? {page: detail} : {})}};
   }
-  if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
+  if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, scope, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
+		const scopeWarning = scopeProposalWarning(view);
 		if (verbose && !params.section) {
 			const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, `work_revision: ${goalWorkRevision(view)}`];
+			if (scopeWarning) lines.push(scopeWarning);
 			lines.push(`Objective: ${view.objective}`, "");
 			lines.push(`Status: ${statusLabel(view)}`);
 			lines.push(`Mode: ${view.sisyphus ? "sisyphus" : "regular"}`);
@@ -131,6 +134,7 @@ pi.registerTool(defineTool({
 
 		// Compact state read; full requirements remain available through detail pages.
 		const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, `work_revision: ${goalWorkRevision(view)}`];
+		if (scopeWarning) lines.push(scopeWarning);
 		lines.push('Retained requirements: get_goal(section="scope"). Plan removal and settings do not waive them.');
 		lines.push(`Objective: ${truncateText(view.objective, 180)}${view.objective.length > 180 ? " (full: get_goal section=objective)" : ""}`);
 		if (view.taskList) {
@@ -267,7 +271,6 @@ pi.registerTool(defineTool({
 	const commitBlocked = (): AgentToolResult<unknown> => {
 		const result = core.goalService.apply(ctx, {
 			reconcile: false,
-			refreshFromDisk: true,
 			mutate: (g) => ({
 				...g,
 				status: "blocked" as const,
@@ -468,7 +471,6 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 	const trimmedAction = suggestedAction?.trim();
 	const result = core.goalService.apply(ctx, {
 		reconcile: false,
-		refreshFromDisk: true,
 		mutate: (g) => ({
 			...g,
 			status: "paused" as const,

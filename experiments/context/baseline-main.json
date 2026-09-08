@@ -1,5 +1,5 @@
 {
-  "generatedAtCommit": "ticket-005-human-scope",
+  "generatedAtCommit": "ticket-005-external-scope",
   "measuredAt": "2026-09-08",
   "fixtures": [
     {
@@ -579,6 +579,78 @@
       }
     },
     {
+      "fixture": "pending-external-scope",
+      "breakdown": {
+        "sdkGuidanceChars": 1563,
+        "hostToolSchemaChars": 2555,
+        "childRequestChars": 0,
+        "extensionMessageChars": 5571,
+        "extensionAttributableChars": 11746,
+        "baseSystemChars": 3966,
+        "extensionSystemChars": 0,
+        "goalStateChars": 5142,
+        "checkpointChars": 77,
+        "historicalCheckpointChars": 0,
+        "toolSchemaChars": 4612,
+        "messageChars": 5969,
+        "totalSerializedChars": 17105,
+        "estimatedTokens": 4277
+      },
+      "semantic": {
+        "objective": 0,
+        "verificationContract": 0,
+        "currentTask": 0,
+        "lifecyclePolicyThirdBlocker": 0,
+        "independentAuditor": 0,
+        "neverEditObjective": 0,
+        "blockerPolicyUpdateGoal": 0,
+        "completionPolicyUpdateGoal": 0,
+        "goalActiveMarker": 0,
+        "checkpointMarker": 1,
+        "unfocusedSafety": 0,
+        "pausedMarker": 0,
+        "budgetLimitedMarker": 0,
+        "staleMarker": 0,
+        "postCompactionMarker": 0
+      }
+    },
+    {
+      "fixture": "pending-external-scope-blocked",
+      "breakdown": {
+        "sdkGuidanceChars": 407,
+        "hostToolSchemaChars": 2555,
+        "childRequestChars": 0,
+        "extensionMessageChars": 6903,
+        "extensionAttributableChars": 8478,
+        "baseSystemChars": 2810,
+        "extensionSystemChars": 0,
+        "goalStateChars": 6469,
+        "checkpointChars": 78,
+        "historicalCheckpointChars": 0,
+        "toolSchemaChars": 1168,
+        "messageChars": 7301,
+        "totalSerializedChars": 13837,
+        "estimatedTokens": 3460
+      },
+      "semantic": {
+        "objective": 0,
+        "verificationContract": 0,
+        "currentTask": 0,
+        "lifecyclePolicyThirdBlocker": 0,
+        "independentAuditor": 0,
+        "neverEditObjective": 0,
+        "blockerPolicyUpdateGoal": 0,
+        "completionPolicyUpdateGoal": 0,
+        "goalActiveMarker": 0,
+        "checkpointMarker": 1,
+        "unfocusedSafety": 0,
+        "pausedMarker": 0,
+        "budgetLimitedMarker": 0,
+        "staleMarker": 0,
+        "postCompactionMarker": 0
+      }
+    },
+    {
       "fixture": "post-compaction-turn",
       "breakdown": {
         "sdkGuidanceChars": 1563,
@@ -868,10 +940,10 @@
     }
   ],
   "totals": {
-    "totalSerializedChars": 267108,
-    "estimatedTokens": 66788,
+    "totalSerializedChars": 298050,
+    "estimatedTokens": 74525,
     "childRequestChars": 15230,
-    "combinedSerializedChars": 282338,
-    "extensionAttributableChars": 154967
+    "combinedSerializedChars": 313280,
+    "extensionAttributableChars": 175191
   }
 }

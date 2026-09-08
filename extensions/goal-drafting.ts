@@ -206,7 +206,7 @@ function proposedTaskList(core: GoalCore, ctx: ExtensionContext, tasks: FlatTask
 function tweakProposal(current: GoalRecord, objective: string, proposed: GoalTaskList | undefined, contract?: string | null): GoalRecord {
 	const extracted = extractVerificationContract(objective);
 	const taskList = proposed ? {...proposed, tasks: mergeTasksWithExisting(current.taskList?.tasks, proposed.tasks)} : current.taskList;
-	const after = reopenChangedTasks(current, {...current, objective: extracted.objective.trim(), verificationContract: contract === null ? undefined : contract ?? extracted.verificationContract ?? current.verificationContract, taskList});
+	const after = reopenChangedTasks(current, {...current, objective: extracted.objective.trim(), verificationContract: contract === null ? undefined : contract ?? extracted.verificationContract ?? current.verificationContract, taskList}, true);
 	return {...after, currentTaskId: after.currentTaskId && currentTaskIdIsPending(after.taskList?.tasks, after.currentTaskId) ? after.currentTaskId : undefined};
 }
 
@@ -443,7 +443,7 @@ export function registerDraftingTools(core: GoalCore): void {
 			// continuation, and the ledger event.
 			let resumed = false;
 			const result = core.goalService.apply(ctx, {
-				reconcile: false, focusToken: token, expectedWorkRevision: workRevision, refreshFromDisk: true,
+				reconcile: false, focusToken: token, expectedWorkRevision: workRevision,
 				scopeRevision: {replaceTasks: taskResult.value !== undefined, reason: draft.originalTopic || "Goal revised through guided drafting.", confirmationLocator: `${ctx.sessionManager.getSessionId()}:tool:${_id}`, confirmedAt: now},
 				mutate: (goal) => {
 					const proposed = tweakProposal(goal, objective, taskResult.value, params.verification_contract);

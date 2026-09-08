@@ -92,3 +92,10 @@ The human revision subset adds the tweak-only nullable goal-contract schema
 D2 reopening (44 SDK-guidance characters in 16 execution fixtures). All semantic
 counts, automatic goal text and child requests remain unchanged. These are
 explicit schema/behavior changes, not relaxed measurement gates.
+
+External proposals add two 200-task fixtures (active checkpoint and blocked),
+with long approved/edited objectives, goal/task contracts, and stop guidance.
+They require the pending-review projection, approved authority, raw proposal,
+current task, scope retrieval, and the unchanged aggregate 10,000-character
+limit. A same-goal stale checkpoint retains review guidance while dispatch
+remains held. The original 24 breakdowns and semantic counts are unchanged.

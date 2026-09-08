@@ -8,6 +8,10 @@ import { goalDetailPage } from "../extensions/goal-detail.ts";
 import { goalPrompt, taskListBlock, MAX_PROMPT_FRAGMENT_CHARS } from "../extensions/prompts/goal-prompts.ts";
 import { taskIndex } from "../extensions/goal-task-index.ts";
 import { deriveGoalDashboardModel } from "../extensions/widgets/goal-dashboard-model.ts";
+import { retainGoalScope } from "../extensions/goal-scope.ts";
+import { detailedSummary } from "../extensions/goal-format.ts";
+import { renderGoalWidgetLines } from "../extensions/widgets/goal-widget.ts";
+import { createMockTheme } from "./tui-test-utils.ts";
 import { deriveGoalActivity } from "../extensions/goal-activity.ts";
 import { appendGoalEvents, appendGoalEvent, readGoalLedger, goalActivityEvents, goalOracleState, invalidateGoalLedgerCache, loadLedgerState, LEDGER_CHECKPOINT_FILE, type GoalLedgerEvent } from "../extensions/goal-ledger.ts";
 import { writeActiveGoalFile, parseGoalFile, serializeGoalFile } from "../extensions/storage/goal-files.ts";
@@ -15,6 +19,21 @@ import { writeActiveGoalFile, parseGoalFile, serializeGoalFile } from "../extens
 import { createHarness, startHarness, focusedFixture } from "../experiments/bench/bench-common.mjs";
 
 const tasks: GoalTask[] = [{id: "parent", title: "Parent", status: "pending", subtasks: [{id: "child", title: "Child", status: "pending", verificationContract: "Prove the child"}]}, {id: "next", title: "Next", status: "pending"}];
+
+test("pending scope is visible in existing status and both bounded dashboard views", () => {
+ const goal = retainGoalScope(createGoal({objective: "Approved requirement", autoContinue: true, sisyphus: false}));
+ goal.objective = "Proposed replacement";
+ assert.match(detailedSummary(goal), /Scope review required/);
+ for (const expanded of [false, true]) for (const disableTasks of [false, true]) {
+  const lines = renderGoalWidgetLines(goal, createMockTheme(), 80, {expanded, disableTasks, terminalRows: 24});
+  assert.match(lines.join("\n"), /scope review required.*\/goal-tweak/i);
+  assert(lines.length <= 24);
+ }
+ const model = deriveGoalDashboardModel(goal, {focused: true, otherOpenGoals: 0})!;
+ assert.equal(model.status.code, "idle");
+ assert.equal(model.status.footerLabel, "scope review required · /goal-tweak");
+ assert.equal(goal.status, "active", "pending presentation does not mutate lifecycle");
+});
 async function fixture() {
  const f = focusedFixture();
  const goal = writeActiveGoalFile({cwd: f.cwd}, {...f.goal, taskList: {tasks: structuredClone(tasks), blockCompletion: true, proposedAt: "2026-09-07T00:00:00Z"}});
