@@ -65,6 +65,7 @@ export interface GoalCore {
 	readonly focusedGoalId: string | null;
 	readonly focusRevision: number;
 	invalidateFocusedOperations(): void;
+	cancelFocusedWork(ctx: ExtensionContext, goalId: string): void;
 	hasExplicitSessionFocus: boolean;
 	runningGoalId: string | null;
 	auditProgress: AuditorWidgetProgress | null;
@@ -407,11 +408,14 @@ export function createGoalCore(
 	}
 
 	function cancelFocusedWork(ctx: ExtensionContext, goalId: string): void {
+		const ownsRun = runningGoalId === goalId || (state.goal?.id === goalId && state.goal.status === "active");
 		invalidateFocusedOperations();
-		runtime.markTurnStopped(goalId);
 		clearContinuationState();
 		auditAbortController?.abort();
-		try { if (!ctx.isIdle()) ctx.abort?.(); } catch {}
+		if (ownsRun) {
+			runtime.markTurnStopped(goalId);
+			try { if (!ctx.isIdle()) ctx.abort?.(); } catch {}
+		}
 	}
 
 	function openGoals(): GoalRecord[] {
@@ -982,6 +986,7 @@ export function createGoalCore(
 			return focusedGoalId;
 		},
 		invalidateFocusedOperations,
+		cancelFocusedWork,
 		get focusRevision() {
 			return focusRevision;
 		},

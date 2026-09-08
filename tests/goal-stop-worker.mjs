@@ -10,6 +10,7 @@ import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, Mo
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const switching = control.startsWith("switch");
+const successor = control === "switch-active" || control === "pause-resume";
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
 mkdirSync(cwd); mkdirSync(agentDir);
@@ -29,6 +30,7 @@ const currentGoal = () => results.findLast(result => result.details?.goal)?.deta
 
 async function stop() {
   if (control === "pause") await session.prompt("/goal-pause");
+  else if (control === "pause-resume") { await session.prompt("/goal-pause"); await session.prompt("/goal-resume"); }
   else if (control === "esc") { terminalInput("\x1b"); void session.abort(); }
   else if (control === "abort") void session.abort();
   else if (control === "unfocus") await session.prompt("/goal-unfocus");
@@ -66,7 +68,7 @@ async function create({sessionManager, sessionStartEvent}) {
     requests.push(context);
     timeline.push({event: "request", count: requests.length});
     if (requests.length > 30) failure = new Error("Unbounded stop fixture continuation");
-    const startSecondary = testing && control === "switch-active" && triggerGoalId === secondary.id && !secondaryDone;
+    const startSecondary = testing && successor && triggerGoalId === (switching ? secondary.id : primary.id) && !secondaryDone;
     const calls = failure ? [] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     if (startSecondary) secondaryDone = true;
     const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: "Waiting for explicit authorization."}];
@@ -87,7 +89,7 @@ async function settled() {
   for (let i = 0; i < 500; i++) {
     if (failure) throw failure;
     assert.deepEqual(errors, []);
-    if (!responses.length && session.isIdle && (!testing || control !== "switch-active" || secondaryDone)) return;
+    if (!responses.length && session.isIdle && (!testing || !successor || secondaryDone)) return;
     await delay(10);
   }
   throw new Error("Native stop fixture did not settle");
@@ -120,8 +122,18 @@ try {
   }
   const before = requests.length;
   testing = true;
-  await session.prompt("/goal-resume");
-  if (boundary === "queued") {
+  if (boundary !== "ordinary") await session.prompt("/goal-resume");
+  if (boundary === "ordinary") {
+    responses = [[{name: "bash", args: {command: "printf started > ordinary-started.txt; sleep 0.2; printf complete > ordinary-finished.txt"}}, write("ordinary-later.txt")]];
+    const pending = session.prompt("Run this unrelated ordinary request while the goal stays paused.");
+    for (let i = 0; i < 300 && !existsSync(join(cwd, "ordinary-started.txt")); i++) await delay(10);
+    assert(existsSync(join(cwd, "ordinary-started.txt")));
+    await stop();
+    await pending;
+    await settled();
+    assert.equal(readFileSync(join(cwd, "ordinary-finished.txt"), "utf8"), "complete", "a paused goal does not own this running ordinary tool");
+    assert(existsSync(join(cwd, "ordinary-later.txt")), "goal controls preserve subsequent ordinary dispatches");
+  } else if (boundary === "queued") {
     responses = [[write("forbidden.txt")]];
     await stop();
     await delay(100);
@@ -146,9 +158,9 @@ try {
   } else throw new Error(`Unknown boundary ${boundary}`);
   assert.equal(existsSync(join(cwd, "forbidden.txt")), false, "a new goal work effect cannot be dispatched after the stop");
   if (boundary === "dispatched" || boundary === "agent") assert(existsSync(join(cwd, "dispatched.txt")), "effects already dispatched are not rolled back");
-  if (control === "switch-active") {
+  if (successor) {
     if (!existsSync(join(cwd, "secondary-proof.txt"))) console.error(JSON.stringify({notices, timeline, results: results.slice(-5).map(r => ({tool: r.toolName, content: r.content})), requests: requests.map(r => r.messages.slice(-1))}));
-    assert(existsSync(join(cwd, "secondary-proof.txt")), "aborting goal A cannot pause the newly selected active goal B");
+    assert(existsSync(join(cwd, "secondary-proof.txt")), "the old abort cannot pause the user's newly authorized successor");
   }
   assert.deepEqual(errors, []);
   responses = [];

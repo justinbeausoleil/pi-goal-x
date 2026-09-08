@@ -152,23 +152,12 @@ export function registerGoalCommands(core: GoalCore): void {
 
 	function unfocusGoalCommand(ctx: ExtensionContext): void {
 		const runtimeGoalId = core.state.goal?.id ?? core.runningGoalId ?? core.runtime.getCheckpointGoalId();
+		if (runtimeGoalId) core.cancelFocusedWork(ctx, runtimeGoalId);
 		core.reconcileFocusedGoalFromDisk(ctx);
 		const current = core.state.goal;
-		const detachedGoalId = current?.id ?? runtimeGoalId;
-		let wasBusy = false;
-		try {
-			wasBusy = !ctx.isIdle();
-		} catch {}
-		if (detachedGoalId && wasBusy) core.runtime.markTurnStopped(detachedGoalId);
 		core.setFocusedGoalId(null, ctx, "unfocused", { recordLedger: false });
 		core.runtime.setCheckpoint(null);
 		core.runtime.clearPostCompactReminder();
-		if (core.auditAbortController) core.auditAbortController.abort();
-		if (detachedGoalId && wasBusy) {
-			try {
-				ctx.abort?.();
-			} catch {}
-		}
 		if (!current) {
 			const openCount = otherOpenGoalCount(core.goalsById, null);
 			ctx.ui.notify(openCount > 0 ? buildUnfocusedOpenGoalsSummary(openCount) : detailedSummary(null), "info");

@@ -1266,3 +1266,26 @@
   007 acceptance includes host-held checkpoint generations/duplicate delivery,
   fresh steering and custom/next-turn queues, dialog/audit/Oracle races, durable
   cancellation and post-stop allowlist coverage. No007 criterion is closed yet.
+
+### Ticket 007 review follow-up: resumed intent and ordinary work
+
+- Frozen 80e9796 passes all1161 tests in76 files (150.8s), context28 and
+  provider7. Independent Standards review found same-goal pause/resume before
+  an old abort settles is paused again; Spec review found clearing a paused
+  goal aborts an unrelated running user tool. Both native reds are retained in
+  Data007, including Spec's passing 7680b30 ordinary-work baseline.
+- Bind the originating run to the existing focus-generation token. Dispatch
+  and abort/continuation handlers reject superseded runs; an explicitly queued
+  same-goal resume survives settlement just like a selected successor goal.
+  Shared cancellation preserves ordinary paused-goal work from both host
+  abort and the turn-stop guard. Unfocus uses that same cancellation boundary.
+- Register six more native cases: response/dispatched same-goal resume and
+  pause/unfocus/switch/clear during an unrelated ordinary tool. All26 native
+  stop cases pass; the ordinary tool's later effect and subsequent dispatch
+  both complete. The newly registered clear probe also fails at80e9796.
+- 74 targeted checks, type and lint pass;30 affected checks pass after the
+  final continuation guard/message adjustment. An attempted npm run typecheck
+  failed because the repository script is named check; npm run check passed.
+  Logs: Data007/{generation-*,ordinary-clear-registered-red.log}. 007 remains
+  in progress; queue ownership, async result/dialog races and qualification
+  are still required. No new acceptance checkbox has been closed.

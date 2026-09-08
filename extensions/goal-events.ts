@@ -98,12 +98,15 @@ export function registerGoalEvents(core: GoalCore): void {
 	let networkErrorRecoveryAfterSettleFor: string | null = null;
 	let pendingStall: { goalId: string; text: string } | undefined;
 	let draftingRun = false;
+	let runningFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
+	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
 	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
 
 	pi.on("message_start", async (event) => {
 		const message = event.message;
 		if (message.role === "custom" && message.customType === GOAL_EVENT_ENTRY) {
 			core.runningGoalId = null;
+			runningFocus = null;
 			const goalId = goalEventMessageId(message);
 			const markerId = typeof message.content === "string" ? extractGoalIdFromInjectedMessage(message.content) : null;
 			// Empty identity cannot pass isActionableContinuationGoal; null means user work.
@@ -111,6 +114,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			core.clearContinuationState(false);
 		} else if (message.role === "user") {
 			core.runningGoalId = null;
+			runningFocus = null;
 			draftingRun = hasActiveDraft(core);
 			core.runtime.setCheckpoint(null);
 			core.clearContinuationState();
@@ -125,6 +129,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		const stale = checkpoint !== null && !core.isActionableContinuationGoal(checkpoint);
 		// A focus change during a response cannot retarget its eventual abort.
 		core.runningGoalId ??= !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
+		if (core.runningGoalId) runningFocus ??= core.focusedOperationToken(core.runningGoalId);
 		const filtered = filterGoalSessionContext(event.messages);
 		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered ?? event.messages;
 		// A stopped or pending-review goal still needs its authoritative guidance.
@@ -163,10 +168,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Post-stop in-turn block: after update_goal / set_goal_tasks (or a user
 		// lifecycle command) fires in this turn, block all subsequent tool calls
 		// except read-only inspection.
-		if (stoppedGoalId !== null && core.runtime.isStaleCheckpointBlocked(event.toolName)) {
+		if ((stoppedGoalId !== null || !runIsCurrent()) && core.runtime.isStaleCheckpointBlocked(event.toolName)) {
 			return {
 				block: true,
-				reason: `The goal was already stopped earlier in this turn (goalId=${stoppedGoalId}). ` +
+				reason: `The goal was already stopped earlier in this turn or its run was superseded (goalId=${stoppedGoalId ?? runningFocus?.goalId}). ` +
 					`Do not call more tools; end the turn with a brief summary and yield to the user.`,
 			};
 		}
@@ -225,7 +230,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			// Pause only on a genuine user abort (signal fired). A provider- or
 			// transport-side abort without the signal routes into recovery via
 			// agent_end instead of stranding the goal.
-			if (ctx.signal?.aborted && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
+			if (ctx.signal?.aborted && runIsCurrent() && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
 			return;
 		}
 		// Provider failures are not completed work: do not turn one failed turn
@@ -307,6 +312,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		// just chatting and we should not keep firing turns on noise.
 		if (
 			!isToolUseAssistantMessage(message)
+			&& runIsCurrent()
 			&& core.state.goal?.status === "active"
 			&& core.state.goal.autoContinue
 			&& core.goalWorkToolCalledThisTurn
@@ -319,7 +325,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	pi.on("message_end", async (event, ctx) => {
 		// Signal-aware: see turn_end — only user aborts pause; provider-side
 		// aborts are handled by agent_end's recovery path.
-		if (isAbortedAssistantMessage(event.message) && ctx.signal?.aborted && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
+		if (isAbortedAssistantMessage(event.message) && ctx.signal?.aborted && runIsCurrent() && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
 		const raw = asRecord(event.message);
 		if (raw?.role === "custom" && raw.customType === GOAL_EVENT_ENTRY && raw.display !== false) {
 			return { message: { ...event.message, display: false } as typeof event.message };
@@ -413,6 +419,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		if (incomingGoalId === null) networkErrorRecoveryAfterSettleFor = null;
 		core.reconcileFocusedGoalFromDisk(ctx);
 		core.runningGoalId = core.state.goal?.status === "active" ? core.state.goal.id : null;
+		runningFocus = core.runningGoalId ? core.focusedOperationToken(core.runningGoalId) : null;
 		if (!hasActiveDraft(core)) core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
 		if (incomingGoalId !== null && !core.isActionableContinuationGoal(incomingGoalId)) {
 			try { ctx.abort?.(); } catch {}
@@ -534,11 +541,13 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	pi.on("agent_end", async (event, ctx) => {
 		const endedGoalId = core.runningGoalId;
+		const superseded = !runIsCurrent();
 		core.runningGoalId = null;
+		runningFocus = null;
 		continuationAfterSettleFor = null;
 		networkErrorRecoveryAfterSettleFor = null;
 		const selectedGoalId = core.state.goal?.id;
-		if (endedGoalId && selectedGoalId && selectedGoalId !== endedGoalId && core.runtime.continuationPendingFor(selectedGoalId)) {
+		if (endedGoalId && selectedGoalId && (superseded || selectedGoalId !== endedGoalId) && core.runtime.continuationPendingFor(selectedGoalId)) {
 			// A user-selected successor waits for the old run's abort to settle.
 			continuationAfterSettleFor = selectedGoalId;
 		}
@@ -558,7 +567,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		const checkpoint = core.runtime.getCheckpointGoalId();
 		if (checkpoint !== null && !core.isActionableContinuationGoal(checkpoint)) return;
 		if (!core.state.goal || core.state.goal.status !== "active" || !core.state.goal.autoContinue) return;
-		if (endedGoalId && core.state.goal.id !== endedGoalId) return;
+		if (superseded || (endedGoalId && core.state.goal.id !== endedGoalId)) return;
 		if (!core.reconcileFocusedGoalFromDisk(ctx)) return;
 		// A genuine user abort pauses the goal. An assistant message with
 		// stopReason "aborted" WITHOUT a user abort signal is a provider- or
