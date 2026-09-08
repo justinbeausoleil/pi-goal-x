@@ -55,11 +55,12 @@
     "amendmentsPR": 50,
     "forkPushDenied": true
   },
-  "releaseStatus": "tag v0.31.1 pushed; GitHub release draft prepared; npm awaiting account two-factor authentication",
+  "releaseStatus": "published to npm latest and GitHub; registry integrity and tag/commit alignment verified",
   "releaseCommit": "cb282e2979b38bd7ce9dc566d7602d5d1d99933f",
   "finalPRCI": "https://github.com/tmonk/pi-goal-x/actions/runs/34169518627",
   "releaseCommitCI": "https://github.com/tmonk/pi-goal-x/actions/runs/34169616964",
   "githubReleaseId": 384357558,
   "openIssuesRemaining": 0,
-  "openPRsRemaining": 0
+  "openPRsRemaining": 0,
+  "publicationReceipt": "PUBLISHED.json"
 }
