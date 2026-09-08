@@ -987,3 +987,27 @@
   authorized checkpoint, persisted resumed focus and unchanged task evidence.
   Type/lint pass. The frozen31 full suite is still running; this one-line caller
   fix and combined regression receive their own fixed-base re-review.
+
+### Ticket 006 native recovery faults
+
+- Both reviewers clear6b09645's paused navigation repair. Frozen31a2c4 full
+  passes1097/1097; frozen6b09645 full passes1098/1098 (76files,121.6s).
+  The reviewed ownership subset is pushed separately;006 remains incomplete.
+- Native recovery initially passes diagnosis/cancel/confirmed backups against
+  public-created, independently verified task progress. Priming a prior report
+  then appending corruption reproduces a stale ledger report. Five boundary
+  probes reproduce live-lock replacement deletion, disposed-session repair,
+  backup-directory failure escaping the command, hidden lock-copy failure and
+  falsely successful snapshot refresh after a denied write. recovery*-red.log
+  retains all six failures under Data/pi-goal-x/reliability/006.
+- Explicit diagnosis invalidates the ledger cache. Repair returns per-item
+  failures, uses unique backup directories, rechecks lock identity/staleness,
+  and requests a strict fresh snapshot write through the existing writer.
+  Shutdown invalidates the existing operation revision; recovery confirmation
+  checks it before repair and before any old-context notification.
+- All six native cases now pass. The stale-session follow-up initially compared
+  bytes before the normal shutdown persistence; it now compares the observed
+  settled shutdown file, retaining exact preservation checks. Type/lint and
+  targeted recovery/unfocus/drafting checks pass. No payload changed. The slice
+  proceeds to independent fixed-base review and full qualification; legacy
+  reads/refresh, broader path/storage faults and child qualification remain.

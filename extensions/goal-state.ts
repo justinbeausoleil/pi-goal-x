@@ -61,6 +61,7 @@ export interface GoalCore {
 	readonly goalsById: Map<string, GoalRecord>;
 	readonly focusedGoalId: string | null;
 	readonly focusRevision: number;
+	invalidateFocusedOperations(): void;
 	hasExplicitSessionFocus: boolean;
 	runningGoalId: string | null;
 	auditProgress: AuditorWidgetProgress | null;
@@ -146,6 +147,8 @@ export function createGoalCore(
 	let focusedGoalId: string | null = null;
 	let focusRevision = 0;
 	let hasExplicitSessionFocus = false;
+
+	function invalidateFocusedOperations(): void { focusRevision += 1; }
 
 	function assignFocusedGoalId(next: string | null): void {
 		if (focusedGoalId !== next) focusRevision += 1;
@@ -729,7 +732,7 @@ export function createGoalCore(
 		core.continuationHeld = false;
 		goalsById = await readActiveGoalPoolAsync(ctx);
 		tasksEnabled = !loadGoalSettings(ctx.cwd).disableTasks;
-		focusRevision += 1; // Session reload/tree navigation invalidates pending async focus operations.
+		invalidateFocusedOperations();
 		assignFocusedGoalId(null);
 		hasExplicitSessionFocus = false;
 		let focusEntry: GoalFocusEntry | null = null;
@@ -929,6 +932,7 @@ export function createGoalCore(
 		get focusedGoalId() {
 			return focusedGoalId;
 		},
+		invalidateFocusedOperations,
 		get focusRevision() {
 			return focusRevision;
 		},

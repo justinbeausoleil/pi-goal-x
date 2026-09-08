@@ -613,6 +613,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		core.invalidateFocusedOperations();
 		core.auditMessages.clear();
 		continuationAfterSettleFor = null;
 		networkErrorRecoveryAfterSettleFor = null;

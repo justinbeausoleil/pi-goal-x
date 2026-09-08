@@ -1,6 +1,6 @@
 /** S1/S2 project progress and execution authority through native session boundaries. */
 import assert from "node:assert/strict";
-import {existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {appendFileSync, chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -19,7 +19,7 @@ process.env.PI_GOAL_AUTO_CONFIRM = "1";
 const settings = SettingsManager.inMemory({compaction: {enabled: false, reserveTokens: 16384, keepRecentTokens: 100}, retry: {enabled: false}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [], confirmations = [];
-let session, host, steps = [], earlyLeaf, failure, shutdownFile, summaries = 0;
+let session, host, steps = [], earlyLeaf, failure, shutdownFile, summaries = 0, repairConfirmed = false, onRepairConfirm = async () => {};
 const goalResult = () => results.findLast(r => r.details?.goal)?.details.goal;
 const checkpoints = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length;
 const readGoal = () => readFileSync(join(cwd, goalResult().activePath), "utf8");
@@ -57,7 +57,7 @@ async function open(manager, sessionStartEvent) {
   };
   await session.bindExtensions({mode: "rpc", onError: error => errors.push(error), uiContext: {
     notify: message => notices.push(message), setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
-    confirm: async title => { confirmations.push(title); return title === "Resume paused goal?" && scenario.endsWith("-confirm"); }, select: async () => undefined, input: async () => undefined,
+    confirm: async title => { confirmations.push(title); if (title.startsWith("Remove ")) { if (repairConfirmed) await onRepairConfirm(); return repairConfirmed; } return title === "Resume paused goal?" && scenario.endsWith("-confirm"); }, select: async () => undefined, input: async () => undefined,
   }});
   return {...created, services: {cwd, agentDir, modelRuntime: runtime, settingsManager: settings, resourceLoader: loader, diagnostics: []}, diagnostics: []};
 }
@@ -88,7 +88,87 @@ try {
   assert.equal(approved.status, "paused");
   assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
   assert(earlyLeaf);
-  if (scenario === "tree" || scenario === "fork") {
+  if (scenario.startsWith("recovery-")) {
+    const goals = join(cwd, ".pi", "goals"), lock = join(goals, ".locks", "fixture.lock");
+    const backupRoot = join(goals, ".recovery-backup"), snapshotPath = join(cwd, ".pi", ".goals-pool-snapshot.json");
+    mkdirSync(join(goals, ".locks"), {recursive: true});
+    const originalLock = JSON.stringify({pid: 999999999, startedAt: new Date(Date.now() - 300000).toISOString()});
+    writeFileSync(lock, originalLock);
+    const goalBefore = readGoal(), requestsBefore = requests.length;
+    repairConfirmed = true;
+    let liveLock;
+    if (scenario === "recovery-lock-race") onRepairConfirm = async () => {
+      liveLock = JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()});
+      writeFileSync(lock, liveLock);
+    };
+    if (scenario === "recovery-session-stale") onRepairConfirm = async () => { await host.newSession(); };
+    if (scenario === "recovery-backup-failure") writeFileSync(backupRoot, "User-owned backup path obstruction");
+    if (scenario === "recovery-item-failure") onRepairConfirm = async () => { chmodSync(lock, 0); };
+    if (scenario === "recovery-snapshot-failure") {
+      rmSync(lock);
+      const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+      snapshot.goals.push({goalId: "missing-fixture", activePath: ".pi/goals/active_goal_missing-fixture.md"});
+      writeFileSync(snapshotPath, JSON.stringify(snapshot));
+      onRepairConfirm = async () => { chmodSync(join(cwd, ".pi"), 0o555); };
+    }
+    const noticesBefore = notices.length;
+    try {
+      await session.prompt("/goal-recovery repair");
+      assert.deepEqual(errors, [], "repair failures surface through the recovery command");
+      if (scenario === "recovery-session-stale") {
+        assert.equal(existsSync(backupRoot), false, "disposed-session confirmation cannot repair a replacement session");
+        assert.equal(notices.length, noticesBefore, "no stale-context notification enters the replacement session");
+      } else assert.match(notices.at(-1), /failed|changed|no longer stale/i, "repair must diagnose unsuccessful operations");
+      if (scenario !== "recovery-snapshot-failure") {
+        if (scenario === "recovery-item-failure") chmodSync(lock, 0o600);
+        assert.equal(readFileSync(lock, "utf8"), liveLock ?? originalLock, "failed or obsolete repairs retain the lock");
+      } else assert(JSON.parse(readFileSync(snapshotPath, "utf8")).goals.some(g => g.goalId === "missing-fixture"));
+      assert.equal(readGoal(), scenario === "recovery-session-stale" ? shutdownFile : goalBefore, "repair preserves the settled authoritative goal");
+      assert.equal(requests.length, requestsBefore);
+    } finally {
+      chmodSync(join(cwd, ".pi"), 0o755);
+      if (existsSync(lock)) chmodSync(lock, 0o600);
+    }
+  } else if (scenario === "recovery") {
+    const goals = join(cwd, ".pi", "goals"), locks = join(goals, ".locks");
+    mkdirSync(locks, {recursive: true});
+    const lock = join(locks, "fixture-stale.lock"), invalid = join(goals, "active_goal_invalid.md");
+    const ledger = join(goals, "goal_events.jsonl"), snapshotPath = join(cwd, ".pi", ".goals-pool-snapshot.json");
+    await session.prompt("/goal-recovery");
+    writeFileSync(lock, JSON.stringify({pid: 999999999, startedAt: new Date(Date.now() - 300000).toISOString()}));
+    writeFileSync(invalid, "Malformed user content must survive diagnosis and repair.");
+    appendFileSync(ledger, "{invalid-ledger-line\n");
+    const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+    snapshot.goals.push({goalId: "missing-fixture", activePath: ".pi/goals/active_goal_missing-fixture.md"});
+    writeFileSync(snapshotPath, JSON.stringify(snapshot));
+    const originals = [lock, invalid, ledger, snapshotPath].map(file => readFileSync(file, "utf8"));
+    const goalBefore = readGoal(), requestsBefore = requests.length;
+    await session.prompt("/goal-status health");
+    await session.prompt("/goal-recovery");
+    const report = notices.at(-1);
+    assert.match(report, /1 malformed goal file/);
+    assert.match(report, /1 malformed ledger line/);
+    assert.match(report, /1 stale lock/);
+    assert.match(report, /1 orphaned snapshot entr/);
+    assert.deepEqual([lock, invalid, ledger, snapshotPath].map(file => readFileSync(file, "utf8")), originals, "diagnosis is read-only");
+    await session.prompt("/goal-recovery repair");
+    assert.match(notices.at(-1), /cancelled/);
+    assert.equal(existsSync(join(goals, ".recovery-backup")), false, "cancel does not create a backup");
+    assert.deepEqual([lock, invalid, ledger, snapshotPath].map(file => readFileSync(file, "utf8")), originals);
+    repairConfirmed = true;
+    await session.prompt("/goal-recovery repair");
+    assert.match(notices.at(-1), /2 operation\(s\) applied/);
+    const backupRoot = join(goals, ".recovery-backup");
+    const backup = join(backupRoot, readdirSync(backupRoot)[0]);
+    assert.equal(readFileSync(join(backup, "lock-fixture-stale.lock"), "utf8"), originals[0]);
+    assert.equal(readFileSync(join(backup, "pool-snapshot.json"), "utf8"), originals[3]);
+    assert.equal(existsSync(lock), false);
+    assert.equal(JSON.parse(readFileSync(snapshotPath, "utf8")).goals.some(g => g.goalId === "missing-fixture"), false);
+    assert.equal(readFileSync(invalid, "utf8"), originals[1]);
+    assert.equal(readFileSync(ledger, "utf8"), originals[2]);
+    assert.equal(readGoal(), goalBefore, "repair leaves authoritative project progress unchanged");
+    assert.equal(requests.length, requestsBefore, "recovery does not schedule goal work");
+  } else if (scenario === "tree" || scenario === "fork") {
     await session.prompt("/goal-resume");
     const before = requests.length;
     if (scenario === "tree") await session.navigateTree(earlyLeaf);

@@ -18,9 +18,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { readGoalLedger, type GoalLedgerContext } from "./goal-ledger.ts";
+import { invalidateGoalLedgerCache, readGoalLedger, type GoalLedgerContext } from "./goal-ledger.ts";
 import { GOAL_LOCK_DIR } from "./storage/goal-lock.ts";
-import { invalidateGoalPoolCache, parseGoalFile, readActiveGoalPool, type GoalFileContext } from "./storage/goal-files.ts";
+import { parseGoalFile, refreshGoalPoolSnapshot, type GoalFileContext } from "./storage/goal-files.ts";
 
 export const GOALS_DIR = ".pi/goals";
 export const RECOVERY_BACKUP_DIR = ".pi/goals/.recovery-backup";
@@ -53,6 +53,7 @@ export interface RecoveryReport {
 
 export interface RecoveryRepairResult {
 	applied: string[];
+	failures: string[];
 	backupDir: string | null;
 	confirmed: boolean;
 }
@@ -160,6 +161,7 @@ function scanOrphanedSnapshotGoals(cwd: string): OrphanedSnapshotEntry[] {
 
 /** Read-only recovery report. Never mutates goal storage. */
 export function runRecoveryReport(ctx: GoalFileContext): RecoveryReport {
+	invalidateGoalLedgerCache();
 	const ledger = readGoalLedger({ cwd: ctx.cwd } as GoalLedgerContext);
 	const malformedGoalFiles = scanMalformedGoalFiles(ctx.cwd);
 	const staleLocks = scanStaleLocks(ctx.cwd);
@@ -187,24 +189,36 @@ export async function runRecoveryRepair(
 	confirm: () => Promise<boolean>,
 ): Promise<RecoveryRepairResult> {
 	if (report.staleLocks.length === 0 && report.orphanedSnapshotGoals.length === 0) {
-		return { applied: [], backupDir: null, confirmed: false };
+		return { applied: [], failures: [], backupDir: null, confirmed: false };
 	}
 	const confirmed = await confirm();
-	if (!confirmed) return { applied: [], backupDir: null, confirmed: false };
+	if (!confirmed) return { applied: [], failures: [], backupDir: null, confirmed: false };
 
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const backupDir = path.join(ctx.cwd, RECOVERY_BACKUP_DIR, stamp);
-	fs.mkdirSync(backupDir, { recursive: true });
+	let backupDir: string;
+	try {
+		const root = path.join(ctx.cwd, RECOVERY_BACKUP_DIR);
+		fs.mkdirSync(root, { recursive: true });
+		backupDir = fs.mkdtempSync(path.join(root, stamp + "-"));
+	} catch (error) {
+		return { applied: [], failures: ["Backup failed: " + String(error)], backupDir: null, confirmed: true };
+	}
 	const applied: string[] = [];
+	const failures: string[] = [];
+	const currentLocks = scanStaleLocks(ctx.cwd);
 
 	for (const lock of report.staleLocks) {
 		const source = path.join(locksDir(ctx.cwd), lock.fileName);
 		try {
+			const current = currentLocks.find(item => item.fileName === lock.fileName);
+			if (!current || current.pid !== lock.pid || current.startedAt !== lock.startedAt) {
+				throw new Error("Lock changed or is no longer stale; run /goal-recovery again.");
+			}
 			fs.copyFileSync(source, path.join(backupDir, `lock-${safeLockName(lock.fileName)}`));
 			fs.unlinkSync(source);
 			applied.push(`removed stale lock ${lock.fileName}`);
-		} catch {
-			// best-effort per item
+		} catch (error) {
+			failures.push("Lock repair failed for " + lock.fileName + ": " + String(error));
 		}
 	}
 
@@ -214,17 +228,14 @@ export async function runRecoveryRepair(
 			if (fs.existsSync(snapshotPath)) {
 				fs.copyFileSync(snapshotPath, path.join(backupDir, "pool-snapshot.json"));
 			}
-			// Refresh the pool snapshot from a fresh scan (invalidate first so
-			// the re-read goes cold and rewrites the snapshot).
-			invalidateGoalPoolCache();
-			readActiveGoalPool(ctx);
+			refreshGoalPoolSnapshot(ctx);
 			applied.push(`refreshed pool snapshot (${report.orphanedSnapshotGoals.length} orphaned entr${report.orphanedSnapshotGoals.length === 1 ? "y" : "ies"} dropped)`);
-		} catch {
-			// best-effort
+		} catch (error) {
+			failures.push("Pool snapshot repair failed: " + String(error));
 		}
 	}
 
-	return { applied, backupDir, confirmed: true };
+	return { applied, failures, backupDir, confirmed: true };
 }
 
 export function formatRecoveryReport(report: RecoveryReport): string {

@@ -157,18 +157,29 @@ function hydratePoolFromSnapshot(snapshot: PoolSnapshot): Map<string, GoalRecord
 }
 
 /** Best-effort atomic snapshot write (temp + rename). */
-function writePoolSnapshotSync(ctx: GoalFileContext, root: string, goals: GoalRecord[]): void {
+function writePoolSnapshotSync(ctx: GoalFileContext, root: string, goals: GoalRecord[], strict = false): void {
+	const target = poolSnapshotPath(root);
+	const tempPath = `${target}.${process.pid}.${Date.now()}.tmp`;
 	try {
 		const rootStat = fs.lstatSync(root);
 		const snapshot: PoolSnapshot = { version: 1, dirMtimeMs: rootStat.mtimeMs, goals };
-		const target = poolSnapshotPath(root);
-		const tempPath = `${target}.${process.pid}.${Date.now()}.tmp`;
 		fs.writeFileSync(tempPath, JSON.stringify(snapshot), "utf8");
 		fs.renameSync(tempPath, target);
 		removeLegacyPoolSnapshot(root);
-	} catch {
+	} catch (error) {
+		try { fs.unlinkSync(tempPath); } catch {}
+		if (strict) throw error;
 		// best-effort: a missing/stale snapshot just costs a full scan next cold read
 	}
+}
+
+/** Explicit confirmed recovery requires a fresh scan and an observable write result. */
+export function refreshGoalPoolSnapshot(ctx: GoalFileContext): void {
+	invalidateGoalPoolCache();
+	const root = path.resolve(ctx.cwd, GOALS_DIR);
+	const goals = scanActiveGoalFiles(ctx, root);
+	writePoolSnapshotSync(ctx, root, goals, true);
+	goalPoolCache.set(root, new Map(goals.map(goal => [goal.id, goal])));
 }
 
 async function writePoolSnapshotAsync(ctx: GoalFileContext, root: string, goals: GoalRecord[]): Promise<void> {

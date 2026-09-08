@@ -197,16 +197,21 @@ export function registerGoalCommands(core: GoalCore): void {
 	}
 
 	async function runGoalRecovery(rawArgs: string, ctx: ExtensionContext): Promise<void> {
+		const revision = core.focusRevision;
 		const report = runRecoveryReport({ cwd: ctx.cwd });
 		if (/^repair$/i.test(rawArgs)) {
 			const result = await runRecoveryRepair({ cwd: ctx.cwd }, report, async () => {
 				const confirmed = await ctx.ui.confirm(`Remove ${report.staleLocks.length} stale lock(s) and refresh the pool snapshot?`, `Files are backed up to .pi/goals/.recovery-backup first.`);
-				return confirmed === true;
+				return confirmed === true && core.focusRevision === revision;
 			});
+			if (core.focusRevision !== revision) return;
 			if (result.confirmed) {
-				ctx.ui.notify(result.applied.length > 0
-					? `goal-recovery repair: ${result.applied.length} operation(s) applied.\n${result.applied.map((a) => `  - ${a}`).join("\n")}\nBackup: ${result.backupDir}`
-					: "goal-recovery repair: nothing to repair.", "info");
+				const lines = [result.applied.length > 0
+					? `goal-recovery repair: ${result.applied.length} operation(s) applied.`
+					: "goal-recovery repair: no operations applied.",
+					...result.applied, ...result.failures];
+				if (result.backupDir) lines.push("Backup: " + result.backupDir);
+				ctx.ui.notify(lines.join("\n"), result.failures.length ? "warning" : "info");
 			} else {
 				ctx.ui.notify("goal-recovery repair: cancelled — nothing changed.", "info");
 			}
