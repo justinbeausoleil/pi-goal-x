@@ -347,6 +347,7 @@ try {
       assert.equal(JSON.stringify(payload).includes("oracle-project-resource-sentinel"), control === "resources", "Oracle respects the configured project-resource policy");
       assert(!JSON.stringify(payload).includes("PI GOAL ACTIVE"), "Oracle cannot inherit the executor projection");
     }
+    if (control === "two-blockers") await run("Consult about a different concrete blocker.", [{...block, args: {...block.args, reason: "A different fixture dependency remains unavailable."}}]);
     if (control === "reopen") {
       await session.prompt("/goal-pause");
       for (let i = 0; i < 3; i++) {
@@ -359,17 +360,23 @@ try {
     }
     const inspectionStart = requests.length;
     await run("Inspect state and report the same blocker without attempting the advice.", [
-      {name: "get_goal", args: {}}, {name: "bash", args: {command: "echo inspecting"}}, {name: "ls", args: {path: "."}}, block,
+      {name: "get_goal", args: {}}, {name: "bash", args: {command: control === "echo-variable" ? 'echo "$PWD"' : "echo inspecting"}}, {name: "ls", args: {path: "."}}, block,
     ]);
     assert.equal(currentGoal().status, "active", "inspection and another block request do not execute Oracle advice");
     assert(JSON.stringify(requests[inspectionStart].messages.at(-1)).includes("Late Oracle advice"), "durable advice is supplied before renewed work");
     assert(results.some(result => result.toolName === "ls" && !result.isError), "the executor performed actual inspection");
     assert.equal(ledger().filter(event => event.type === "oracle_followup_attempted").length, 0);
+    if (control === "two-blockers") {
+      await session.prompt("/goal-pause");
+      await host.switchSession(session.sessionManager.getSessionFile());
+      await session.prompt("/goal-resume");
+    }
     await run("Attempt the advice, then report the still-recurring blocker.", [write("oracle-attempt.txt"), block]);
     assert.equal(readFileSync(join(cwd, "oracle-attempt.txt"), "utf8"), "oracle-attempt.txt");
     assert.equal(currentGoal().status, "blocked");
-    assert.equal(ledger().filter(event => event.type === "oracle_started").length, 1, "same fingerprint reuses its advice");
+    assert.equal(ledger().filter(event => event.type === "oracle_started").length, control === "two-blockers" ? 2 : 1, "same fingerprint reuses its advice");
     assert.deepEqual(ledger().filter(event => event.type === "oracle_followup_attempted").map(event => event.firstToolName), ["write"]);
+    assert.equal(ledger().find(event => event.type === "oracle_followup_attempted").fingerprint, ledger().find(event => event.type === "oracle_result").fingerprint, "work follows the original blocker when its advice is selected again");
   } else if (control === "serial") {
     const revision = results.findLast(result => result.details?.goal?.id === primary.id)?.details.work_revision;
     assert(revision);

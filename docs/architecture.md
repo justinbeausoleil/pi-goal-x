@@ -427,14 +427,16 @@ normal-parent, lightweight-child, and ordered progress-batch gates remain.
 Normal prompt/dashboard reads use per-goal ledger indexes: 12 recent events,
 64 activity candidates in stable timestamp order, pinned audit/lifecycle state,
 and blocker-fingerprint Oracle state plus the latest complete Oracle result.
-Pending advice is queried through that index until a recorded follow-up attempt;
-the ledger is the authority after both compaction and reopen, without a second
+Pending advice is queried through that index until a recorded follow-up attempt.
+The ledger is the authority after both compaction and reopen, without a second
 in-memory advice gate. Only substantive write/edit/bash attempts discharge
 advice; inspection and lifecycle reports do not. Event-only turn transactions
 flush their ledger batch even when no goal record changed. Native child provider
 errors remain distinct from invalid structured advice, and aborted consultations
 record a diagnostic for the original goal without applying a stale result.
-the complete structured result is retained as JSON text in oracle_result.advice
+Returning to an older blocker re-exposes its cached oracle_result with
+reused=true, selecting that advice for the next attempt without consulting again.
+The complete structured result is retained as JSON text in oracle_result.advice
 and is available through lossless history pages. Legacy summary-only advice is
 explicitly labeled incomplete. Derived checkpoints missing the latest-result
 pointer rebuild from the ledger. Appends extend these indexes without

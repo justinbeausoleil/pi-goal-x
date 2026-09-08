@@ -324,6 +324,9 @@ pi.registerTool(defineTool({
 	// One actionable result already exists.
 	if (consult.result?.disposition === "actionable") {
 		if (!consult.followupAttempted) {
+			// Select this cached advice durably without starting another consultation.
+			const prior = readGoalLedger(ctx).events.find(event => event.type === "oracle_result" && event.goalId === goalAtBlock.id && event.fingerprint === fingerprint);
+			if (prior?.type === "oracle_result") core.goalService.appendEvents(ctx, [{...prior, reused: true, at: nowIso()}]);
 			const adviceText = renderOracleAdviceReminder(consult.result.summary);
 			return {
 				content: [{ type: "text", text: `${adviceText}\n\nThe goal was NOT marked blocked.` }],

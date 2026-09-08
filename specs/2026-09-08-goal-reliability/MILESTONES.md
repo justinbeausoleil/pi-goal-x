@@ -1671,3 +1671,24 @@
   Helpers use --import ./scripts/test-adapter-hooks.mjs for goal-oracle,
   goal-tool-names, goal-turn-transaction and goal-service tests. Data009 logs
   retain actual output; final qualification will record complete commands.
+
+### Ticket 009 review repairs
+
+- Independent Spec review reproduces echo "$PWD" wrongly discharging advice
+  and returning to blockerA after blockerB crediting the work toB, strandingA.
+  Both are registered in the native worker (review-registered-red.log). Plain
+  variable expansion is excluded from work. Reusing an unfinished cached result
+  durably selects its fingerprint through oracle_result(reused=true), without
+  another consultation. The two-blocker case also reopens before the work attempt.
+  Review-repairs-native.log passes12 related checks before that extra reopen.
+- Standards finds no material breach and passes6 frozen native checks plus a
+  same-response write/block probe. Spec independently passes9 supplied cases;
+  its two findings remain open until final repaired-candidate re-review.
+- Frozen956d4aa's full suite finishes with only the known successful-Pi-retry
+  helper failure: the fixture supplied empty successful text but expected work
+  continuation. Add a write dispatch to retain that assertion's work/retry intent;
+  retry-helper-green.log passes. Native provider-retry and other host cases pass
+  in the full run. The full/selfcheck failures are retained, not waived.
+- Type/lint, context28, provider7, historical NAF, ranking5, production audit
+  and dry pack pass at956d4aa. Final repaired qualification and fresh B2/B7
+  remain pending;009 acceptance is still open. No dependencies or live selection changed.

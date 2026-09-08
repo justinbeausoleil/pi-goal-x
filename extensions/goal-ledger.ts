@@ -32,7 +32,7 @@ export type GoalLedgerEvent =
   | { type: "goal_stalled"; goalId: string; reason: string; at: string }
   | { type: "goal_blocked"; goalId: string; reason: string; source: "agent" | "system"; at: string }
   | { type: "oracle_started"; goalId: string; fingerprint: string; provider: string; model: string; thinkingLevel?: string; reason: string; at: string }
-  | { type: "oracle_result"; goalId: string; fingerprint: string; adviceId: string; disposition: "actionable" | "needs_human" | "insufficient_context"; summary: string; advice?: string; recommendedTitle?: string; at: string }
+  | { type: "oracle_result"; goalId: string; fingerprint: string; adviceId: string; disposition: "actionable" | "needs_human" | "insufficient_context"; summary: string; advice?: string; recommendedTitle?: string; reused?: boolean; at: string }
   | { type: "oracle_failed"; goalId: string; fingerprint: string; attempt: number; errorCode: "config" | "provider" | "aborted" | "invalid_output"; message: string; at: string }
   | { type: "oracle_followup_attempted"; goalId: string; fingerprint: string; adviceId: string; firstToolName: string; at: string };
 

@@ -15,7 +15,7 @@ for (const outcome of ["disabled", "needs_human", "insufficient_context", "confi
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "oracle-outcome", outcome], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });
-for (const control of ["plain", "reopen", "resources"]) test(`S1/S2: native Oracle ${control} advice requires a work attempt before re-blocking`, {timeout: 15000}, async () => {
+for (const control of ["plain", "reopen", "resources", "echo-variable", "two-blockers"]) test(`S1/S2: native Oracle ${control} advice requires a work attempt before re-blocking`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "oracle-followup", control], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });

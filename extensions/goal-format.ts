@@ -316,7 +316,7 @@ export function isMeaningfulProgressToolCall(toolName: string, args: unknown): b
 	if (toolName === "bash") {
 		const command = asRecord(args)?.command;
 		// ponytail: recognize plain echo only; full shell analysis needs a parser.
-		if (typeof command === "string" && /^\s*echo\b/.test(command) && !/[;&|<>`$()\r\n]/.test(command)) return false;
+		if (typeof command === "string" && /^\s*echo\b/.test(command) && !/[;&|<>`()\r\n]/.test(command)) return false;
 	}
 	return true;
 }

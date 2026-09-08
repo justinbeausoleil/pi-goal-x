@@ -344,6 +344,9 @@ test("a successful Pi retry clears the pending network-error recovery", async ()
 		await h.handlers["agent_end"]!({
 			messages: [{ role: "assistant", stopReason: "error", errorMessage: "Provider finish_reason: network_error" }],
 		}, idleCtx(h.ctx));
+		await h.handlers["agent_start"]!({}, h.ctx);
+		await h.handlers["turn_start"]!({}, h.ctx);
+		await h.handlers["tool_call"]!({ toolName: "write", input: { path: "proof.txt", content: "recovered work" } }, h.ctx);
 		await h.handlers["agent_end"]!({
 			messages: [{ role: "assistant", stopReason: "end_turn" }],
 		}, idleCtx(h.ctx));
