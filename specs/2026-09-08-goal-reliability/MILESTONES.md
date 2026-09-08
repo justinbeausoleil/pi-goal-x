@@ -408,3 +408,30 @@
   breakdowns drift only by the evidence schema description's 45 new characters;
   all automatic-text and semantic/child measurements are unchanged. Rationale
   is in experiments/context/README.md; final gate/provider checks are pending.
+
+### Ticket 004 independent review repairs
+
+- Fixed reviewed payload commit: 8adbbba. Standards found no actionable issues;
+  Spec independently passed native details/accounting and threshold compaction,
+  then found two acceptance misses. The retained overlay sized its viewport
+  from width, while the real Pi compositor cropped it to 80% of terminal rows.
+  The raw-component tests missed that cropping. A native compositor regression
+  now covers all 200 titles and 600 Unicode contract tokens at 80x24, growing
+  to 120x40 and shrinking again, for both overlay and task confirmation.
+  It failed at node 15 during paging before the fix; viewport height now also
+  reserves actual host frame/indicator/diagnostic rows. No shortcut restored.
+- Missing-task and invalid-section cursor paths returned before restart
+  guidance. They now share the existing invalid/stale diagnostic, including
+  an explicitly empty cursor. Native details/accounting proof passes all
+  added cases. Red/green evidence: reliability/004/host-overlay-*.log and
+  cursor-guidance-*.log under Data.
+- Fresh benchmark checks exposed three unmigrated task clients from 003:
+  B2/B7 silently timed a rejected completion; runtime-token did not focus its
+  final task. Added effect assertions reproduce each failure, then public
+  revision reads restore successful mutations. B2/B7 and a runtime smoke run
+  pass; runtime's one-event smoke is only protocol validation, not a scale
+  claim. No historical measurements or gate limits were changed. The NAF gate
+  is a comparison of committed historical artifacts, not a fresh measurement.
+- Full 1010/1010 tests and all original review checks passed at 8adbbba;
+  context's 24 fixtures and six payload cases ran sequentially and passed.
+  Follow-up qualification/reviews remain pending for these repairs.

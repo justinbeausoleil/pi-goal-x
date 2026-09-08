@@ -4,6 +4,7 @@ import type { GoalRecord } from "./goal-record.ts";
 import type { GoalLedgerEvent } from "./goal-ledger.ts";
 
 export const GOAL_DETAIL_PAGE_CHARS = 4000;
+const INVALID_CURSOR = "Invalid or stale cursor: goal details changed or the section/task differs. Restart this section without cursor.";
 export type GoalDetailSection = "objective" | "tasks" | "history";
 export interface GoalDetailQuery { section: GoalDetailSection; task_id?: string; cursor?: string }
 export type GoalDetailPage = {ok: true; text: string; goalId: string; section: GoalDetailSection; taskId?: string; contentRevision: string; content: string; nextCursor?: string; totalChars: number} | {ok: false; text: string};
@@ -43,12 +44,12 @@ function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readon
 
 /** Stable, lossless detail text. Ledger revisions are opaque generations, never timestamps. */
 export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[] = [], historyRevision?: object): GoalDetailPage {
- if (query.task_id !== undefined && query.section !== "tasks") return {ok: false, text: "task_id requires section=tasks."};
+ if (query.task_id !== undefined && query.section !== "tasks") return {ok: false, text: query.cursor !== undefined ? INVALID_CURSOR : "task_id requires section=tasks."};
  const compiled = compiledSource(goal, query, events, historyRevision);
- if (!compiled) return {ok: false, text: `Task "${query.task_id}" not found.`};
+ if (!compiled) return {ok: false, text: query.cursor !== undefined ? INVALID_CURSOR : `Task "${query.task_id}" not found.`};
  const {source, key} = compiled;
  let offset = 0;
- if (query.cursor) {
+ if (query.cursor !== undefined) {
   try {
    if (query.cursor.length > 256) throw new Error();
    const decoded = Buffer.from(query.cursor, "base64url");
@@ -56,7 +57,7 @@ export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events:
    const parsed = JSON.parse(decoded.toString("utf8"));
    if (parsed.v !== 1 || parsed.key !== key || !Number.isSafeInteger(parsed.offset) || parsed.offset < 0 || parsed.offset > source.length) throw new Error();
    offset = parsed.offset;
-  } catch { return {ok: false, text: "Invalid or stale cursor: goal details changed or the section/task differs. Restart this section without cursor."}; }
+  } catch { return {ok: false, text: INVALID_CURSOR}; }
  }
  let end = Math.min(offset + GOAL_DETAIL_PAGE_CHARS, source.length);
  if (end < source.length && /[\uD800-\uDBFF]/.test(source[end - 1]!)) end--;

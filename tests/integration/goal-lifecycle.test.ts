@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+test("S1: native TUI compositor keeps large-plan overlay and confirmation reachable", { timeout: 15000 }, async () => {
+	const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-task-overlay-host-worker.mjs", import.meta.url))], { timeout: 12000 });
+	assert.match(stdout, /PASS: native host overlay and confirmation/);
+});
 for (const args of [[], ["--concurrent-accounting"], ["--details"]]) test(`S1/S2: public 180+20-node task plan survives rejected writes and session reopen ${args.join(" ")}`, { timeout: 25000 }, async () => {
 	const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-task-plan-worker.mjs", import.meta.url)), ...args], {
 		timeout: 22000, env: { ...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: "" },

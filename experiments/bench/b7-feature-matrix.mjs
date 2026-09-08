@@ -48,6 +48,8 @@ import { formatQuestionnaireAnswers } from "../../extensions/goal-questionnaire.
 import { goalDetails } from "../../extensions/goal-format.ts";
 import { readGoalLedger } from "../../extensions/goal-ledger.ts";
 import path from "node:path";
+import assert from "node:assert/strict";
+import { readWorkRevision } from "../../tests/task-tool-client.ts";
 
 function add(base, row) {
 	base.add(row);
@@ -91,11 +93,14 @@ export async function run(baseline) {
 				if (prepare) await prepare(h);
 				const tool = h.tools.get(makeHandler());
 				if (!tool) throw new Error(`missing tool ${makeHandler()}`);
+				const input = { ...params(), ...(makeHandler() === "update_goal_task" ? { expected_work_revision: await readWorkRevision(h) } : {}) };
 				beginFsCount();
 				const t0 = performance.now();
-				await tool.execute("x", params(), new AbortController().signal, undefined, h.ctx);
+				const result = await tool.execute("x", input, new AbortController().signal, undefined, h.ctx);
 				times.push(performance.now() - t0);
 				ops = Math.max(ops, endFsCount());
+				if (makeHandler() === "update_goal_task") assert.equal(result.details.goal.taskList.tasks.find(t => t.id === "t1")?.status, "complete", "mutation benchmark must complete its task");
+				if (makeHandler() === "set_goal_tasks") assert.equal(result.details.goal.taskList?.tasks.length, 50, "plan benchmark must create all 50 tasks");
 			} finally {
 				f.cleanup();
 			}

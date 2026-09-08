@@ -24,6 +24,14 @@ The orchestrator (`run-bench.mjs`) emits:
 
 Requires Node 22.15+ (`registerHooks`).
 
+The reliability fork's task-mutation clients read `work_revision` through
+`get_goal` and assert the resulting progress. B2/B7 read the revision before
+their handler timing; runtime-token includes the public revision and final
+focus reads in its complete-turn measurement. The latter is not directly
+comparable to the historical rows without those reads. Historical campaign
+artifacts remain unchanged; `bench:gate:naf` compares those artifacts, whereas
+running B2/B7 measures the current checkout.
+
 ## What is measured (B1–B9)
 
 | Bench | Covers | Key rows |

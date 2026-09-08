@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Session } from 'node:inspector/promises';
+import assert from 'node:assert/strict';
+import { readWorkRevision } from '../../tests/task-tool-client.ts';
 import * as ledger from '../../extensions/goal-ledger.ts';
 import { deriveGoalActivity } from '../../extensions/goal-activity.ts';
 import { deriveGoalDashboardModel } from '../../extensions/widgets/goal-dashboard-model.ts';
@@ -64,9 +66,11 @@ for(const count of (process.env.GOAL_BENCH_HISTORY_ONLY ? [] : [10,100])) {
   const updates=Array.from({length:count},(_,i)=>({task_id:`t${i}`,status:'start'}));
   await measure(`task_batch.${count}`,async()=>{
    await h.handlers.get('turn_start')({},h.ctx);
-   if(tool.parameters.properties.updates)await tool.execute('batch',{updates},undefined,undefined,h.ctx);
-   else for(const update of updates)await tool.execute('single',update,undefined,undefined,h.ctx);
+   if(tool.parameters.properties.updates)await tool.execute('batch',{updates,expected_work_revision:await readWorkRevision(h)},undefined,undefined,h.ctx);
+   else for(const update of updates)await tool.execute('single',{...update,expected_work_revision:await readWorkRevision(h)},undefined,undefined,h.ctx);
    await h.handlers.get('turn_end')({},h.ctx);
+   const result = await h.tools.get('get_goal').execute('verify-focus',{},undefined,undefined,h.ctx);
+   assert.equal(result.details.goal.currentTaskId, `t${count-1}`, 'batch benchmark must select its final task');
   });
   await h.handlers.get('session_shutdown')({},h.ctx);
  } finally {f.cleanup();}

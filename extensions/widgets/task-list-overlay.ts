@@ -191,7 +191,10 @@ export async function showTaskListOverlay(
 			let renderedLineCount = 0;
 
 			function computeVisibleHeight(innerWidth: number): number {
-				return Math.max(8, Math.floor(innerWidth / 2.8));
+				// Pi clips this overlay to 80% of terminal rows. Reserve its six
+				// frame rows, both scroll indicators, and any toggle diagnostic.
+				const available = Math.floor((tui.terminal?.rows ?? 40) * 0.8) - 8 - (cursorMessage ? 1 : 0);
+				return Math.max(1, Math.min(Math.max(8, Math.floor(innerWidth / 2.8)), available));
 			}
 
 			const wasHardwareCursorShown = tui.getShowHardwareCursor();

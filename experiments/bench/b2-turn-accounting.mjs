@@ -7,6 +7,8 @@
  */
 
 import { performance } from "node:perf_hooks";
+import assert from "node:assert/strict";
+import { readWorkRevision } from "../../tests/task-tool-client.ts";
 import {
 	makeFixtureCwd,
 	makeGoalFiles,
@@ -75,12 +77,14 @@ export async function run(baseline) {
 			// give the goal a task list first
 			const setTasks = h.tools.get("set_goal_tasks");
 			await setTasks.execute("st-1", { tasks: [{ id: "t1", title: "Do the thing" }], block_completion: false }, new AbortController().signal, undefined, h.ctx);
+			const expected_work_revision = await readWorkRevision(h);
 			beginFsCount();
 			const t0 = performance.now();
 			const update = h.tools.get("update_goal_task");
-			await update.execute("ut-1", { task_id: "t1", status: "complete", evidence: "benchmark evidence" }, new AbortController().signal, undefined, h.ctx);
+			const result = await update.execute("ut-1", { task_id: "t1", status: "complete", evidence: "benchmark evidence", expected_work_revision }, new AbortController().signal, undefined, h.ctx);
 			const ms = performance.now() - t0;
 			const ops = endFsCount();
+			assert.equal(result.details.goal.taskList.tasks[0].status, "complete", "mutation benchmark must complete its task");
 			baseline.add({
 				id: "B2.mutationturn.task", label: "per-turn mutation (one update_goal_task)",
 				modules: "goal-task-tools + goal-service + storage/goal-files + goal-ledger + storage/goal-lock",
