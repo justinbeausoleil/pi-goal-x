@@ -12,6 +12,7 @@ import {
 	cloneGoal,
 	createGoal,
 	goalFocusDetails,
+	goalWorkRevision,
 	normalizeGoalFocusEntry,
 	normalizeGoalRecord,
 	nowIso,
@@ -25,6 +26,7 @@ import {
 } from "./goal-record.ts";
 import {
 	mergeGoalPromptFromDisk,
+	readActiveGoalPool,
 	readActiveGoalPoolAsync,
 	sanitizeGoalPaths,
 } from "./storage/goal-files.ts";
@@ -126,7 +128,7 @@ export interface GoalCore {
 	loadState(ctx: ExtensionContext): Promise<void>;
 	setGoal(next: GoalRecord | null, ctx: ExtensionContext, shouldPersist?: boolean, focusReason?: GoalFocusReason): boolean;
 	archiveCurrentGoal(ctx: ExtensionContext, reason: StopReason | undefined): GoalRecord | null;
-	stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): void;
+	stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): boolean;
 	pauseActiveGoal(ctx: ExtensionContext): void;
 	/** §auditor-toggle: flip the focused goal's persisted per-goal skipAuditor and record the ledger event. */
 	toggleGoalAuditor(ctx: ExtensionContext): void;
@@ -757,6 +759,10 @@ export function createGoalCore(
 		const settings = loadGoalSettings(ctx.cwd);
 		hasExplicitSessionFocus = focusEntry !== null;
 		core.continuationHeld = focusEntry?.reason === "navigated";
+		if (focusEntry?.focusedGoalId && !goalsById.has(focusEntry.focusedGoalId)) {
+			try { goalsById = readActiveGoalPool(ctx, true); }
+			catch (error) { ctx.ui.notify("Could not read the saved goal focus. Check goal storage and use /goal-refresh. " + String(error), "warning"); }
+		}
 		assignFocusedGoalId(resolveSessionFocus({ pool: goalsById, focusEntry, legacyGoal, autoSelectSingleGoal: settings.autoSelectSingleGoal }));
 		if (!focusEntry && focusedGoalId) {
 			try {
@@ -777,7 +783,7 @@ export function createGoalCore(
 		const previousGoalId = state.goal?.id ?? null;
 		if (shouldPersist && next && next.id === previousGoalId) {
 			try {
-				const result = goalService.apply(ctx, { reconcile: false, mutate: () => next! });
+				const result = goalService.apply(ctx, { reconcile: false, expectedWorkRevision: goalWorkRevision(state.goal!), mutate: () => next! });
 				if (!result.ok) throw new Error(result.message ?? "State write was rejected.");
 				next = result.goal;
 				shouldPersist = false;
@@ -815,14 +821,15 @@ export function createGoalCore(
 				return { ...g, status, stopReason: reason };
 			},
 		});
+		if (!result.ok) ctx.ui.notify("Goal archive failed; the goal remains focused. " + result.message, "warning");
 		return result.ok ? result.goal : null;
 	}
 
-	function stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): void {
-		if (!state.goal) return;
+	function stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): boolean {
+		if (!state.goal) return false;
 		const result = goalService.apply(ctx, {
 			reconcile: false,
-			mutate: (g) => ({ ...g, status, stopReason: reason, updatedAt: nowIso() }),
+			mutate: (g) => ({ ...g, status, stopReason: reason, updatedAt: nowIso(), ...(status === "paused" && reason === "user" ? {autoContinue: false, pauseReason: undefined, pauseSuggestedAction: undefined} : {}) }),
 			ledger: (written) => status === "paused"
 				? [{
 					type: "goal_paused",
@@ -834,22 +841,23 @@ export function createGoalCore(
 				}]
 				: [],
 		});
+		let error = result.ok ? null : result.message;
 		if (result.ok) {
 			// setGoal() glue: a stopped goal can no longer queue continuations or
 			// accrue time, and the UI must reflect the new status immediately.
 			clearContinuationState();
 			clearActiveAccounting();
-			goalService.flushTurn(ctx); // P1-3: user-visible status change persists now, not at turn end
+			error = goalService.flushForAudit(ctx); // User-visible status changes must persist now.
 			updateUI(ctx);
 		}
+		if (error) ctx.ui.notify("Goal stop failed; no stop was saved. Check goal storage and retry. " + error, "warning");
+		return result.ok && !error;
 	}
 
 	function pauseActiveGoal(ctx: ExtensionContext): void {
 		if (!state.goal || state.goal.status !== "active") return;
-		const pausedGoalId = state.goal.id;
 		// User-initiated pause (Esc / aborted turn). Clear any stale agent pause reason.
-		state.goal = { ...state.goal, autoContinue: false, pauseReason: undefined, pauseSuggestedAction: undefined };
-		stopActiveGoal("paused", "user", ctx);
+		if (!stopActiveGoal("paused", "user", ctx)) return;
 		ctx.ui.notify("Goal paused.", "info");
 	}
 

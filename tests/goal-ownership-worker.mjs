@@ -24,6 +24,7 @@ const results = [], errors = [], requests = [], notices = [], confirmations = []
 const warnings = [], originalWarn = console.warn;
 console.warn = (...args) => { warnings.push(args.join(" ")); originalWarn(...args); };
 let session, host, steps = [], earlyLeaf, failure, shutdownFile, summaries = 0, repairConfirmed = false, onRepairConfirm = async () => {};
+let onPausedConfirm = async () => {}, onClearConfirm = async () => {};
 const originalCopy = fs.copyFileSync;
 let beforeBackup = () => {}, afterBackup = () => {};
 fs.copyFileSync = (...args) => { beforeBackup(args[0]); const result = originalCopy(...args); afterBackup(args[0]); return result; };
@@ -63,11 +64,24 @@ async function open(manager, sessionStartEvent) {
       usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: step ? "toolUse" : "stop", timestamp: Date.now()};
     const stream = new AssistantMessageEventStream(); stream.push({type: "start", partial: value}); stream.push({type: "done", reason: value.stopReason, message: value}); return stream;
   };
+  return {...created, services: {cwd, agentDir, modelRuntime: runtime, settingsManager: settings, resourceLoader: loader, diagnostics: []}, diagnostics: []};
+}
+async function bind() {
   await session.bindExtensions({mode: "rpc", onError: error => errors.push(error), uiContext: {
     notify: message => notices.push(message), setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
-    confirm: async title => { confirmations.push(title); if (title.startsWith("Remove ")) { if (repairConfirmed) await onRepairConfirm(); return repairConfirmed; } return title === "Resume paused goal?" && scenario.endsWith("-confirm"); }, select: async () => undefined, input: async () => undefined,
+    confirm: async title => {
+      confirmations.push(title);
+      if (title.startsWith("Remove ")) { if (repairConfirmed) await onRepairConfirm(); return repairConfirmed; }
+      if (title === "Clear goal?") { await onClearConfirm(); return scenario !== "clear-cancel"; }
+      if (title === "Resume paused goal?") { await onPausedConfirm(); return scenario.endsWith("-confirm"); }
+      return false;
+    }, select: async () => undefined, input: async () => undefined,
   }});
-  return {...created, services: {cwd, agentDir, modelRuntime: runtime, settingsManager: settings, resourceLoader: loader, diagnostics: []}, diagnostics: []};
+}
+async function startHost(options) {
+  host = await createAgentSessionRuntime(({sessionManager, sessionStartEvent}) => open(sessionManager, sessionStartEvent), {cwd, agentDir, ...options});
+  host.setRebindSession(async current => { session = current; await bind(); });
+  await bind();
 }
 async function settled() {
   for (let i = 0; i < 400; i++) {
@@ -84,7 +98,7 @@ async function run(prompt, calls) {
   await settled();
 }
 try {
-  host = await createAgentSessionRuntime(({sessionManager, sessionStartEvent}) => open(sessionManager, sessionStartEvent), {cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
+  await startHost({sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
   await run("Create a goal to preserve verified fixture progress through session navigation.", [
     {name: "create_goal", args: {objective: "Preserve the verified task and its artifact through session navigation."}},
     {name: "set_goal_tasks", args: {tasks: [{id: "verified", title: "Write verified.txt", verification_contract: "verified.txt contains preserved-proof"}, {id: "remaining", title: "Remaining work"}]}},
@@ -96,7 +110,56 @@ try {
   assert.equal(approved.status, "paused");
   assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
   assert(earlyLeaf);
-  if (scenario.startsWith("child-")) {
+  if (scenario.startsWith("resume-stale-")) {
+    const before = requests.length;
+    let edited;
+    onPausedConfirm = async () => {
+      if (scenario === "resume-stale-proposal-confirm") {
+        edited = readGoal().replace("# Goal Prompt\n\n" + approved.objective, "# Goal Prompt\n\nExternal proposal must remain available for human review.");
+        writeFileSync(join(cwd, approved.activePath), edited);
+      } else if (scenario === "resume-stale-tree-confirm") await session.navigateTree(earlyLeaf);
+      else await host.newSession();
+    };
+    await host.switchSession(session.sessionManager.getSessionFile());
+    await delay(100);
+    if (edited) assert.equal(readGoal(), edited, "stale resume cannot overwrite an external proposal");
+    assert.equal(requests.length, before, "stale confirmation cannot authorize a checkpoint");
+    assert.deepEqual(errors, []);
+    if (scenario === "resume-stale-tree-confirm") assert.equal(session.sessionManager.getBranch().findLast(e => e.customType === "pi-goal-focus").data.reason, "navigated");
+  } else if (scenario === "storage-pause" || scenario.startsWith("clear-")) {
+    if (scenario === "storage-pause") await session.prompt("/goal-resume");
+    const goals = join(cwd, ".pi", "goals"), ledger = join(goals, "goal_events.jsonl");
+    const before = readGoal(), ledgerBefore = readFileSync(ledger, "utf8"), requestsBefore = requests.length;
+    const focuses = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-focus");
+    const focusBefore = focuses();
+    if (scenario === "clear-stale") onClearConfirm = async () => { await session.navigateTree(earlyLeaf); };
+    if (["storage-pause", "clear-failure"].includes(scenario)) chmodSync(goals, 0o555);
+    try {
+      await session.prompt(scenario === "storage-pause" ? "/goal-pause" : "/goal-clear");
+      assert.deepEqual(errors, [], "failed lifecycle writes return a public diagnostic");
+      assert.equal(requests.length, requestsBefore);
+      if (scenario === "clear-confirm") {
+        assert.equal(existsSync(join(cwd, approved.activePath)), false);
+        const archive = join(goals, "archived");
+        assert.equal(readdirSync(archive).length, 1);
+        assert.match(readFileSync(join(archive, readdirSync(archive)[0]), "utf8"), /verified.txt contains preserved-proof/);
+        assert.equal(focuses().at(-1).data.focusedGoalId, null);
+        assert.match(notices.at(-1), /cleared and archived/);
+      } else {
+        assert.equal(readGoal(), before);
+        assert.equal(readFileSync(ledger, "utf8"), ledgerBefore);
+        if (scenario !== "clear-stale") assert.deepEqual(focuses(), focusBefore);
+        assert.match(notices.at(-1), scenario === "clear-cancel" ? /cancelled/ : /failed|not.*saved|storage|changed/i);
+      }
+    } finally { chmodSync(goals, 0o755); }
+    await run("Inspect after the lifecycle command.", [{name: "get_goal", args: {}}]);
+    if (scenario === "clear-confirm") assert.equal(results.at(-1).details.goal, null);
+    else {
+      assert.equal(goalResult().id, approved.id);
+      assert.equal(goalResult().status, scenario === "storage-pause" ? "active" : "paused");
+      assert.equal(goalResult().autoContinue, scenario === "storage-pause");
+    }
+  } else if (scenario.startsWith("child-")) {
     if (scenario === "child-nested") process.env.PI_SUBAGENT_DEPTH = "3";
     else process.env.PI_SUBAGENT_CHILD = "1";
     if (scenario === "child-fresh") await host.newSession();
@@ -132,21 +195,23 @@ try {
     } finally { chmodSync(goals, 0o755); }
     await run("Inspect the failed resume without changing it.", [{name: "get_goal", args: {}}]);
     assert.equal(goalResult().status, "paused");
-  } else if (["storage-write", "storage-lock", "storage-ledger", "storage-conflict"].includes(scenario)) {
+  } else if (["storage-write", "storage-lock-access", "storage-lock", "storage-ledger", "storage-conflict"].includes(scenario)) {
     await session.prompt("/goal-resume");
     const goals = join(cwd, ".pi", "goals"), ledger = join(goals, "goal_events.jsonl"), lock = join(goals, ".locks", approved.id + ".lock");
     const before = readGoal(), ledgerBefore = readFileSync(ledger, "utf8"), warningCount = warnings.length;
     const staleRevision = results.findLast(r => r.details?.work_revision).details.work_revision;
     if (scenario === "storage-write") chmodSync(goals, 0o555);
+    if (scenario === "storage-lock-access") chmodSync(join(goals, ".locks"), 0o555);
     if (scenario === "storage-lock") writeFileSync(lock, JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()}));
     if (scenario === "storage-ledger") { renameSync(ledger, join(work, "ledger-backup")); mkdirSync(ledger); }
     try {
       await run("Complete the remaining task through the public mutation tool.", [{name: "update_goal_task", args: {task_id: "remaining", status: "complete", expected_work_revision: "$current", evidence: "Fixture checked the remaining work."}}]);
-      if (["storage-write", "storage-lock"].includes(scenario)) {
+      if (["storage-write", "storage-lock-access", "storage-lock"].includes(scenario)) {
         assert.equal(readGoal(), before, "failed authoritative writes preserve exact project state");
         assert.equal(readFileSync(ledger, "utf8"), ledgerBefore, "failed state writes append no success events");
         const diagnostic = [...warnings.slice(warningCount), ...results.at(-1).content.map(c => c.text ?? "")].join("\n");
         assert.match(diagnostic, /denied|EACCES|lock|failed|write/i);
+        if (scenario === "storage-lock-access") assert.match(diagnostic, /EACCES|access/i);
       } else if (scenario === "storage-ledger") {
         assert.match(warnings.slice(warningCount).join("\n"), /ledger diagnostic/);
         assert.match(readGoal(), /Fixture checked the remaining work/);
@@ -156,12 +221,14 @@ try {
       }
     } finally {
       chmodSync(goals, 0o755);
+      chmodSync(join(goals, ".locks"), 0o755);
       if (scenario === "storage-lock") rmSync(lock, {force: true});
       if (scenario === "storage-ledger") { rmSync(ledger, {recursive: true}); renameSync(join(work, "ledger-backup"), ledger); }
     }
     await session.prompt("/goal-pause");
+    assert.equal(notices.at(-1), "Goal paused.", "successful retry cannot report an earlier write failure");
     await run("Inspect the authoritative outcome after the fault is removed.", [{name: "get_goal", args: {}}]);
-    const expected = scenario === "storage-write" ? "pending" : "complete";
+    const expected = ["storage-write", "storage-lock-access"].includes(scenario) ? "pending" : "complete";
     assert.equal(goalResult().taskList.tasks.find(task => task.id === "remaining").status, expected);
     await host.switchSession(session.sessionManager.getSessionFile());
     await run("Inspect the same outcome after native reopen.", [{name: "get_goal", args: {}}]);
@@ -189,12 +256,13 @@ try {
       const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
       if (scenario === "record-snapshot") snapshot.goals = [null];
       if (scenario === "record-snapshot-status") snapshot.goals[0].status = "invalid";
+      if (scenario === "record-snapshot-complete") snapshot.goals[0].status = "complete";
       if (scenario === "record-snapshot-task") snapshot.goals[0].taskList.tasks = [null];
       if (scenario === "record-snapshot-scope") snapshot.goals[0].retainedScope.tasks = null;
       if (scenario === "record-snapshot-path") snapshot.goals[0].activePath = "../outside-user-file.md";
       writeFileSync(snapshotPath, JSON.stringify(snapshot));
       if (scenario === "record-snapshot") await host.switchSession(sessionFile);
-      else host = await createAgentSessionRuntime(({sessionManager, sessionStartEvent}) => open(sessionManager, sessionStartEvent), {cwd, agentDir, sessionManager: SessionManager.open(sessionFile), sessionStartEvent: {type: "session_start", reason: "resume"}});
+      else await startHost({sessionManager: SessionManager.open(sessionFile), sessionStartEvent: {type: "session_start", reason: "resume"}});
     }
     const outsideBefore = readFileSync(outside, "utf8"), fileBefore = readFileSync(activeFile, "utf8");
     await session.prompt("/goal-refresh");
@@ -234,7 +302,7 @@ try {
     }
     writeFileSync(sessionFile, entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
     const before = requests.length;
-    host = await createAgentSessionRuntime(({sessionManager, sessionStartEvent}) => open(sessionManager, sessionStartEvent), {cwd, agentDir, sessionManager: SessionManager.open(sessionFile), sessionStartEvent: {type: "session_start", reason: "resume"}});
+    await startHost({sessionManager: SessionManager.open(sessionFile), sessionStartEvent: {type: "session_start", reason: "resume"}});
     await delay(100);
     assert.equal(requests.length, before, "legacy paused focus does not schedule work");
     await run("Inspect the legacy goal without changing it.", [{name: "get_goal", args: {}}]);
@@ -254,6 +322,15 @@ try {
     await run("Inspect the legacy goal after another native reopen.", [{name: "get_goal", args: {}}]);
     assert.equal(goalResult().objective, revised);
     assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
+  } else if (scenario === "recovery-read-report") {
+    const activeFile = join(cwd, approved.activePath), before = readGoal();
+    await session.prompt("/goal-recovery");
+    chmodSync(activeFile, 0);
+    try {
+      await session.prompt("/goal-recovery");
+      assert.match(notices.at(-1), /malformed goal file|failed.*read|EACCES/i, "read-only diagnosis detects unreadable files despite a warm parse cache");
+    } finally { chmodSync(activeFile, 0o600); }
+    assert.equal(readGoal(), before);
   } else if (scenario.startsWith("recovery-")) {
     const goals = join(cwd, ".pi", "goals"), lock = join(goals, ".locks", "fixture.lock");
     const backupRoot = join(goals, ".recovery-backup"), snapshotPath = join(cwd, ".pi", ".goals-pool-snapshot.json");

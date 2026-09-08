@@ -344,9 +344,11 @@ export function registerGoalEvents(core: GoalCore): void {
 			const open = core.openGoals();
 			const labels = open.map((item) => goalSelectorLabel(item, core.focusedGoalId));
 			const byLabel = new Map(labels.map((label, index) => [label, open[index]?.id]));
+			const revision = core.focusRevision;
 			core.enterGoalModal();
 			try {
 				const selected = await ctx.ui.select("Focus open goal", labels);
+				if (core.focusRevision !== revision) return;
 				const selectedId = selected ? byLabel.get(selected) : undefined;
 				if (selectedId) {
 					core.setFocusedGoalId(selectedId, ctx, "selected");
@@ -359,7 +361,10 @@ export function registerGoalEvents(core: GoalCore): void {
 		// Codex behavior: prompt before reactivating a paused goal on resume.
 		if (event.reason === "resume" && core.state.goal?.status === "paused" && ctx.hasUI) {
 			const current = core.state.goal;
+			const token = core.focusedOperationToken(current.id);
+			const work = goalWorkRevision(current);
 			const shouldResume = await ctx.ui.confirm("Resume paused goal?", `Goal: ${current.objective}`);
+			if (!core.isFocusedOperationCurrent(token) || !core.state.goal || goalWorkRevision(core.state.goal) !== work) return;
 			if (shouldResume) {
 				if (!core.setGoal({ ...current, status: "active", autoContinue: true, stopReason: undefined, pauseReason: undefined, pauseSuggestedAction: undefined }, ctx)) return;
 				core.releaseContinuationHold(ctx);

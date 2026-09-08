@@ -1112,3 +1112,43 @@
 - Current120 targeted service/transaction/core/draft/unfocus/pool checks and
   type/lint pass. The full006 acceptance review and frozen final qualification
   follow; criteria remain unchecked until that evidence and review are complete.
+
+### Ticket 006 full-review repairs
+
+- Frozen d013fcd passes1127/1127 full checks (76files,136.1s), type/lint,
+  discovery/selfcheck952, context28/provider7, historicalNAF/ranking5,
+  dry-pack and production audit (zero vulnerabilities). Fresh B1/B2/B5b/B7
+  matches75 historical timing limits with zero regressions. The full reviews
+  nevertheless reproduce previously uncovered public failures; d013 is not
+  pushed or considered accepted.
+- A paused-reopen confirmation could overwrite a same-revision external prompt
+  proposal or resume after tree/session replacement. Existing setGoal now binds
+  its mutation to the current work fingerprint; paused confirmation binds both
+  work and focus generation across the await. The reopen selector also checks
+  its generation. Raw proposal bytes remain intact and obsolete dialogs queue
+  no checkpoint. Permanent native reds and reviewer scripts remain in Data006.
+- The ownership worker now binds through AgentSessionRuntime.setRebindSession,
+  after the host installs its current session. Its earlier factory-time binding
+  made nested newSession target the outgoing host. The corrected native binding
+  still fails on frozen d013 (stale-context error) and passes with the guard.
+  No hook is invoked manually; all prior ownership cases remain exercised.
+- Denied /goal-pause and /goal-clear writes now return actionable outcomes
+  through the existing mutation service. Pause fields commit with the status;
+  failed archive retains focus. Native clear confirmation, cancellation, tree
+  staleness and write failure check goal/ledger/focus preservation and saved
+  artifact evidence. Clear cancellation is a byte-for-byte durable no-op.
+- Lock contention now carries EWOULDBLOCK; other acquisition errors reject the
+  unsaved buffer with the real access error and retained owed usage. A review
+  follow-up catches stale flush diagnostics after a successful retry; successful
+  immediate mutation clears that prior error. The added retry-notification
+  assertion fails before repair and passes afterward, without weakening the
+  original state-preservation assertions.
+- A cache with a valid but incorrect complete status could hide branch focus.
+  Missing cached explicit focus triggers the existing authoritative scan before
+  restoration. Read-only recovery also bypasses stale parse cache and diagnoses
+  unreadable goal files instead of reporting a clean bill of health.
+- All55 native ownership/storage/recovery cases and151 targeted service/core/
+  transaction/draft/unfocus/snapshot/extension checks pass before the final
+  retry-notification addition; its17 affected native cases pass afterward.
+  Type/lint pass. Independent fixed repair review and frozen full qualification
+  follow. 006 remains in progress; all007–014 work and package/model gates remain.

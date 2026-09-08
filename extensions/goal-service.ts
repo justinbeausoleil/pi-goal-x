@@ -230,7 +230,11 @@ export class GoalService {
 		let lock: GoalLock;
 		try {
 			lock = acquireGoalLock(ctx, goal.id);
-		} catch {
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EWOULDBLOCK") {
+				this.rejectBufferedWork(ctx, this.readFreshDiskGoal(ctx, goal), "Goal storage access failed; buffered work was rejected. Restore storage access, use /goal-refresh, and retry. " + String(error));
+				return null;
+			}
 			this.flushError = "Goal storage is locked; pending changes have not been persisted. They will retry at the next turn boundary after the lock is released.";
 			if (previousError !== this.flushError) this.ref.onDiagnostic({severity: "warning", source: "storage", goalId: goal.id, message: this.flushError});
 			// Another writer holds the lock; preserve the buffer so a later turn
@@ -534,8 +538,9 @@ export class GoalService {
 
 		// 2b. exclusive per-goal lock + optimistic revision check (follow-up Stage 4).
 		const capturedRevision = current.revision ?? 0;
-		const lock = acquireGoalLock(ctx, current.id);
+		let lock: GoalLock | undefined;
 		try {
+			lock = acquireGoalLock(ctx, current.id);
 			const freshDisk = this.readFreshDiskGoal(ctx, current);
 			if (!freshDisk) {
 				return { ok: false, message: `Goal ${current.id} was deleted or archived by another process while this mutation was in progress; the mutation was not applied.` };
@@ -560,8 +565,8 @@ export class GoalService {
 			const structureError = taskStructureError(source, mutated, !!spec.scopeRevision) ?? (mutated.status === "complete" && source.status !== "complete" && !spec.archive ? scopeProposalWarning(source) ?? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 
-			// 4. authoritative file write (active or archive). A failure here throws
-			//    and prevents any memory/ledger/focus/archive commit.
+			// 4. authoritative file write (active or archive). Failure returns an
+			//    unsuccessful outcome before any memory/ledger/focus commit.
 			const written = spec.archive ? archiveGoalFile(ctx, mutated) : writeActiveGoalFile(ctx, mutated);
 
 			// 5. ledger append best effort.
@@ -587,10 +592,13 @@ export class GoalService {
 
 			// 7. runtime/UI effects.
 			if (focusChanged) this.ref.onFocusChanged(previousGoalId, written.id);
+			this.flushError = null;
 
 			return { ok: true, goal: written, previousGoalId, goalId, focusChanged };
+		} catch (error) {
+			return {ok: false, message: "Goal storage write failed; no change was saved. Restore storage access, refresh, and retry. " + String(error)};
 		} finally {
-			lock.release();
+			lock?.release();
 		}
 	}
 

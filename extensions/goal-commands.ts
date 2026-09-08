@@ -708,6 +708,7 @@ export function registerGoalCommands(core: GoalCore): void {
 			return;
 		}
 		const archived = core.archiveCurrentGoal(ctx, "user");
+		if (!archived) return;
 		const didArchive = !!archived;
 		core.setGoal(null, ctx, true, "cleared");
 		const msg = clearGoalCommandMessage({ archived: didArchive });

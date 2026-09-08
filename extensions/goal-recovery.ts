@@ -96,9 +96,10 @@ function scanMalformedGoalFiles(cwd: string): MalformedGoalFileEntry[] {
 	for (const name of names) {
 		if (!/^active_goal_.*\.md$/.test(name)) continue;
 		const relPath = path.posix.join(GOALS_DIR, name);
-		const parsed = parseGoalFile(path.join(root, name));
-		if (!parsed) {
-			out.push({ relPath, error: "file does not parse as a goal record" });
+		try {
+			if (!parseGoalFile(path.join(root, name), true)) out.push({ relPath, error: "file does not parse as a goal record" });
+		} catch (error) {
+			out.push({ relPath, error: "Unable to read goal file: " + String(error) });
 		}
 	}
 	return out;

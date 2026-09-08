@@ -126,5 +126,5 @@ export function acquireGoalLock(
 			sleepMs(retryMs);
 		}
 	}
-	throw new Error(`Timed out acquiring the goal lock for ${goalId} (${attempts} attempts). Another writer may hold it.`);
+	throw Object.assign(new Error(`Timed out acquiring the goal lock for ${goalId} (${attempts} attempts). Another writer may hold it.`), {code: "EWOULDBLOCK"});
 }

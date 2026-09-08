@@ -6,19 +6,19 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
-for (const scenario of ["storage-write", "storage-lock", "storage-ledger", "storage-conflict", "storage-resume", "storage-resume-confirm", "child-fresh", "child-fork", "child-reopen", "child-nested"]) test(`S2: native ${scenario} preserves ownership and authoritative mutation outcomes`, {timeout: 15000}, async () => {
+for (const scenario of ["storage-write", "storage-lock-access", "storage-lock", "storage-ledger", "storage-conflict", "storage-resume", "storage-resume-confirm", "storage-pause", "clear-cancel", "clear-confirm", "clear-failure", "clear-stale", "resume-stale-proposal-confirm", "resume-stale-tree-confirm", "resume-stale-session-confirm", "child-fresh", "child-fork", "child-reopen", "child-nested"]) test(`S2: native ${scenario} preserves ownership and authoritative mutation outcomes`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
 	});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });
-for (const scenario of ["record-corrupt", "record-symlink", "record-path", "record-snapshot", "record-snapshot-status", "record-snapshot-task", "record-snapshot-scope", "record-snapshot-path"]) test(`S2: native ${scenario} preserves valid task progress and unrelated files`, {timeout: 15000}, async () => {
+for (const scenario of ["record-corrupt", "record-symlink", "record-path", "record-snapshot", "record-snapshot-status", "record-snapshot-complete", "record-snapshot-task", "record-snapshot-scope", "record-snapshot-path"]) test(`S2: native ${scenario} preserves valid task progress and unrelated files`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
 	});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });
-for (const scenario of ["legacy-refresh", "recovery", "recovery-lock-race", "recovery-copy-race", "recovery-backup-race", "recovery-session-stale", "recovery-backup-failure", "recovery-item-failure", "recovery-snapshot-failure", "recovery-scan-failure", "recovery-read-failure"]) test(`S2: native ${scenario} preserves storage and diagnoses repair outcomes`, {timeout: 15000}, async () => {
+for (const scenario of ["legacy-refresh", "recovery", "recovery-read-report", "recovery-lock-race", "recovery-copy-race", "recovery-backup-race", "recovery-session-stale", "recovery-backup-failure", "recovery-item-failure", "recovery-snapshot-failure", "recovery-scan-failure", "recovery-read-failure"]) test(`S2: native ${scenario} preserves storage and diagnoses repair outcomes`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
 	});
