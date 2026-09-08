@@ -34,6 +34,7 @@ test("automatic context bounds audit and pending Oracle advice with lossless his
    ...Array.from({ length: 20 }, (_, i) => ({ type: "task_started" as const, goalId: f.goal.id, taskId: "child", at: `2026-09-08T00:01:${String(i).padStart(2, "0")}Z` })),
   ]);
   const checkpointPath = path.join(f.cwd, ".pi/goals", LEDGER_CHECKPOINT_FILE);
+  loadLedgerState(f);
   const checkpoint = JSON.parse(readFileSync(checkpointPath, "utf8"));
   for (const [, entry] of checkpoint.runtimeIndex) delete entry.latestOracle;
   writeFileSync(checkpointPath, JSON.stringify(checkpoint));
