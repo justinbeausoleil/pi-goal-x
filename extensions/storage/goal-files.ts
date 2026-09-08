@@ -601,13 +601,14 @@ export function readActiveGoalPool(ctx: GoalFileContext, refresh = false): Map<s
  * scan + re-snapshot (external goal add/remove or no snapshot yet). */
 function readPoolWithSnapshotSync(ctx: GoalFileContext, root: string): Map<string, GoalRecord> {
 	let rootStat: fs.Stats | null = null;
+	let snapshot: PoolSnapshot | null = null;
 	try {
 		rootStat = fs.lstatSync(root);
 	} catch {
 		rootStat = null;
 	}
 	if (rootStat && !rootStat.isSymbolicLink()) {
-		const snapshot = readPoolSnapshotSync(root);
+		snapshot = readPoolSnapshotSync(root);
 		if (snapshot) {
 			if (snapshot.dirMtimeMs === rootStat.mtimeMs || activeGoalNamesMatchSync(root, snapshot)) {
 				return hydratePoolFromSnapshot(snapshot);
@@ -618,7 +619,8 @@ function readPoolWithSnapshotSync(ctx: GoalFileContext, root: string): Map<strin
 	for (const goal of scanActiveGoalFiles(ctx, root)) {
 		pool.set(goal.id, goal);
 	}
-	writePoolSnapshotSync(ctx, root, Array.from(pool.values()));
+	// Preserve malformed snapshots for the confirmed recovery workflow.
+	if (snapshot || (!fs.existsSync(poolSnapshotPath(root)) && !fs.existsSync(poolSnapshotLegacyPath(root)))) writePoolSnapshotSync(ctx, root, Array.from(pool.values()));
 	return pool;
 }
 
@@ -666,13 +668,14 @@ export async function readActiveGoalPoolAsync(ctx: GoalFileContext): Promise<Map
 
 async function readPoolWithSnapshotAsync(ctx: GoalFileContext, root: string): Promise<Map<string, GoalRecord>> {
 	let rootStat: fs.Stats | null = null;
+	let snapshot: PoolSnapshot | null = null;
 	try {
 		rootStat = await fs.promises.lstat(root);
 	} catch {
 		rootStat = null;
 	}
 	if (rootStat && !rootStat.isSymbolicLink()) {
-		const snapshot = await readPoolSnapshotAsync(root);
+		snapshot = await readPoolSnapshotAsync(root);
 		if (snapshot) {
 			if (snapshot.dirMtimeMs === rootStat.mtimeMs || (await activeGoalNamesMatchAsync(root, snapshot))) {
 				return hydratePoolFromSnapshot(snapshot);
@@ -680,7 +683,7 @@ async function readPoolWithSnapshotAsync(ctx: GoalFileContext, root: string): Pr
 		}
 	}
 	const pool = await scanActiveGoalFilesAsync(ctx, root);
-	await writePoolSnapshotAsync(ctx, root, Array.from(pool.values()));
+	if (snapshot || (!fs.existsSync(poolSnapshotPath(root)) && !fs.existsSync(poolSnapshotLegacyPath(root)))) await writePoolSnapshotAsync(ctx, root, Array.from(pool.values()));
 	return pool;
 }
 

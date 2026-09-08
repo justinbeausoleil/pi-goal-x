@@ -502,6 +502,8 @@ try {
   } else if (scenario.startsWith("tweak-lifecycle-")) {
     const status = scenario.slice("tweak-lifecycle-".length);
     const stalled = status === "paused" || status === "blocked";
+    const exhausted = process.argv.includes("--exhausted");
+    const resumes = stalled && !exhausted;
     const checkpoints = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length;
     const events = () => readFileSync(join(cwd, ".pi", "goals", "goal_events.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
     decision = "Confirm";
@@ -511,6 +513,13 @@ try {
     } else {
       await run("Confirm the goal before discussing its revision.", [proposal(mode, "Existing lifecycle goal")]);
       if (stalled) await run("Record the concrete stop.", [{name: "update_goal", args: {status, reason: "Fixture dependency unavailable.", suggested_action: "Restore the fixture dependency."}}]);
+    }
+    if (exhausted) {
+      const goal = results.at(-1).details.goal, file = join(cwd, goal.activePath), content = readFileSync(file, "utf8"), split = content.indexOf("\n\n# Goal Prompt");
+      const metadata = JSON.parse(content.slice(0, split));
+      metadata.tokenBudget = metadata.usage.tokensUsed;
+      writeFileSync(file, JSON.stringify(metadata) + content.slice(split));
+      await session.prompt("/goal-refresh");
     }
     await run("Inspect the starting lifecycle.", [{name: "get_goal", args: {}}]);
     const original = JSON.parse(JSON.stringify(results.at(-1).details.goal));
@@ -528,18 +537,18 @@ try {
       assert.equal(events().length, eventCount, "refinement and cancellation append no project lifecycle event");
     }
     decision = "Confirm";
-    await run("Confirm the exact revised goal.", [revised, ...(stalled ? [{name: "update_goal", args: {status: "paused", reason: "One resumed checkpoint observed."}, contextIncludes: ["Human-confirmed lifecycle revision"]}] : [])]);
+    await run("Confirm the exact revised goal.", [revised, ...(resumes ? [{name: "update_goal", args: {status: "paused", reason: "One resumed checkpoint observed."}, contextIncludes: ["Human-confirmed lifecycle revision"]}] : [])]);
     const confirmed = results.findLast(r => r.toolName === "propose_goal_draft").details.goal;
-    assert.equal(confirmed.status, stalled ? "active" : status);
-    assert.equal(confirmed.autoContinue, stalled ? true : original.autoContinue);
+    assert.equal(confirmed.status, resumes ? "active" : status);
+    assert.equal(confirmed.autoContinue, resumes ? true : original.autoContinue);
     assert.equal(confirmed.retainedScope.objective, revised.args.objective);
-    if (stalled) for (const field of ["stopReason", "pauseReason", "pauseSuggestedAction"]) assert.equal(confirmed[field], undefined, `${field} is cleared by confirmation`);
+    if (resumes) for (const field of ["stopReason", "pauseReason", "pauseSuggestedAction"]) assert.equal(confirmed[field], undefined, `${field} is cleared by confirmation`);
     await delay(150);
-    assert.equal(checkpoints() - checkpointCount, stalled ? 1 : 0, "confirmed tweak queues exactly one resumed checkpoint only when stalled");
+    assert.equal(checkpoints() - checkpointCount, resumes ? 1 : 0, "confirmed tweak resumes only when stalled and budget is available");
     const resumed = events().slice(eventCount).filter(e => e.type === "goal_resumed");
-    assert.equal(resumed.length, stalled ? 1 : 0);
-    if (stalled) assert.equal(resumed[0].reason, "tweak");
-    if (status === "budget_limited") {
+    assert.equal(resumed.length, resumes ? 1 : 0);
+    if (resumes) assert.equal(resumed[0].reason, "tweak");
+    if (status === "budget_limited" || exhausted) {
       await session.prompt("/goal-resume");
       await delay(150);
       assert.equal(checkpoints(), checkpointCount, "an exhausted budget cannot restart work after a tweak");
@@ -547,7 +556,7 @@ try {
     await reopen();
     await run("Inspect the persisted scope revision.", [{name: "get_goal", args: {}}]);
     assert.equal(results.at(-1).details.goal.retainedScope.objective, revised.args.objective);
-    assert.equal(results.at(-1).details.goal.status, stalled ? "paused" : status);
+    assert.equal(results.at(-1).details.goal.status, resumes ? "paused" : status);
   } else if (["paused-refine", "blocked-refine"].includes(scenario)) {
     decision = "Confirm";
     await run("Confirm this goal before discussing a revision.", [proposal(mode, "Existing stopped goal")]);

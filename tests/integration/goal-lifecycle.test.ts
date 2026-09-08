@@ -6,6 +6,42 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+for (const mode of ["manual", "threshold", "overflow"]) test(`S1: native ${mode} compaction separates executor and auxiliary usage`, {timeout: 20000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-compaction-worker.mjs", import.meta.url)), mode, "--accounting", ...(mode === "manual" ? ["--advice-review"] : [])], {timeout: 18000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const mode of ["goal", "sisyphus"]) for (const status of ["paused", "blocked"]) test(`S2: native exhausted ${status} ${mode} tweak preserves its stop`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-draft-worker.mjs", import.meta.url)), `tweak-lifecycle-${status}`, mode, "--exhausted"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+test("S2: native resume and focus cannot bypass a user-lowered exhausted budget", {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "response", "unfocus", "--accounting", "--exhausted-edit"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const scenario of ["budget-raise", "budget-remove", "budget-paused-reopen-confirm"]) test(`S2: native ${scenario} preserves exhaustion through compaction and reopen until explicit resume`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const mode of ["goal", "sisyphus", "create_goal"]) test(`S1: native ${mode} creation charges controlled active time`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", worker, mode, "--clock"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const control of ["pause", "abort", "unfocus", "switch", "replace", "clear"]) test(`S1: native controlled active time through creation and ${control}`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "response", control, "--accounting", "--clock"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const boundary of ["agent", "agent-block"]) test(`S1: native controlled active time through ${boundary} stop`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary, "pause", "--accounting", "--clock"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+for (const control of ["unfocus", "switch"]) for (const fault of [false, true]) test(`S2: native late budget after ${control}${fault ? " with unpaid retry" : ""} limits the originating goal`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "response", control, "--accounting", "--late-budget", ...(fault ? ["--usage-fault"] : [])], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
+test("S2: native unpaid usage follows a later successful archive", {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "response", "pause", "--accounting", "--usage-fault", "--clear-unpaid"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 test("S1: native terminal pause charges every executor response once", {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "checkpoint-agent", "pause", "--accounting"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
@@ -13,6 +49,7 @@ test("S1: native terminal pause charges every executor response once", {timeout:
 for (const [boundary, control] of [
 	...["pause", "abort", "unfocus", "switch", "replace", "clear"].map(control => ["response", control]),
 	["ordinary", "replace"],
+	["provider-retry", "pause"],
 ]) test(`S1: native accounting ${boundary}/${control} retains the response's originating goal`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary!, control!, "--accounting"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);

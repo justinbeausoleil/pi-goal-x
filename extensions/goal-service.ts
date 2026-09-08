@@ -23,6 +23,7 @@ import {
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
 import { taskIndex } from "./goal-task-index.ts";
+import { budgetReached } from "./goal-accounting.ts";
 import { reopenChangedTasks, retainGoalScope, retainedGoalScope, retainedScopeCompletionWarning, retainedTaskEvidenceError, scopeProposalWarning } from "./goal-scope.ts";
 
 /**
@@ -55,11 +56,13 @@ export interface GoalServiceRef {
 	/** The focused goal vanished during reconciliation (external clear/archive/delete). */
 	onFocusedGoalLost(lostGoalId: string | null, ctx: GoalServiceContext): void;
 	/** A reconciled goal is now focused; clear continuation/accounting as its status requires. */
-	onReconciled(goal: GoalRecord): void;
+	onReconciled(goal: GoalRecord, ctx: GoalServiceContext): void;
 	/** The session focus changed; clear continuation/accounting/nudge state. */
 	onFocusChanged(from: string | null, to: string | null): void;
 	/** Observable diagnostic sink for non-fatal failures (ledger appends). */
 	onDiagnostic(diagnostic: GoalDiagnostic): void;
+	/** Runtime/UI effects after an original owner's usage and budget state are saved. */
+	onUsageCharged?(goal: GoalRecord, previous: GoalRecord, ctx: GoalServiceContext): void;
 }
 
 export type GoalServiceContext = GoalFileContext;
@@ -182,6 +185,13 @@ export class GoalService {
 	private lastPersistedUsage: { goalId: string; tokensUsed: number; activeSeconds: number } | null = null;
 	private pendingUsage = new Map<string, {goal: GoalRecord; usage: GoalUsage}>();
 
+	private archiveGoal(ctx: GoalServiceContext, goal: GoalRecord): GoalRecord {
+		const written = archiveGoalFile(ctx, goal);
+		const pending = this.pendingUsage.get(goal.id);
+		if (pending) pending.goal = written;
+		return written;
+	}
+
 	/** Add an incurred delta to its original owner, independently of current focus. */
 	chargeUsage(ctx: GoalServiceContext, goal: GoalRecord, usage: GoalUsage): boolean {
 		const pending = this.pendingUsage.get(goal.id);
@@ -206,10 +216,12 @@ export class GoalService {
 				const archivedPath = pending.goal.archivedPath;
 				const disk = active ?? (archivedPath ? parseGoalFile(resolveGoalPath(ctx, ARCHIVED_GOALS_DIR, archivedPath), true) : null);
 				if (!disk || disk.id !== id) throw new Error("The original goal record is unavailable; usage remains unpaid.");
-				const next = {...disk, usage: {
+				const next: GoalRecord = {...disk, usage: {
 					tokensUsed: disk.usage.tokensUsed + pending.usage.tokensUsed,
 					activeSeconds: disk.usage.activeSeconds + pending.usage.activeSeconds,
 				}, revision: (disk.revision ?? 0) + 1, updatedAt: nowIso()};
+				const limited = disk.status === "active" && budgetReached(next);
+				if (limited) next.status = "budget_limited";
 				const written = active ? writeActiveGoalFile(ctx, next) : next;
 				if (!active) atomicWriteGoalFile(ctx, ARCHIVED_GOALS_DIR, archivedPath!, serializeGoalFile(next));
 				this.pendingUsage.delete(id);
@@ -217,6 +229,8 @@ export class GoalService {
 					this.ref.setFocused(written);
 					this.trackBaseline(id, written.usage);
 				} else if (active && this.ref.getPool().has(id)) this.ref.getPool().set(id, written);
+				if (limited) this.appendLedgerEventsBestEffort(ctx, [{type: "goal_budget_limited", goalId: id, budget: written.tokenBudget!, tokensUsed: written.usage.tokensUsed, at: written.updatedAt}]);
+				this.ref.onUsageCharged?.(written, disk, ctx);
 			} catch (error) {
 				this.ref.onDiagnostic({severity: "warning", source: "storage", goalId: id, message: `Usage for goal ${id} has not been saved and will retry after storage is restored: ${String(error)}`});
 			} finally {
@@ -307,7 +321,7 @@ export class GoalService {
 				activeSeconds: base.usage.activeSeconds + Math.max(0, goal.usage.activeSeconds - expected.usage.activeSeconds),
 			} : goal.usage });
 			const written = this.turn.archive || next.status === "complete"
-				? archiveGoalFile(ctx, next)
+				? this.archiveGoal(ctx, next)
 				: writeActiveGoalFile(ctx, next);
 			this.turn.active = false;
 			this.appendLedgerEventsBestEffort(ctx, this.turn.ledger);
@@ -433,7 +447,7 @@ export class GoalService {
   }
   if (unchanged) {
    const same = focused ? view.get(focused) : undefined;
-   if (same) this.ref.onReconciled(same);
+   if (same) this.ref.onReconciled(same, ctx);
    return true;
   }
   const fresh = new Map(source);
@@ -473,8 +487,8 @@ export class GoalService {
 		this.ref.replacePool(fresh);
 		fresh.set(reconciled.id, reconciled);
 		this.ref.assignFocusedGoalId(reconciled.id);
-		this.ref.onReconciled(reconciled);
 		this.trackBaseline(reconciled.id, delta ? diskGoal.usage : reconciled.usage);
+		this.ref.onReconciled(reconciled, ctx);
 		return true;
 	}
 
@@ -613,7 +627,7 @@ export class GoalService {
 
 			// 4. authoritative file write (active or archive). Failure returns an
 			//    unsuccessful outcome before any memory/ledger/focus commit.
-			const written = spec.archive ? archiveGoalFile(ctx, mutated) : writeActiveGoalFile(ctx, mutated);
+			const written = spec.archive ? this.archiveGoal(ctx, mutated) : writeActiveGoalFile(ctx, mutated);
 
 			// 5. ledger append best effort.
 			if (spec.ledger) {
@@ -914,7 +928,7 @@ export class GoalService {
 					updatedAt: nowIso(),
 					revision: (freshDisk.revision ?? 0) + 1,
 				});
-				const written = merged.status === "complete" ? archiveGoalFile(ctx, merged) : writeActiveGoalFile(ctx, merged);
+				const written = merged.status === "complete" ? this.archiveGoal(ctx, merged) : writeActiveGoalFile(ctx, merged);
 				this.trackBaseline(written.id, written.usage);
 				this.ref.setFocused(written);
 				return written;
@@ -927,7 +941,7 @@ export class GoalService {
 				...(proposal ? {verificationContract: freshDisk.verificationContract, taskList: freshDisk.taskList, currentTaskId: freshDisk.currentTaskId, retainedScope: freshDisk.retainedScope} : {}),
 				updatedAt: nowIso(), revision: capturedRevision + 1,
 			});
-			const written = merged.status === "complete" ? archiveGoalFile(ctx, merged) : writeActiveGoalFile(ctx, merged);
+			const written = merged.status === "complete" ? this.archiveGoal(ctx, merged) : writeActiveGoalFile(ctx, merged);
 			this.trackBaseline(written.id, written.usage);
 			this.ref.setFocused(written);
 			return written;

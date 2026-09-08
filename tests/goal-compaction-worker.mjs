@@ -7,9 +7,12 @@ import { fileURLToPath } from "node:url";
 import http from "node:http";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { parseGoalFile } from "../extensions/storage/goal-files.ts";
 
 const mode = process.argv[2] ?? "manual";
 const baseline = process.argv.includes("--baseline");
+const checkAccounting = process.argv.includes("--accounting");
+let executorTokens = 0, executorResponse = false;
 const stopState = process.argv.find(a => a.startsWith("--stopped="))?.split("=")[1] ?? "paused";
 const long = process.argv.includes("--long");
 const large = process.argv.includes("--large");
@@ -19,8 +22,9 @@ const review = adviceReview || process.argv.includes("--audit-only");
 const qualifyTasks = review || stopState === "complete";
 const stall = process.argv.includes("--stall");
 const realNow = Date.now;
+const controlledNow = realNow();
 let clockOffset = 0;
-if (stall) Date.now = () => realNow() + clockOffset;
+if (stall || checkAccounting) Date.now = () => (checkAccounting ? controlledNow : realNow()) + clockOffset;
 assert(["manual", "threshold", "overflow"].includes(mode));
 const work = mkdtempSync(join(tmpdir(), "goal-compaction-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
@@ -47,7 +51,7 @@ const server = http.createServer(async (req, res) => {
 	const submit = oracle && !payload.messages.some(message => message.role === "tool");
 	const delta = submit ? { role: "assistant", tool_calls: [{ index: 0, id: "oracle-submit", type: "function", function: { name: "submit_goal_oracle_advice", arguments: JSON.stringify(advice) } }] }
 		: { role: "assistant", content: oracle ? "Advice recorded." : `audit-objection-sentinel ${"Preserve every task contract. ".repeat(1000)}\n<disapproved/>` };
-	for (const [d, finish_reason] of [[delta, null], [{}, submit ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{ index: 0, delta: d, finish_reason }] })}\n\n`);
+	for (const [d, finish_reason] of [[delta, null], [{}, submit ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{ index: 0, delta: d, finish_reason }], ...(finish_reason ? {usage: {prompt_tokens: 700, completion_tokens: 77, total_tokens: 777}} : {}) })}\n\n`);
 	res.end("data: [DONE]\n\n");
 });
 let session, deadline, failure, manualCompaction;
@@ -115,6 +119,7 @@ const loader = new DefaultResourceLoader({
 	}],
 });
 function message(model, content, stopReason, input = 100) {
+	if (executorResponse) executorTokens += input + 10;
 	const value = { role: "assistant", api: model.api, provider: model.provider, model: model.id, content, usage: { input, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: input + 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason, timestamp: Date.now() };
 	if (stopReason === "error") value.errorMessage = "maximum context length exceeded";
 	const stream = new AssistantMessageEventStream();
@@ -146,7 +151,9 @@ try {
 		}
 	});
 	session.agent.streamFunction = (requestedModel, context) => {
+		executorResponse = !!context.tools?.length && !stoppedProbe;
 		if (!context.tools?.length) {
+			if (checkAccounting) clockOffset += 9000;
 			summaries.push(JSON.parse(JSON.stringify(context)));
 			assert(!JSON.stringify(context).includes("[PI GOAL ACTIVE"), "ephemeral projection must not enter the separate summarizer");
 			return message(requestedModel, [{ type: "text", text: "Earlier synthetic work occurred. Preserve fixture-unrelated-sentinel. Task identity and completion details were deliberately omitted." }], "stop");
@@ -237,6 +244,8 @@ try {
 	assert.equal(beforeStarts, stopState === "budget_limited" ? 1 : 0, "custom continuation proof cannot rely on a user-start hook");
 	assert.equal(steps.length, 0);
 	const finalGoal = results.find(r => r.toolName === "get_goal").details.goal;
+	if (checkAccounting) assert.equal(parseGoalFile(join(cwd, finalGoal.activePath)).usage.tokensUsed, executorTokens, "only executor reports are billed, including overflow responses once; summaries and 777-token child reports remain separate");
+	if (checkAccounting) assert.equal(parseGoalFile(join(cwd, finalGoal.activePath)).usage.activeSeconds, 0, "separate summarization intervals do not accrue executor active time");
 	assert.equal(finalGoal.currentTaskId, `t${firstCurrent + 2}`);
 	assert.equal(finalGoal.taskList.tasks.flatMap(task => [task, ...(task.subtasks ?? [])]).length, taskCount);
 	assert.deepEqual(finalGoal.taskList.tasks.filter(t => t.status === "complete").map(t => t.id), ["t1", "t2", "t3"]);
@@ -257,6 +266,7 @@ try {
 	await session.sendCustomMessage({ customType: "fixture-unrelated", content: "Stopped-state inspection boundary: fixture-unrelated-sentinel", display: false }, { triggerTurn: false });
 	await session.compact();
 	assert.equal(compactions.length, 4, "paused goal also crosses a native compaction");
+	if (checkAccounting) assert.equal(parseGoalFile(join(cwd, finalGoal.activePath)).usage.tokensUsed, executorTokens, "stopped compaction adds no executor usage");
 	stoppedProbe = true;
 	await session.prompt("Report the goal's paused state without resuming work.");
 	if (failure) throw failure;

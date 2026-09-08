@@ -221,7 +221,8 @@ export function createGoalCore(
 			clearStoppedRuntimeState();
 			updateUI(ctx as unknown as ExtensionContext);
 		},
-		onReconciled: (goal) => {
+		onReconciled: (goal, ctx) => {
+			if (goal.status === "active" && budgetReached(goal)) goalService.chargeUsage(ctx, goal, {tokensUsed: 0, activeSeconds: 0});
 			if (goal.status !== "active" || !goal.autoContinue || scopeProposalWarning(goal)) clearContinuationState();
 			if (goal.status !== "active") clearActiveAccounting();
 		},
@@ -234,6 +235,7 @@ export function createGoalCore(
 			// authoritative state write, but they stay observable.
 			console.warn(`[pi-goal] ${diagnostic.source} diagnostic: ${diagnostic.message}`);
 		},
+		onUsageCharged: (goal, previous, ctx) => onUsageCharged(goal, previous, ctx as ExtensionContext),
 	});
 	let runningGoalId: string | null = null;
 	let terminalInputUnsubscribe: (() => void) | null = null;
@@ -399,7 +401,7 @@ export function createGoalCore(
 	}
 
 	function isActionableContinuationGoal(goalId: string | null | undefined): goalId is string {
-		return !core.continuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue && !scopeProposalWarning(state.goal);
+		return !core.continuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue && !budgetReached(state.goal) && !scopeProposalWarning(state.goal);
 	}
 
 	function isStaleCheckpointBlockedToolCall(toolName: string): boolean {
@@ -478,6 +480,7 @@ export function createGoalCore(
 	}
 
 	function armFocusedContinuation(ctx: ExtensionContext): void {
+		reconcileFocusedGoalFromDisk(ctx);
 		releaseContinuationHold(ctx);
 		beginAccounting();
 		if (state.goal?.status === "active" && state.goal.autoContinue) queueContinuation(ctx, true);
@@ -493,7 +496,7 @@ export function createGoalCore(
 	}
 
 	function beginAccounting(): void {
-		if (!state.goal || (state.goal.status !== "active")) {
+		if (!state.goal || state.goal.status !== "active" || budgetReached(state.goal)) {
 			clearActiveAccounting();
 			return;
 		}
@@ -520,10 +523,11 @@ export function createGoalCore(
 			ctx.ui.notify(`Usage for goal ${owner.id} has not been saved. Restore storage access and run /goal-refresh to retry.`, "warning");
 			return;
 		}
+	}
 
+	function onUsageCharged(budgetGoal: GoalRecord, previous: GoalRecord, ctx: ExtensionContext): void {
 		// F6: threshold alerts at 50/75/90% — one ledger event + notification each.
-		const budgetGoal = state.goal;
-		if (budgetGoal && budgetGoal.status === "active" && typeof budgetGoal.tokenBudget === "number" && budgetGoal.tokenBudget > 0 && budgetGoal.usage.tokensUsed > 0) {
+		if (previous.status === "active" && typeof budgetGoal.tokenBudget === "number" && budgetGoal.tokenBudget > 0 && budgetGoal.usage.tokensUsed > 0) {
 			const pct = budgetGoal.usage.tokensUsed / budgetGoal.tokenBudget;
 			for (const threshold of [0.5, 0.75, 0.9]) {
 				const key = `${budgetGoal.id}:${threshold}`;
@@ -546,28 +550,12 @@ export function createGoalCore(
 			}
 		}
 
-		// Token-budget transition: when accounted usage reaches the budget, mark the
-		// goal budget_limited exactly once (status no longer active, so accounting
-		// stops and the transition cannot re-fire), emit the ledger event, arm the
-		// one-time wrap-up steering, and cancel pending continuations.
-		if (budgetGoal && budgetGoal.status === "active" && typeof budgetGoal.tokenBudget === "number" && budgetReached(budgetGoal)) {
-			const transition = goalService.apply(ctx, {
-				reconcile: false,
-				mutate: (g) => ({ ...g, status: "budget_limited" as const, updatedAt: nowIso() }),
-				ledger: (written) => [{
-					type: "goal_budget_limited",
-					goalId: written.id,
-					budget: budgetGoal.tokenBudget ?? 0,
-					tokensUsed: written.usage.tokensUsed,
-					at: written.updatedAt,
-				}],
-			});
-			if (transition.ok) {
-				runtime.armPostBudgetReminder();
-				runtime.clearContinuationState();
-				accounting.clear();
-				updateUI(ctx);
-			}
+		// A late charge to an unfocused owner must not disturb its successor.
+		if (previous.status === "active" && budgetGoal.status === "budget_limited" && state.goal?.id === budgetGoal.id) {
+			runtime.armPostBudgetReminder();
+			runtime.clearContinuationState();
+			accounting.clear();
+			updateUI(ctx);
 		}
 	}
 
@@ -797,6 +785,10 @@ export function createGoalCore(
 	}
 
 	function setGoal(next: GoalRecord | null, ctx: ExtensionContext, shouldPersist = true, focusReason?: GoalFocusReason): boolean {
+		if (next?.status === "active" && budgetReached(next)) {
+			ctx.ui.notify("The token budget is exhausted. Raise or remove it in the goal file, run /goal-refresh, then /goal-resume.", "warning");
+			return false;
+		}
 		const previousGoalId = state.goal?.id ?? null;
 		if (shouldPersist && next && next.id === previousGoalId) {
 			try {

@@ -9,8 +9,12 @@ import {fileURLToPath} from "node:url";
 import {setTimeout as delay} from "node:timers/promises";
 import {AssistantMessageEventStream} from "@earendil-works/pi-ai";
 import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager} from "@earendil-works/pi-coding-agent";
+import {parseGoalFile} from "../extensions/storage/goal-files.ts";
 
 const scenario = process.argv[2] ?? "tree";
+const budgetFlow = ["budget-raise", "budget-remove"].includes(scenario);
+const exhaustedPause = scenario === "budget-paused-reopen-confirm";
+const fixtureBudget = scenario === "budget-raise" ? 770 : 760;
 const work = mkdtempSync(join(tmpdir(), "goal-ownership-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
 mkdirSync(cwd); mkdirSync(agentDir);
@@ -100,17 +104,71 @@ async function run(prompt, calls) {
 try {
   await startHost({sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
   await run("Create a goal to preserve verified fixture progress through session navigation.", [
-    {name: "create_goal", args: {objective: "Preserve the verified task and its artifact through session navigation."}},
+    {name: "create_goal", args: {objective: "Preserve the verified task and its artifact through session navigation.", ...(budgetFlow ? {token_budget: fixtureBudget} : exhaustedPause ? {token_budget: 550} : {})}},
     {name: "set_goal_tasks", args: {tasks: [{id: "verified", title: "Write verified.txt", verification_contract: "verified.txt contains preserved-proof"}, {id: "remaining", title: "Remaining work"}]}},
     {name: "write", args: {path: "verified.txt", content: "preserved-proof"}},
     {name: "update_goal_task", args: {expected_work_revision: "$current", task_id: "verified", status: "complete", evidence: "verified.txt contains preserved-proof"}},
+    ...(budgetFlow ? [{name: "update_goal_task", args: {expected_work_revision: "$current", task_id: "remaining", status: "start"}}] : []),
     pause,
   ]);
   const approved = structuredClone(goalResult());
   assert.equal(approved.status, "paused");
   assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
   assert(earlyLeaf);
-  if (scenario.startsWith("resume-stale-")) {
+  if (exhaustedPause) {
+    const before = parseGoalFile(join(cwd, approved.activePath)), count = requests.length;
+    assert.equal(before.usage.tokensUsed, 550);
+    await host.switchSession(session.sessionManager.getSessionFile());
+    await settled();
+    assert.equal(requests.length, count, "reopen confirmation cannot dispatch exhausted work");
+    const after = parseGoalFile(join(cwd, approved.activePath));
+    assert.equal(after.status, "paused", "an exhausted paused goal cannot be reactivated by reopen confirmation");
+    assert.equal(after.pauseReason, before.pauseReason);
+    assert.deepEqual(after.usage, before.usage);
+  } else if (budgetFlow) {
+    const disk = () => parseGoalFile(join(cwd, approved.activePath));
+    const events = () => readFileSync(join(cwd, ".pi", "goals", "goal_events.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    await session.prompt("/goal-resume");
+    await run("Inspect current progress before continuing.", [{name: "get_goal", args: {}}, {name: "write", args: {path: "forbidden-budget.txt", content: "must not dispatch"}}]);
+    assert.equal(existsSync(join(cwd, "forbidden-budget.txt")), false, "budget wrap-up cannot dispatch new work");
+    assert.equal(disk().status, "budget_limited");
+    assert.equal(disk().usage.tokensUsed, requests.length * 110, "each executor response is charged once");
+    const limited = events().filter(event => event.type === "goal_budget_limited");
+    assert.equal(limited.length, 1);
+    assert.equal(limited[0].tokensUsed, 770, "post-response budget transition records exact usage and honest overshoot");
+    assert.equal(limited[0].tokensUsed - fixtureBudget, scenario === "budget-raise" ? 0 : 10);
+    const wrapups = requests.filter(request => JSON.stringify(request.context.messages.at(-1)?.content).includes("TOKEN BUDGET REACHED"));
+    assert.equal(wrapups.length, 1, "at most one wrap-up reminder");
+    assert.match(JSON.stringify(wrapups[0].context.messages.at(-1)), /Current: remaining/);
+    assert.match(JSON.stringify(wrapups[0].context.messages.at(-1)), /1\/2 tasks complete/);
+    const stopped = disk(), count = requests.length;
+    await session.sendCustomMessage({customType: "fixture-ballast", content: "Preserve the stopped budget and task evidence. ".repeat(1000), display: false}, {triggerTurn: false});
+    await session.sendCustomMessage({customType: "fixture-boundary", content: "Stopped budget checkpoint.", display: false}, {triggerTurn: false});
+    await session.compact();
+    assert(summaries > 0, "the native summarizer actually ran");
+    await host.switchSession(session.sessionManager.getSessionFile());
+    await session.prompt("/goal-resume");
+    await settled();
+    assert.equal(requests.length, count, "compaction, reopen and an exhausted resume cannot dispatch work");
+    assert.equal(disk().status, "budget_limited");
+    assert.deepEqual(disk().usage, stopped.usage, "summarizer usage is not executor usage");
+    assert(notices.some(notice => /budget is exhausted/.test(notice)));
+    const content = readGoal(), split = content.indexOf("\n\n# Goal Prompt"), metadata = JSON.parse(content.slice(0, split));
+    if (scenario === "budget-raise") metadata.tokenBudget = stopped.usage.tokensUsed + 5000;
+    else delete metadata.tokenBudget;
+    writeFileSync(join(cwd, approved.activePath), JSON.stringify(metadata) + content.slice(split));
+    await session.prompt("/goal-refresh");
+    assert.equal(disk().status, "budget_limited", "editing the budget alone does not resume work");
+    assert.deepEqual(disk().usage, stopped.usage);
+    assert.equal(requests.length, count);
+    await session.prompt("/goal-resume");
+    await run("Perform explicitly resumed work, then pause.", [{name: "write", args: {path: "budget-resumed.txt", content: "resumed"}}, pause]);
+    assert.equal(readFileSync(join(cwd, "budget-resumed.txt"), "utf8"), "resumed");
+    assert.equal(disk().usage.tokensUsed, requests.length * 110);
+    assert.deepEqual(disk().taskList, stopped.taskList, "budget changes preserve the current task and retained evidence");
+    assert.deepEqual(disk().retainedScope, stopped.retainedScope);
+    assert.equal(events().filter(event => event.type === "goal_budget_limited").length, 1);
+  } else if (scenario.startsWith("resume-stale-")) {
     const before = requests.length;
     let edited;
     onPausedConfirm = async () => {

@@ -6,8 +6,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { parseGoalFile } from "../extensions/storage/goal-files.ts";
 
 const mode = process.argv[2] ?? "goal-direct";
+const controlledClock = process.argv.includes("--clock");
+const originalNow = Date.now;
+let clockNow = originalNow();
+if (controlledClock) Date.now = () => clockNow;
 const work = mkdtempSync(join(tmpdir(), "goal-lifecycle-"));
 const cwd = join(work, "project");
 const agentDir = join(work, "agent");
@@ -42,7 +47,10 @@ const loader = new DefaultResourceLoader({
 	additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
 	extensionFactories: [pi => {
 		pi.on("before_agent_start", () => { starts++; });
-		pi.on("tool_result", event => { results.push(event); });
+		pi.on("tool_result", event => {
+			results.push(event);
+			if (controlledClock && ["create_goal", "propose_goal_draft"].includes(event.toolName) && event.details?.goal) clockNow += 8000;
+		});
 	}],
 });
 try {
@@ -107,6 +115,10 @@ try {
 	if (failure) { console.error(JSON.stringify({ requests: captures.length, starts, results })); throw failure; }
 	assert.equal(readFileSync(join(cwd, "proof.txt"), "utf8"), "SYNTHETIC_OBJECTIVE_4f927");
 	assert.deepEqual(results.filter(r => r.isError), []);
+	if (controlledClock) {
+		const goal = results.findLast(result => result.details?.goal)?.details.goal;
+		assert.equal(parseGoalFile(join(cwd, goal.activePath)).usage.activeSeconds, 8, "confirmed model creation charges its initial active interval");
+	}
 	assert(budget || results.some(r => r.toolName === "read" && JSON.stringify(r.content).includes("SYNTHETIC_OBJECTIVE_4f927")));
 	const checkpoints = manager.getBranch().filter(e => e.type === "custom_message" && e.customType === "pi-goal-event");
 	assert.equal(checkpoints.length, budget ? 1 : 2, "only eligible automatic checkpoints run");
@@ -143,6 +155,7 @@ try {
 	}
 	console.log(JSON.stringify({ passed: true, mode, requests: captures.length, starts, checkpoints: checkpoints.length, effects: results.map(r => r.toolName) }));
 } finally {
+	Date.now = originalNow;
 	clearTimeout(deadline);
 	await session?.abort();
 	session?.dispose();

@@ -8,6 +8,7 @@ import { deriveTasksFromObjective } from "./goal-task-derive.ts";
 import { goalDetails, renderGoalResult } from "./goal-format.ts";
 import { buildGoalCreatedReport } from "./goal-policy.ts";
 import { loadGoalSettings } from "./goal-settings.ts";
+import { budgetReached } from "./goal-accounting.ts";
 import { DIALOG_UNAVAILABLE_HINT, proposalDialogFailureMessage, formatQuestionnaireAnswers, runGoalQuestionnaire, shouldAutoConfirmProposal, showProposalDialog, type GoalQuestionnaireQuestion, type ProposalDecision } from "./goal-questionnaire.ts";
 import { currentTaskIdIsPending, goalWorkRevision, nowIso, type GoalRecord, type GoalTaskList } from "./goal-record.ts";
 import type { GoalCore } from "./goal-state.ts";
@@ -421,7 +422,10 @@ export function registerDraftingTools(core: GoalCore): void {
 				core.replaceGoal({ objective: extracted.objective, autoContinue: params.auto_continue !== false, sisyphus: expectedSisyphus, taskList: effectiveTaskList, skipAuditor }, ctx, true, extracted.verificationContract);
 				clearGoalDrafting(core, ctx);
 				const created = core.state.goal;
-				if (created) core.runningGoalId ??= created.id;
+				if (created && core.runningGoalId === null) {
+					core.runningGoalId = created.id;
+					core.beginAccounting();
+				}
 				return { content: [{ type: "text", text: `${summary}\n\n${buildGoalCreatedReport({
 					objective: extracted.objective,
 					detailedSummary: qaEcho,
@@ -453,7 +457,7 @@ export function registerDraftingTools(core: GoalCore): void {
 					// /goal-resume transition: status active + pause metadata
 					// cleared); budget_limited stays behind its hard resource
 					// gate and an active goal stays active.
-					const stalled = goal.status === "paused" || goal.status === "blocked";
+					const stalled = (goal.status === "paused" || goal.status === "blocked") && !budgetReached(goal);
 					if (stalled) resumed = true;
 					return {
 						...proposed, skipAuditor,

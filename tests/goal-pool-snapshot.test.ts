@@ -98,20 +98,23 @@ test("pool snapshot: legacy in-dir snapshot is served as a one-time fallback", (
 		assert.equal(pool.size, 1, "legacy snapshot hydrates the pool");
 		const served = [...pool.values()][0]!;
 		assert.equal((served as GoalRecord & { snapshotMarker?: boolean }).snapshotMarker, true, "served from the legacy snapshot, not a rescan");
+		writeGoal(cwd, "g2");
+		assert.ok(!fs.existsSync(snapshotPaths(cwd).legacyPath), "a subsequent goal write migrates the valid legacy snapshot");
+		assert.ok(fs.existsSync(snapshotPaths(cwd).newPath));
 	} finally {
 		try { fs.rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}
 });
 
-test("pool snapshot: writing removes the legacy in-dir file", () => {
+test("pool snapshot: reading preserves a malformed legacy file for confirmed recovery", () => {
 	const cwd = tempCwd();
 	try {
 		writeGoal(cwd, "g1");
 		fs.writeFileSync(snapshotPaths(cwd).legacyPath, "{}", "utf8");
 		invalidateGoalPoolCache();
 		readActiveGoalPool({ cwd });
-		assert.ok(!fs.existsSync(snapshotPaths(cwd).legacyPath), "legacy file cleaned up after the new write");
-		assert.ok(fs.existsSync(snapshotPaths(cwd).newPath));
+		assert.equal(fs.readFileSync(snapshotPaths(cwd).legacyPath, "utf8"), "{}", "a cache read cannot discard recovery evidence");
+		assert.ok(!fs.existsSync(snapshotPaths(cwd).newPath), "no silent replacement of a malformed snapshot");
 	} finally {
 		try { fs.rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}

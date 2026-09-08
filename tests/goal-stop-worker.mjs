@@ -11,12 +11,22 @@ import {setTimeout as delay} from "node:timers/promises";
 import {AssistantMessageEventStream} from "@earendil-works/pi-ai";
 import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager} from "@earendil-works/pi-coding-agent";
 import {parseGoalFile} from "../extensions/storage/goal-files.ts";
+import {goalLedgerPath} from "../extensions/goal-ledger.ts";
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
+const clearUnpaid = process.argv.includes("--clear-unpaid");
+const lateBudget = process.argv.includes("--late-budget");
+const exhaustedEdit = process.argv.includes("--exhausted-edit");
+const controlledClock = process.argv.includes("--clock");
+const originalNow = Date.now;
+let clockNow = originalNow();
+if (controlledClock) Date.now = () => clockNow;
 const switching = control.startsWith("switch");
 const replacing = control.startsWith("replace");
 const successor = replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control);
 const reviewing = boundary === "audit" || boundary === "oracle";
+const agentStop = boundary === "agent" || boundary === "agent-block";
+let retryOffered = false, hostRetries = 0;
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
 mkdirSync(cwd); mkdirSync(agentDir);
@@ -24,7 +34,7 @@ process.env.PI_OFFLINE = "1";
 process.env.PI_CODING_AGENT_DIR = agentDir;
 process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
 process.env.PI_GOAL_AUTO_CONFIRM = "1";
-const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: {enabled: false}});
+const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: {enabled: boundary === "provider-retry", maxRetries: 2, baseDelayMs: 1}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [];
 const bills = [];
@@ -48,7 +58,7 @@ let agentResumed = false, agentResumeCheckpoint = 0;
 let faultGoalId, failedUsageWrites = 0;
 const originalRename = fs.renameSync;
 fs.renameSync = (from, to) => {
-  if (faultGoalId && String(to).endsWith(".md") && String(to).includes(faultGoalId)) {
+  if (faultGoalId && String(to).endsWith(".md") && String(to).includes(faultGoalId) && !(clearUnpaid && String(to).includes("/archived/"))) {
     failedUsageWrites++;
     throw Object.assign(new Error("Synthetic unpaid-usage write failure"), {code: "EACCES"});
   }
@@ -78,6 +88,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function stop() {
+  if (controlledClock) clockNow += 2300;
   if (control === "serial") { await pendingBarrier(); return; }
   if (control === "steering-only") return;
   if (control === "pause") await session.prompt("/goal-pause");
@@ -94,6 +105,7 @@ async function stop() {
   else if (control === "clear") await session.prompt("/goal-clear");
   else throw new Error(`Unsupported user stop: ${control}`);
   if (process.argv.includes("--usage-fault")) faultGoalId = primary.id;
+  if (controlledClock) clockNow += 5700;
 }
 async function bind() {
   await session.bindExtensions({mode: "rpc", onError: error => errors.push(error), uiContext: {
@@ -117,6 +129,8 @@ async function create({sessionManager, sessionStartEvent}) {
       pi.on("agent_start", () => { billedRunOwner = undefined; });
       pi.on("tool_result", event => {
         results.push(event);
+        if (controlledClock && event.toolName === "create_goal" && event.details?.goal) clockNow += 8000;
+        if (controlledClock && testing && agentStop && event.toolName === "update_goal" && ["paused", "blocked"].includes(event.details?.goal?.status)) clockNow += 5700;
         if (event.toolName === "create_goal" && event.details?.goal && bills.at(-1)?.goalId === null) {
           billedRunOwner = event.details.goal.id;
           bills.at(-1).goalId = billedRunOwner;
@@ -150,6 +164,7 @@ async function create({sessionManager, sessionStartEvent}) {
   const created = await createAgentSession({cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager, settingsManager: settings, sessionStartEvent});
   session = created.session;
   session.subscribe(event => {
+    if (event.type === "auto_retry_start") hostRetries++;
     if (testing && event.type === "tool_execution_start" && event.toolName === "update_goal" && event.args?.status === "paused") { pauseDispatches++; serialOrder.push("agent-pause-dispatch"); }
     if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason});
   });
@@ -166,17 +181,20 @@ async function create({sessionManager, sessionStartEvent}) {
     if (staleFollowup) forbiddenOffered = true;
     const userWork = queuedUserSeen && !queuedUserDone;
     if (userWork) queuedUserDone = true;
-    const calls = failure ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
+    const retryError = testing && boundary === "provider-retry" && !retryOffered;
+    if (retryError) retryOffered = true;
+    const calls = failure || retryError ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     if (startSecondary) secondaryDone = true;
     const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: "Waiting for explicit authorization."}];
     const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
-      usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: calls.length ? "toolUse" : "stop", timestamp: Date.now()};
+      usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: retryError ? "error" : calls.length ? "toolUse" : "stop", ...(retryError ? {errorMessage: "503 Service Unavailable"} : {}), timestamp: Date.now()};
     const stream = new AssistantMessageEventStream();
     stream.push({type: "start", partial: message});
     const intervene = beforeResponse; beforeResponse = undefined;
     void (async () => {
       try { await intervene?.(); } catch (error) { failure = error; }
       if (boundary.startsWith("steering") && options.signal?.aborted) stream.push({type: "error", reason: "aborted", error: {...message, content: [], stopReason: "aborted"}});
+      else if (retryError) stream.push({type: "error", reason: "error", error: message});
       else stream.push({type: "done", reason: message.stopReason, message});
     })();
     return stream;
@@ -210,8 +228,14 @@ function assertBilling() {
   for (const [id, record] of records) {
     const expected = bills.filter(bill => bill.goalId === id).reduce((sum, bill) => sum + bill.tokens, 0);
     assert.equal(record.usage.tokensUsed, expected, `executor usage belongs to the goal selected for its run: ${id}; bills=${JSON.stringify(bills)}`);
+    if (controlledClock) assert.equal(record.usage.activeSeconds, record.id === primary.id ? 10 : 0, "active time includes creation and work before the stop, excluding the stopped response interval");
   }
   for (const bill of bills) if (bill.goalId) assert(records.has(bill.goalId), "the billed goal remains observable in active or archived storage");
+  if (lateBudget) {
+    assert.equal(records.get(primary.id).status, "budget_limited", "late usage exhausts the originating goal independently of focus");
+    const events = readFileSync(goalLedgerPath({cwd}), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    assert.equal(events.filter(event => event.type === "goal_budget_limited" && event.goalId === primary.id).length, 1, "one durable budget transition despite subsequent responses and refresh");
+  }
 }
 try {
   if (reviewing) {
@@ -224,12 +248,13 @@ try {
   await bind();
   deadline = setTimeout(() => { failure = new Error("Stop fixture deadline exceeded"); void session.abort(); }, 8000);
   await run("Create a goal to verify explicit stop boundaries.", [
-    {name: "create_goal", args: {objective: "Write only explicitly authorized fixture files; preserve user stop boundaries."}},
+    {name: "create_goal", args: {objective: "Write only explicitly authorized fixture files; preserve user stop boundaries.", ...(lateBudget ? {token_budget: 440} : {})}},
     {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof"}]}},
     ...(boundary === "audit" ? [write("proof.txt"), {name: "update_goal_task", args: {task_id: "work", status: "complete", evidence: "proof.txt contains proof.txt"}}] : []), pause,
   ]);
   primary = structuredClone(currentGoal());
   assert.equal(primary.status, "paused");
+  if (controlledClock) assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).usage.activeSeconds, 8, "model creation starts its active clock before response settlement");
   if (switching) {
     responses = [[pause]];
     await session.prompt("/goal-direct Keep this secondary goal paused until selected.");
@@ -350,6 +375,12 @@ try {
     await stop();
     await delay(100);
     assert.equal(requests.length, before, "stopping a scheduled checkpoint issues no new request");
+  } else if (boundary === "provider-retry") {
+    responses = [[write("retry-proof.txt"), pause]];
+    await session.prompt("Perform the authorized work when the provider recovers, then pause.");
+    await settled();
+    assert.equal(hostRetries, 1, "Pi performs exactly one native provider retry");
+    assert.equal(readFileSync(join(cwd, "retry-proof.txt"), "utf8"), "retry-proof.txt");
   } else if (boundary === "response") {
     beforeResponse = stop;
     responses = [[write("forbidden.txt")]];
@@ -363,8 +394,9 @@ try {
     await stop();
     await pending;
     await settled();
-  } else if (boundary === "agent") {
-    responses = [[write("dispatched.txt"), pause, write("forbidden.txt")]];
+  } else if (agentStop) {
+    if (controlledClock) beforeResponse = () => { clockNow += 2300; };
+    responses = [[...(boundary === "agent-block" ? [] : [write("dispatched.txt")]), boundary === "agent-block" ? {name: "update_goal", args: {status: "blocked", reason: "Fixture dependency remains unavailable."}} : pause, write("forbidden.txt")]];
     await session.prompt("Pause immediately with a reason and suggested next action.");
     await settled();
   } else throw new Error(`Unknown boundary ${boundary}`);
@@ -378,21 +410,43 @@ try {
   if (process.argv.includes("--usage-fault")) {
     assert(failedUsageWrites > 0, "the original goal's late usage reaches the actual storage boundary");
     assert(notices.some(notice => /has not been saved|Could not save/.test(notice)), "unpaid usage is diagnosed");
+    if (clearUnpaid) {
+      await session.prompt("/goal-clear");
+      assert.equal(existsSync(resolve(cwd, primary.activePath)), false, "clear archives the goal while earlier usage remains unpaid");
+    }
     faultGoalId = undefined;
     const priorRequests = requests.length;
     await session.prompt("/goal-refresh");
     assert.equal(requests.length, priorRequests, "retrying usage does not start goal work");
   }
   if (process.argv.includes("--accounting")) assertBilling();
+  if (exhaustedEdit) {
+    const path = resolve(cwd, primary.activePath), content = readFileSync(path, "utf8"), split = content.indexOf("\n\n# Goal Prompt");
+    const metadata = JSON.parse(content.slice(0, split));
+    metadata.tokenBudget = metadata.usage.tokensUsed;
+    writeFileSync(path, JSON.stringify(metadata) + content.slice(split));
+    await session.prompt("/goal-refresh");
+    const count = requests.length;
+    responses = [[write("forbidden-budget-edit.txt")]];
+    await session.prompt("/goal-resume");
+    await delay(100);
+    assert.equal(requests.length, count, "selecting an active but exhausted goal cannot bypass resume validation");
+    await session.prompt("/goal-focus");
+    await delay(100);
+    assert.equal(requests.length, count, "focus cannot dispatch exhausted work");
+    assert.equal(existsSync(join(cwd, "forbidden-budget-edit.txt")), false);
+    assert.equal(parseGoalFile(path).status, "budget_limited");
+  }
   responses = [];
   await run("Write ordinary-user.txt as a new, explicit ordinary user request.", [write("ordinary-user.txt")]);
   assert.equal(readFileSync(join(cwd, "ordinary-user.txt"), "utf8"), "ordinary-user.txt", "fresh user work remains available after a goal stop");
   await run("Inspect the focused goal without resuming work.", [{name: "get_goal", args: {}}]);
   const focused = results.at(-1).details.goal;
   if (process.argv.includes("--accounting")) assertBilling();
-  if (["unfocus", "clear"].includes(control) && boundary !== "agent") assert.equal(focused, null);
+  if (exhaustedEdit) assert.equal(focused.status, "budget_limited");
+  else if (clearUnpaid || (["unfocus", "clear"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
-  else assert.equal(focused.status, "paused");
+  else assert.equal(focused.status, boundary === "agent-block" ? "blocked" : "paused");
   if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {
     assert.equal(focused.pauseReason, pause.args.reason);
     assert.equal(focused.pauseSuggestedAction, pause.args.suggested_action);
@@ -402,6 +456,7 @@ try {
   console.error(JSON.stringify({testing, responses, notices, timeline, results: results.map(result => ({tool: result.toolName, content: result.content}))}));
   throw error;
 } finally {
+  Date.now = originalNow;
   fs.renameSync = originalRename;
   syncBuiltinESMExports();
   clearTimeout(deadline);

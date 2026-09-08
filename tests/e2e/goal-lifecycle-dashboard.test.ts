@@ -93,7 +93,7 @@ function createHarness(cwd: string, opts: { runCompletionAuditor?: (...args: any
 		sessionStart: async () => { await handlers.get("session_start")?.({ reason: "start" }, ctx); },
 		beforeAgentStart: async () => { await handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, ctx); },
 		turnEnd: async (message: unknown = { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } }) => {
-			await handlers.get("turn_end")?.(message, ctx);
+			await handlers.get("turn_end")?.({message, turnIndex: 0, toolResults: []}, ctx);
 		},
 	};
 }

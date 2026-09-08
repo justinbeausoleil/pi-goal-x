@@ -1534,3 +1534,62 @@
   and budget transition after a previously unpaid delta is retried on refresh:
   the existing limiter currently runs in focused accountProgress, so these need
   explicit evidence/repair. All008 acceptance checkboxes remain open.
+
+### Ticket 008 budget qualification and review repairs (candidate pending)
+
+- Frozen a035c9b full suite:1244/1247 passed,76 files,201369ms
+  (Data008/origin-full.log). Two dashboard helper tests supplied a bare message
+  instead of Pi's turn_end event; corrected their adapter without changing
+  lifecycle assertions. The third failure exposed a cold cache read silently
+  replacing a malformed pool snapshot. Sync/async reads now preserve malformed
+  snapshots for confirmed recovery; valid legacy migration remains verified.
+  qualification-fixes-targeted.log passes11; time-recovery-green.log passes6.
+- Both independent reviews found unpaid usage queued before a subsequent clear
+  retained the old locator (330 rather than550 tokens). All four service archive
+  callers now update pending ownership after successful archival. Registered
+  red: unpaid-archive-registered-red.log;13 related native cases pass in
+  unpaid-archive-green.log. Spec also found creation's initial active interval
+  lost at a035c9b (0 rather than8 controlled seconds;2606473 preserves8).
+  Explicit tool/guided creation now begins accounting when adopting its owner.
+- Native time fixtures cover regular/ordered guided and model creation, pause,
+  abort, unfocus, switch, replacement and clear. The direct-command caller was
+  clearing its clock before replaceGoal could charge it; removed that redundant
+  clear. Agent blocked also lost its final active interval (8 rather than10);
+  commitBlocked now charges before stopping. Reds: native-time-red.log and
+  agent-block-time-red.log. The earlier agent-stop-time characterization had
+  an intervening write that already charged time; its passing result is retained.
+- Budget status now commits atomically with the original owner's usage under
+  the existing lock; one ledger event follows the successful write. Runtime
+  reminder/continuation effects apply only to matching focus. Four native
+  unfocus/switch and unpaid-refresh cases were red (active rather than limited)
+  and pass in late-budget-first-green.log. F6 alerts retain their thresholds.
+- Public exact770/770 and overshoot770/760 fixtures pass: one transition,
+  one wrap-up reminder carrying the current remaining task, rejected work
+  dispatch, actual compaction/reopen, exhausted resume, user metadata raise or
+  removal +refresh, then explicit resumed work with prior usage/scope intact.
+  budget-resume-characterization.log passes2. Existing positive-integer checks
+  and targeted budget/accounting/service/transaction regressions pass55 in
+  late-budget-targeted.log.
+- An active unfocused goal with a user-lowered exhausted budget dispatched a
+  write through the resume selector; exhausted-focus-red.log retains this.
+  Reconciliation applies the same budget transition, and shared continuation,
+  clock and setGoal guards prevent exhausted work. Reopen confirmation and
+  paused/blocked tweaks cannot reactivate exhausted goals. Corrected native
+  evidence: exhausted-focus-green.log7; exhausted-tweak-corrected.log4;
+  exhausted-reopen-red.log and exhausted-tweak-corrected-red.log show failures.
+  Initial tweak invocations reversed worker arguments; exhausted-tweak-red.log
+  and exhausted-reopen-tweak-green.log retain those fixture failures, not greens.
+- Native Pi retry reports exactly one host retry and charges both reported
+  responses once (provider-retry-accounting.log). Manual/threshold/overflow
+  compaction accounting excludes real summaries and777-token auditor/Oracle
+  responses. Controlled nine-second summary intervals add no active time.
+  Final targeted native checks pass9 in final-targeted-native.log; type/lint
+  pass in final-check.log and final-lint.log. No dependencies changed.
+- User requested a cost/value gut check. Reported substantial demonstrated
+  reliability improvements, seven accepted tickets, unfinished Qwen/adoption,
+  and poor token efficiency. Continue approved scope with batched qualification
+  and review; avoid treating partial test passes as adoption readiness.
+- Next: freeze this coherent candidate, full suite and required gates, then
+  independent cumulative008 review against35a1093. All008 checkboxes remain
+  open until qualification/review completes;009–014 and live adoption remain
+  unperformed. Only implementation-branch pushes are authorized.

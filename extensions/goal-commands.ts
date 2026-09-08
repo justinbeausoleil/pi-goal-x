@@ -181,7 +181,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		const { objective, verificationContract } = settings.disableContracts ? { objective: raw, verificationContract: undefined } : extractVerificationContract(raw);
 		clearGoalDrafting(core, ctx);
 		core.clearContinuationState();
-		core.clearActiveAccounting();
 		core.replaceGoal({ objective, autoContinue: true, sisyphus: mode === "sisyphus" }, ctx, true, verificationContract);
 	}
 
