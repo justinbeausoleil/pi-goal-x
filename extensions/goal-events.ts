@@ -324,6 +324,9 @@ export function registerGoalEvents(core: GoalCore): void {
 		invalidateGoalLedgerCache();
 		core.goalService.flushTurn(ctx); // P1-3: persist any buffered transaction before reload
 		await core.loadState(ctx);
+		// A host fork inherits discussion, never the parent's execution authority.
+		// Detach before restoring drafts or scheduling any continuation.
+		if (event.reason === "fork") core.setFocusedGoalId(null, ctx, "unfocused", { recordLedger: false });
 		core.installGoalToolProfile(!loadGoalSettings(ctx.cwd).disableTasks);
 		rehydrateDraft(core, ctx);
 		syncTerminalInputPause(core, ctx);

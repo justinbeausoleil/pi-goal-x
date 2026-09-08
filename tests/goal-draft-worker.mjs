@@ -4,8 +4,9 @@ import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const scenario = process.argv[2] ?? "cancel";
 const mode = process.argv[3] ?? "goal";
@@ -20,7 +21,7 @@ process.env.PI_GOAL_AUTO_CONFIRM = "0";
 const settings = SettingsManager.inMemory({ compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 100 }, retry: { enabled: false } });
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const results = [], errors = [], dialogs = [];
-let session, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog;
+let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles;
 const objective = label => `1) Discuss ${label}. Done when the requirements are agreed.\n2) Implement ${label}. Done when its tests pass.`;
 const proposal = (selectedMode, label) => ({ name: "propose_goal_draft", args: { objective: objective(label), sisyphus: selectedMode === "sisyphus", auto_continue: false } });
 const latestDraft = () => session.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-draft");
@@ -29,23 +30,28 @@ const files = () => {
   try { return readdirSync(dir).filter(n => n.startsWith("active_goal_")).map(n => [n, readFileSync(join(dir, n), "utf8")]); }
   catch { return []; }
 };
-async function open(manager) {
+async function open(manager, sessionStartEvent) {
   const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
     systemPrompt: "Discuss the synthetic fixture without starting unconfirmed goal work.",
     additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
-    extensionFactories: [pi => { pi.on("tool_result", event => results.push(event)); }],
+    extensionFactories: [pi => {
+      pi.on("tool_result", async event => { results.push(event); if (afterTool) await afterTool(event); });
+      // Observe the outgoing host settlement before the fork runtime exists.
+      pi.on("session_shutdown", () => { shutdownFiles = files(); });
+    }],
   });
   await loader.reload({ resolveProjectTrust: async () => true });
   assert.deepEqual(loader.getExtensions().errors, []);
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
   await runtime.setRuntimeApiKey("openai", "synthetic-unused");
-  ({ session } = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager: settings }));
+  const created = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager: settings, sessionStartEvent });
+  session = created.session;
   await session.bindExtensions({ mode: "rpc", onError: error => errors.push(error), uiContext: {
     notify() {}, setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
     input: async () => "Fixture custom answer", confirm: async () => false,
     select: async (title, choices) => {
       dialogs.push({ title, choices });
-      if (title.startsWith("Confirm") && duringDialog) { const action = duringDialog; duringDialog = undefined; await action(); }
+      if (title.startsWith(duringDialogTitle) && duringDialog) { const action = duringDialog; duringDialog = undefined; await action(); }
       const label = title.startsWith("Completion auditor") ? auditor : title.includes("already active") ? replacement : title.startsWith("Confirm") ? decision : "1.";
       return choices.find(choice => choice.includes(label)) ?? choices[0];
     },
@@ -62,6 +68,7 @@ async function open(manager) {
     const stream = new AssistantMessageEventStream();
     stream.push({ type: "start", partial: value }); stream.push({ type: "done", reason: value.stopReason, message: value }); return stream;
   };
+  return { ...created, services: { cwd, agentDir, modelRuntime: runtime, settingsManager: settings, resourceLoader: loader, diagnostics: [] }, diagnostics: [] };
 }
 async function run(prompt, nextSteps) {
   steps = [...nextSteps];
@@ -73,8 +80,7 @@ async function run(prompt, nextSteps) {
 }
 async function reopen() {
   const file = session.sessionManager.getSessionFile();
-  await session.abort(); session.dispose();
-  await open(SessionManager.open(file));
+  assert.equal((await host.switchSession(file)).cancelled, false);
 }
 async function checkProposal(selectedMode, label) {
   const before = dialogs.length;
@@ -84,7 +90,7 @@ async function checkProposal(selectedMode, label) {
   assert.equal(latestDraft().data.mode, selectedMode);
 }
 try {
-  await open(SessionManager.create(cwd, join(work, "sessions")));
+  host = await createAgentSessionRuntime(({ sessionManager, sessionStartEvent }) => open(sessionManager, sessionStartEvent), { cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions")) });
   await run(`/${mode} First discussion`, [
     { name: "read", args: { path: "reference.txt" } },
     { name: "goal_question", args: { question: "Which format?", options: ["CSV", "JSON"], allow_custom: false } },
@@ -110,7 +116,10 @@ try {
   } else if (scenario === "branches") {
     const firstLeaf = session.sessionManager.getLeafId();
     const secondMode = mode === "goal" ? "sisyphus" : "goal";
-    await run(`/${secondMode} Second discussion`, [proposal(secondMode, "Second discussion")]);
+    await run(`/${secondMode} Second discussion`, [
+      { name: "goal_questionnaire", args: { questions: [{ id: "branch", question: "Second branch only?", options: ["Unique second answer"], allow_custom: false }] } },
+      proposal(secondMode, "Second discussion"),
+    ]);
     const secondLeaf = session.sessionManager.getLeafId();
     await session.navigateTree(firstLeaf);
     await checkProposal(mode, "First branch restored");
@@ -125,14 +134,66 @@ try {
     await checkProposal(secondMode, "Second branch after reopen");
     decision = "Confirm";
     await run("Confirm only this selected discussion.", [proposal(secondMode, "Second branch after reopen")]);
+    const confirmedText = results.at(-1).content.map(c => c.text ?? "").join("");
+    assert.match(confirmedText, /Second branch only\?.*Unique second answer/s, "selected branch's questionnaire answers survive reopen");
+    assert.doesNotMatch(confirmedText, /Output\?/, "other branch's questionnaire answers do not leak");
     await run("Inspect the confirmed goal.", [{ name: "get_goal", args: {} }]);
     assert.equal(results.at(-1).details.goal.sisyphus, secondMode === "sisyphus");
     assert.match(results.at(-1).details.goal.objective, /Second branch after reopen/);
     assert.equal(results.at(-1).details.goal.skipAuditor, true);
-  } else if (scenario === "stale") {
+  } else if (scenario === "fork" || scenario === "fork-tweak") {
+    if (scenario === "fork-tweak") {
+      decision = "Confirm";
+      await run("Confirm this goal before discussing a revision.", [proposal(mode, "Existing approved goal")]);
+      decision = "Continue";
+      await run("/goal-tweak Discuss a possible revision", [proposal(mode, "Possible revision")]);
+      assert.equal(latestDraft().data.mode, "tweak");
+    }
+    const before = files();
+    const oldId = session.sessionId;
+    assert.equal((await host.fork(session.sessionManager.getLeafId(), { position: "at" })).cancelled, false);
+    assert.notEqual(session.sessionId, oldId, "real host created a distinct forked session");
+    if (scenario === "fork") await checkProposal(mode, "Inherited discussion only");
+    else {
+      assert(!session.getActiveToolNames().includes("propose_goal_draft"), "fork invalidates a detached tweak");
+      assert(latestDraft().data.clearedAt, "detached tweak receives a branch-local tombstone");
+      const focus = session.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-focus");
+      assert.equal(focus.data.focusedGoalId, null, "fork explicitly detaches autonomous execution authority");
+    }
+    assert.equal(shutdownFiles.length, before.length);
+    assert.deepEqual(files(), shutdownFiles, "fork changes no approved goal files after outgoing settlement");
+  } else if (scenario === "active-refine") {
     decision = "Confirm";
+    afterTool = async event => {
+      if (event.toolName !== "propose_goal_draft" || !event.details.goal) return;
+      afterTool = undefined;
+      decision = "Continue";
+      await session.prompt("/goal-tweak Discuss a possible change before continuing work");
+    };
+    const approved = proposal(mode, "Existing active goal");
+    approved.args.auto_continue = true;
+    await run("Confirm, then immediately discuss a possible revision.", [approved, proposal(mode, "Possible change")]);
+    await delay(150); // Three native continuation retry intervals.
+    assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 0, "active drafting must not dispatch autonomous goal checkpoints");
+    assert.equal(latestDraft().data.mode, "tweak");
+  } else if (scenario === "selector-stale") {
+    const firstDraft = latestDraft();
+    const before = requests;
+    duringDialogTitle = "A ";
+    duringDialog = () => session.navigateTree(firstDraft.id);
+    await session.prompt(`/${mode === "goal" ? "sisyphus" : "goal"} Rejected replacement`);
+    assert.equal(requests, before, "stale replacement decision starts no discussion request");
+    assert.equal(latestDraft().data.mode, firstDraft.data.mode);
+    assert.equal(latestDraft().data.seed, firstDraft.data.seed);
+  } else if (["stale", "stale-question", "stale-questionnaire"].includes(scenario)) {
+    decision = "Confirm";
+    if (scenario !== "stale") duringDialogTitle = "Race question?";
     duringDialog = () => session.prompt("/goal-cancel");
-    await run("Review a proposal while cancelling its draft separately.", [proposal(mode, "Cancelled during confirmation")]);
+    const question = { question: "Race question?", options: ["Old answer"], allow_custom: false };
+    const step = scenario === "stale" ? proposal(mode, "Cancelled during confirmation")
+      : scenario === "stale-question" ? { name: "goal_question", args: question }
+      : { name: "goal_questionnaire", args: { questions: [{ id: "old", ...question }] } };
+    await run("Answer a dialog while cancelling its draft separately.", [step]);
     assert.deepEqual(files(), [], "returning confirmation must not resurrect a cancelled draft");
     assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /stale|changed|cancelled/i);
     assert(latestDraft().data.clearedAt);
@@ -142,6 +203,8 @@ try {
   assert(!results.some(r => ["write", "edit", "bash"].includes(r.toolName)), "no unconfirmed implementation work");
   console.log(JSON.stringify({ passed: true, scenario, mode, requests, summaries, dialogs: dialogs.length }));
 } finally {
-  if (session) { await session.abort(); session.dispose(); }
+  if (session) await session.abort();
+  if (host) await host.dispose();
+  else session?.dispose();
   rmSync(work, { recursive: true, force: true });
 }

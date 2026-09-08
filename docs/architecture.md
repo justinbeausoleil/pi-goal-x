@@ -212,6 +212,10 @@ selected branch's latest draft entry replaces memory, including its auditor
 choice and questionnaire answers. Awaited drafting decisions are bound to the
 draft object, session/focus generation and content-based work revision; late
 answers cannot recreate a cancelled/replaced draft or apply to changed work.
+Drafting is excluded from the shared actionable-continuation predicate, so an
+active goal can remain active while its user discusses a revision. The native
+host's fork start detaches focus before restoring drafts or scheduling work;
+a normal discussion can survive, while a detached tweak is tombstoned.
 
 `/goal-tweak <change>` starts the same guided-confirmation process for the
 focused goal. It preserves the task list when no replacement is proposed and

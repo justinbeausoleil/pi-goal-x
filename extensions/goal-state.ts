@@ -381,7 +381,7 @@ export function createGoalCore(
 	}
 
 	function isActionableContinuationGoal(goalId: string | null | undefined): goalId is string {
-		return !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue;
+		return !draftingProfile && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue;
 	}
 
 	function isStaleCheckpointBlockedToolCall(toolName: string): boolean {

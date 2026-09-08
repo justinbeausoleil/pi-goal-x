@@ -485,3 +485,33 @@
   human-only 200-node before/after revisions, external-edit proposals, all
   lifecycle/setting preservation and qualification/review. Scope completion
   judgment remains 011. No package, Qwen or adoption acceptance is claimed.
+
+### Ticket 005 native host fork and active drafting follow-up
+
+- Interim Standards and Spec reviews cleared a73ecb1...fec25f3 for the completed
+  draft subset. Spec independently passed the native cases and two additional
+  probes: branch-specific questionnaire echo and navigation during the draft
+  replacement selector. Both probes are now permanent worker coverage.
+- The worker now uses Pi's actual AgentSessionRuntime for reopen/fork, including
+  shutdown and emitted session-start reasons. A native fork preserved a live
+  tweak and inherited focus. On reason=fork, the extension now appends explicit
+  null focus before rehydration/continuation, using existing focus mutation
+  with no project-ledger event. Normal discussion inheritance passes; detached
+  tweaks are tombstoned. 006 still owns the remaining ownership table.
+- An initial fork comparison included the outgoing host's ordinary shutdown
+  save (only updatedAt/revision changed), so exact pre-shutdown byte comparison
+  failed after the authority fix. The passive observer now captures after that
+  outgoing settlement and before the fork runtime exists; every resulting
+  approved-goal byte must equal that boundary snapshot. Failed attempts remain
+  in draft-fork-tweak-*-green.log despite their provisional filenames; actual
+  passing evidence is draft-fork-tweak-followup.log and its Sisyphus counterpart.
+- Active tweak refinement exposed 64 autonomous checkpoint dispatches in a
+  150ms native observation window. The shared actionable predicate now excludes
+  drafting, protecting both scheduling callbacks and stale work dispatch.
+  Draft-active-refine-boundary.log retains the red; followup logs show zero
+  checkpoint dispatches. Approved lifecycle status is unchanged.
+- Native matrix now has nine scenarios in each mode: cancellation, two branches,
+  stale proposal/question/questionnaire, stale replacement selector, discussion
+  fork, detached tweak fork, and active refinement. Follow-up native scenarios,
+  86 targeted drafting/questionnaire/task/session checks, type and lint pass.
+  Final slice review/qualification and retained-scope work remain outstanding.
