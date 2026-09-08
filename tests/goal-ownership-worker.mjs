@@ -96,7 +96,78 @@ try {
   assert.equal(approved.status, "paused");
   assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
   assert(earlyLeaf);
-  if (scenario.startsWith("record-")) {
+  if (scenario.startsWith("child-")) {
+    if (scenario === "child-nested") process.env.PI_SUBAGENT_DEPTH = "3";
+    else process.env.PI_SUBAGENT_CHILD = "1";
+    if (scenario === "child-fresh") await host.newSession();
+    else if (["child-fork", "child-nested"].includes(scenario)) await host.fork(earlyLeaf, {position: "at"});
+    else await host.switchSession(session.sessionManager.getSessionFile());
+    const parentAfterShutdown = readGoal(), before = requests.length;
+    const goalEntries = () => session.sessionManager.getBranch().filter(entry => entry.type === "custom" && entry.customType?.startsWith("pi-goal"));
+    const entriesBefore = goalEntries();
+    assert(!session.getActiveToolNames().some(name => /^(create_goal|get_goal|update_goal|set_goal_tasks|update_goal_task)$/.test(name)));
+    await delay(100);
+    assert.equal(requests.length, before, "delegated loading does not continue parent work");
+    await run("Delegated assignment: inspect verified.txt only and keep this dedicated child instruction.", [{name: "read", args: {path: "verified.txt"}}]);
+    const request = requests[before].context;
+    assert.match(JSON.stringify(request.messages), /dedicated child instruction/);
+    assert(!request.messages.some(message => ["pi-goal-context", "pi-goal-event", "pi-goal-audit-event"].includes(message.customType)));
+    assert.doesNotMatch(request.systemPrompt ?? "", /PI GOAL ACTIVE|PI GOAL HELD/);
+    assert.deepEqual(goalEntries(), entriesBefore, "child does not append parent control state");
+    assert.equal(readGoal(), parentAfterShutdown, "child leaves parent progress and accounting untouched");
+    assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
+  } else if (["storage-resume", "storage-resume-confirm"].includes(scenario)) {
+    const goals = join(cwd, ".pi", "goals"), ledger = join(goals, "goal_events.jsonl");
+    const before = readGoal(), ledgerBefore = readFileSync(ledger, "utf8"), requestsBefore = requests.length;
+    chmodSync(goals, 0o555);
+    try {
+      if (scenario.endsWith("-confirm")) await host.switchSession(session.sessionManager.getSessionFile());
+      else await session.prompt("/goal-resume");
+      await delay(100);
+      assert.equal(readGoal(), before);
+      assert.equal(readFileSync(ledger, "utf8"), ledgerBefore, "failed resume cannot append a success event");
+      assert.equal(requests.length, requestsBefore, "failed resume cannot authorize continuation");
+      assert.match(notices.at(-1), /failed|not.*saved|not.*resumed|storage/i);
+      assert.deepEqual(errors, []);
+    } finally { chmodSync(goals, 0o755); }
+    await run("Inspect the failed resume without changing it.", [{name: "get_goal", args: {}}]);
+    assert.equal(goalResult().status, "paused");
+  } else if (["storage-write", "storage-lock", "storage-ledger", "storage-conflict"].includes(scenario)) {
+    await session.prompt("/goal-resume");
+    const goals = join(cwd, ".pi", "goals"), ledger = join(goals, "goal_events.jsonl"), lock = join(goals, ".locks", approved.id + ".lock");
+    const before = readGoal(), ledgerBefore = readFileSync(ledger, "utf8"), warningCount = warnings.length;
+    const staleRevision = results.findLast(r => r.details?.work_revision).details.work_revision;
+    if (scenario === "storage-write") chmodSync(goals, 0o555);
+    if (scenario === "storage-lock") writeFileSync(lock, JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()}));
+    if (scenario === "storage-ledger") { renameSync(ledger, join(work, "ledger-backup")); mkdirSync(ledger); }
+    try {
+      await run("Complete the remaining task through the public mutation tool.", [{name: "update_goal_task", args: {task_id: "remaining", status: "complete", expected_work_revision: "$current", evidence: "Fixture checked the remaining work."}}]);
+      if (["storage-write", "storage-lock"].includes(scenario)) {
+        assert.equal(readGoal(), before, "failed authoritative writes preserve exact project state");
+        assert.equal(readFileSync(ledger, "utf8"), ledgerBefore, "failed state writes append no success events");
+        const diagnostic = [...warnings.slice(warningCount), ...results.at(-1).content.map(c => c.text ?? "")].join("\n");
+        assert.match(diagnostic, /denied|EACCES|lock|failed|write/i);
+      } else if (scenario === "storage-ledger") {
+        assert.match(warnings.slice(warningCount).join("\n"), /ledger diagnostic/);
+        assert.match(readGoal(), /Fixture checked the remaining work/);
+      } else {
+        await run("Try a stale task mutation without replacing current progress.", [{name: "update_goal_task", args: {task_id: "remaining", status: "pending", expected_work_revision: staleRevision}}]);
+        assert.match(results.at(-1).content.map(c => c.text ?? "").join("\n"), /stale.*expected_work_revision|current work_revision/i);
+      }
+    } finally {
+      chmodSync(goals, 0o755);
+      if (scenario === "storage-lock") rmSync(lock, {force: true});
+      if (scenario === "storage-ledger") { rmSync(ledger, {recursive: true}); renameSync(join(work, "ledger-backup"), ledger); }
+    }
+    await session.prompt("/goal-pause");
+    await run("Inspect the authoritative outcome after the fault is removed.", [{name: "get_goal", args: {}}]);
+    const expected = scenario === "storage-write" ? "pending" : "complete";
+    assert.equal(goalResult().taskList.tasks.find(task => task.id === "remaining").status, expected);
+    await host.switchSession(session.sessionManager.getSessionFile());
+    await run("Inspect the same outcome after native reopen.", [{name: "get_goal", args: {}}]);
+    assert.equal(goalResult().taskList.tasks.find(task => task.id === "remaining").status, expected);
+    assert.equal(goalResult().taskList.tasks.find(task => task.id === "verified").evidence, approved.taskList.tasks[0].evidence);
+  } else if (scenario.startsWith("record-")) {
     const activeFile = join(cwd, approved.activePath), outside = join(work, "outside-user-file.md");
     const original = readGoal(), split = original.indexOf("\n\n# Goal Prompt"), metadata = JSON.parse(original.slice(0, split));
     writeFileSync(outside, "User-owned file outside goal storage");

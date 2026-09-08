@@ -1074,3 +1074,41 @@
   reproductions are storage-*-active.log, with the pending fixture fragment
   preserved in Data006/storage-fixture-fragment.json. Broader006 checks, child
   qualification and all007–014 work remain; no006 checkbox is yet complete.
+
+### Ticket 006 authoritative write failures and delegated sessions
+
+- Both independent reviews clearba9a4b8's eight record cases; frozen full passes
+ 1117/1117 (76files,131.8s). Correction to the prior note: its final lint process
+  had not been inspected before writing the pass claim. records-final-lint.log
+  actually reports an unreachable return in the async snapshot reader. That
+  redundant return is removed here; current type/lint both pass. ba9a4b8 was not
+  pushed while final checks were unresolved.
+- Native resumed public task writes reproduce denied write errors escaping
+  turn_end/turn_start and then agent_end persistence. flushTurn now rejects
+  unsaved buffered work through its existing rejection/owed-usage path and
+  reports actionable storage diagnostics. Best-effort persistence reports IO
+  failure without throwing out of host lifecycle hooks. Active files and
+  success-ledger bytes remain exactly unchanged while access is denied; the
+  task remains pending after access restoration, pause, get_goal and reopen.
+- A fresh live lock preserves the pending transaction as upstream requires,
+  now with one diagnostic per repeated flush failure. Disk/ledger stay unchanged
+  while locked; the existing next-boundary retry commits after release. Native
+  ledger-only EISDIR failure preserves the saved task result with a warning,
+  while stale work revision returns current revision guidance without rollback.
+- A caller audit adds a denied-resume reproduction: setGoal used to commit
+  memory before saving, allowing a false resume notification/ledger event.
+  Existing-goal state changes now use GoalService.apply and return success to
+  the command, paused-reopen confirmation and debug-widget callers. Failed
+  command/dialog resumes produce neither a success event nor a checkpoint;
+  actual project status stays paused. Prior reds and intermediate hook errors
+  remain in storage-*.log; no test expectation is weakened for write failure.
+- Ten native storage/child cases pass. Four actual host child variants
+  (new/fork/reopen/nested) load only child context filtering, keep the dedicated
+  assignment, expose no parent goal controls, append no parent control state,
+  issue no inherited continuation and preserve settled parent bytes/evidence.
+  Existing native 200-task manual compaction with actual Oracle/auditor child
+  transport also passes (30executor,7summaries,4effects) and checks their dedicated
+  prompts/tool profiles, no executor projection, and Oracle read-only tools.
+- Current120 targeted service/transaction/core/draft/unfocus/pool checks and
+  type/lint pass. The full006 acceptance review and frozen final qualification
+  follow; criteria remain unchecked until that evidence and review are complete.

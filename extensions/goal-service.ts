@@ -220,6 +220,7 @@ export class GoalService {
 	 */
 	flushTurn(ctx: GoalServiceContext): GoalRecord | null {
 		if (!this.turn.active) return null;
+		const previousError = this.flushError;
 		this.flushError = null;
 		const goal = this.turn.goal;
 		if (!goal) {
@@ -230,7 +231,8 @@ export class GoalService {
 		try {
 			lock = acquireGoalLock(ctx, goal.id);
 		} catch {
-			this.flushError = "Goal storage is locked; pending changes have not been persisted.";
+			this.flushError = "Goal storage is locked; pending changes have not been persisted. They will retry at the next turn boundary after the lock is released.";
+			if (previousError !== this.flushError) this.ref.onDiagnostic({severity: "warning", source: "storage", goalId: goal.id, message: this.flushError});
 			// Another writer holds the lock; preserve the buffer so a later turn
 			// boundary can retry it instead of silently losing the mutation.
 			return null;
@@ -263,16 +265,19 @@ export class GoalService {
 			if (this.ref.getFocusedGoalId() === written.id) this.ref.setFocused(written);
 			else this.ref.getPool().set(written.id, written);
 			return written;
+		} catch (error) {
+			this.rejectBufferedWork(ctx, this.readFreshDiskGoal(ctx, goal), "Goal storage write failed; buffered work was rejected. Restore storage access, use /goal-refresh, and retry. " + String(error));
+			return null;
 		} finally {
 			lock.release();
 		}
 	}
 
 	/** Discard stale work independently of the lock; incurred usage is still owed. */
-	private rejectBufferedWork(ctx: GoalServiceContext, disk: GoalRecord | null): void {
+	private rejectBufferedWork(ctx: GoalServiceContext, disk: GoalRecord | null, message?: string): void {
 		const goal = this.turn.goal!;
 		const expected = this.turnBase ?? goal;
-		this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
+		this.flushError = message ?? `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
 		this.turn.active = false;
 		this.turn.goal = null;
 		this.turn.ledger = [];
@@ -872,6 +877,10 @@ export class GoalService {
 			this.trackBaseline(written.id, written.usage);
 			this.ref.setFocused(written);
 			return written;
+		} catch (error) {
+			this.ref.onDiagnostic({severity: "warning", source: "storage", goalId: current.id,
+				message: "Goal persistence failed; changes have not been saved. Restore storage access and retry /goal-refresh. " + String(error)});
+			return null;
 		} finally {
 			lock.release();
 		}

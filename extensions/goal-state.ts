@@ -124,7 +124,7 @@ export interface GoalCore {
 	updateUI(ctx: ExtensionContext): void;
 	clearGoalWidget(ctx: ExtensionContext): void;
 	loadState(ctx: ExtensionContext): Promise<void>;
-	setGoal(next: GoalRecord | null, ctx: ExtensionContext, shouldPersist?: boolean, focusReason?: GoalFocusReason): void;
+	setGoal(next: GoalRecord | null, ctx: ExtensionContext, shouldPersist?: boolean, focusReason?: GoalFocusReason): boolean;
 	archiveCurrentGoal(ctx: ExtensionContext, reason: StopReason | undefined): GoalRecord | null;
 	stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): void;
 	pauseActiveGoal(ctx: ExtensionContext): void;
@@ -773,8 +773,19 @@ export function createGoalCore(
 		updateUI(ctx);
 	}
 
-	function setGoal(next: GoalRecord | null, ctx: ExtensionContext, shouldPersist = true, focusReason?: GoalFocusReason): void {
+	function setGoal(next: GoalRecord | null, ctx: ExtensionContext, shouldPersist = true, focusReason?: GoalFocusReason): boolean {
 		const previousGoalId = state.goal?.id ?? null;
+		if (shouldPersist && next && next.id === previousGoalId) {
+			try {
+				const result = goalService.apply(ctx, { reconcile: false, mutate: () => next! });
+				if (!result.ok) throw new Error(result.message ?? "State write was rejected.");
+				next = result.goal;
+				shouldPersist = false;
+			} catch (error) {
+				ctx.ui.notify("Goal state change failed; no change was saved. Check goal storage and retry. " + String(error), "warning");
+				return false;
+			}
+		}
 		state.goal = next;
 		const focusChanged = previousGoalId !== focusedGoalId;
 		if (focusChanged) {
@@ -790,6 +801,7 @@ export function createGoalCore(
 		}
 		if (shouldPersist) persist(ctx);
 		updateUI(ctx);
+		return true;
 	}
 
 	function archiveCurrentGoal(ctx: ExtensionContext, reason: StopReason | undefined): GoalRecord | null {

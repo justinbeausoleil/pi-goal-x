@@ -361,7 +361,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			const current = core.state.goal;
 			const shouldResume = await ctx.ui.confirm("Resume paused goal?", `Goal: ${current.objective}`);
 			if (shouldResume) {
-				core.setGoal({ ...current, status: "active", autoContinue: true, stopReason: undefined, pauseReason: undefined, pauseSuggestedAction: undefined }, ctx);
+				if (!core.setGoal({ ...current, status: "active", autoContinue: true, stopReason: undefined, pauseReason: undefined, pauseSuggestedAction: undefined }, ctx)) return;
 				core.releaseContinuationHold(ctx);
 			}
 		}

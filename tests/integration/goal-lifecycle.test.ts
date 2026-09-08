@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+for (const scenario of ["storage-write", "storage-lock", "storage-ledger", "storage-conflict", "storage-resume", "storage-resume-confirm", "child-fresh", "child-fork", "child-reopen", "child-nested"]) test(`S2: native ${scenario} preserves ownership and authoritative mutation outcomes`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
+		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
+	});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const scenario of ["record-corrupt", "record-symlink", "record-path", "record-snapshot", "record-snapshot-status", "record-snapshot-task", "record-snapshot-scope", "record-snapshot-path"]) test(`S2: native ${scenario} preserves valid task progress and unrelated files`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},

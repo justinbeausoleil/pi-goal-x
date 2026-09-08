@@ -139,7 +139,6 @@ async function tryParsePoolSnapshotAsync(filePath: string, root: string): Promis
 	} catch {
 		return null;
 	}
-	return null;
 }
 
 /** A cache must never normalize corrupt data into authoritative project work. */

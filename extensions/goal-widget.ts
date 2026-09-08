@@ -305,7 +305,7 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 			const next = cloneGoal(core.state.goal);
 			next.taskList = { tasks, blockCompletion: false, proposedAt: now };
 			next.updatedAt = now;
-			core.setGoal(next, ctx);
+			if (!core.setGoal(next, ctx)) return;
 			ctx.ui.notify("Sample tasks injected (3 tasks, 1 completed)", "info");
 		}
 

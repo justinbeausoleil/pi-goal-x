@@ -363,7 +363,7 @@ export function registerGoalCommands(core: GoalCore): void {
 			return;
 		}
 		if (!core.state.goal) throw new Error("Goal disappeared during resume validation.");
-		core.setGoal(
+		if (!core.setGoal(
 			{
 				...mergeGoalPromptFromDisk(ctx, core.state.goal),
 				status: "active",
@@ -373,7 +373,7 @@ export function registerGoalCommands(core: GoalCore): void {
 				pauseSuggestedAction: undefined,
 			},
 			ctx,
-		);
+		)) return;
 		ctx.ui.notify("Goal resumed.", "info");
 		core.armFocusedContinuation(ctx);
 		// Append ledger event for resumption
