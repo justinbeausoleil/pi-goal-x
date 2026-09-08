@@ -305,7 +305,8 @@ test("the null entry produced by unfocus survives resume/tree and suppresses opt
 		});
 		await resumed.handlers.get("session_tree")?.({ newLeafId: "focused-branch", oldLeafId: "unfocused-branch" }, resumed.ctx);
 		prompt = await resumed.handlers.get("context")?.({ messages: [] }, resumed.ctx);
-		assert.match(prompt?.messages?.at(-1)?.content ?? "", new RegExp(`\\[PI GOAL ACTIVE goalId=${fixture.goal.id}\\]`));
+		assert.match(prompt?.messages?.at(-1)?.content ?? "", new RegExp(`\\[PI GOAL HELD goalId=${fixture.goal.id}\\]`));
+		assert.match(prompt?.messages?.at(-1)?.content ?? "", /automatic goal work remains held/);
 
 		sessionEntries.splice(0, sessionEntries.length, {
 			type: "custom",
@@ -325,7 +326,8 @@ test("the null entry produced by unfocus survives resume/tree and suppresses opt
 		});
 		await resumed.handlers.get("session_tree")?.({ newLeafId: "second-goal-branch", oldLeafId: "unfocused-branch" }, resumed.ctx);
 		prompt = await resumed.handlers.get("context")?.({ messages: [] }, resumed.ctx);
-		assert.match(prompt?.messages?.at(-1)?.content ?? "", new RegExp(`\\[PI GOAL ACTIVE goalId=${writtenSecondGoal.id}\\]`));
+		assert.match(prompt?.messages?.at(-1)?.content ?? "", new RegExp(`\\[PI GOAL HELD goalId=${writtenSecondGoal.id}\\]`));
+		assert.match(prompt?.messages?.at(-1)?.content ?? "", /automatic goal work remains held/);
 
 		sessionEntries.splice(0, sessionEntries.length, {
 			type: "custom",

@@ -153,7 +153,7 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	// #4 + C9 fix + Phase 5 C3: gate in-turn tool calls based on lifecycle state.
 	pi.on("tool_call", async (event, ctx) => {
-		if ((hasActiveDraft(core) || (draftingRun && core.draftContinuationHeld)) && !draftAllowedTools.has(event.toolName)) {
+		if ((hasActiveDraft(core) || (draftingRun && core.continuationHeld)) && !draftAllowedTools.has(event.toolName)) {
 			return { block: true, reason: "This drafting run has no approval to start goal work. Continue the discussion or yield after cancellation; wait for a fresh user request or confirmed goal." };
 		}
 		const stoppedGoalId = core.currentTurnStoppedGoalId();
@@ -388,6 +388,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.auditMessages.clear();
 		core.goalService.flushTurn(ctx); // P1-3: persist any buffered transaction before reload
 		await core.loadState(ctx);
+		core.continuationHeld = true;
 		rehydrateDraft(core, ctx);
 		syncTerminalInputPause(core, ctx);
 		core.beginAccounting();
@@ -413,7 +414,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		const getPromptLedger = () => promptLedger ??= { events: core.state.goal ? goalRuntimeEvents(ctx, core.state.goal.id) : [], malformed: 0 };
 
 		if (!core.state.goal) {
-			if (hasActiveDraft(core) || (draftingRun && core.draftContinuationHeld)) return "[PI GOAL DISCUSSION]\nNo goal has been approved in this discussion. Clarify or propose with drafting tools; read-only reconnaissance is allowed. After cancellation, yield for fresh user intent. Do not start implementation work.";
+			if (hasActiveDraft(core) || (draftingRun && core.continuationHeld)) return "[PI GOAL DISCUSSION]\nNo goal has been approved in this discussion. Clarify or propose with drafting tools; read-only reconnaissance is allowed. After cancellation, yield for fresh user intent. Do not start implementation work.";
 			const openCount = otherOpenGoalCount(core.goalsById, null);
 			if (openCount > 0) {
 				return unfocusedOpenGoalsPrompt(openCount);
@@ -436,13 +437,14 @@ export function registerGoalEvents(core: GoalCore): void {
 				goal.status === "budget_limited" ? "Budget exhausted: summarize what was accomplished and what remains; do not start substantive work. Raise or remove the budget and resume before goal work can continue." : "",
 				budgetLine(goal), "Continue discussion or read-only review; do not implement the pending proposal."].filter(Boolean).join("\n");
 		}
-		const discussionHeld = hasActiveDraft(core) || core.draftContinuationHeld;
-		const stoppedContext = scopePrompt || (core.state.goal.status === "active" && !discussionHeld) ? "" : [
+		const workHeld = hasActiveDraft(core) || core.continuationHeld;
+		const drafting = hasActiveDraft(core) || draftingRun;
+		const stoppedContext = scopePrompt || (core.state.goal.status === "active" && !workHeld) ? "" : [
 			`work_revision: ${goalWorkRevision(core.state.goal)}`,
 			'Retained requirements: get_goal(section="scope"). Plan removal and settings do not waive them.',
 			untrustedObjectiveBlock(core.state.goal), taskListBlock(core.state.goal, settings, 0),
 			verificationContractBlock(core.state.goal, settings), budgetLine(core.state.goal),
-			discussionHeld ? "Draft discussion is active or cancelled; automatic goal work is held. Confirm the revision or use /goal-resume after cancellation to continue when the lifecycle and budget allow it." : "",
+			workHeld ? drafting ? "Draft discussion is active or cancelled; automatic goal work is held. Confirm the revision or use /goal-resume after cancellation to continue when the lifecycle and budget allow it." : "Automatic goal work is held after discussion or session navigation. Use /goal-focus or /goal-resume to continue when the lifecycle and budget allow it." : "",
 		].filter(Boolean).join("\n");
 		let auditorExtra = "";
 		try {
@@ -485,9 +487,9 @@ export function registerGoalEvents(core: GoalCore): void {
 		const activeGoal = core.state.goal;
 		const holdReminder = scopePrompt
 			? "\n\nAny work described above waits for human scope confirmation. Review the proposed changes and retained requirements; do not implement them yet."
-			: discussionHeld ? "\n\nAny work described above waits for confirmation or explicit resumption. This discussion grants no new implementation authority." : "";
-		let prompt = (scopePrompt ?? (discussionHeld
-			? `[PI GOAL DISCUSSION goalId=${activeGoal.id}]\nApproved lifecycle: active.\n${stoppedContext}\n${hasActiveDraft(core) || draftingRun ? "Continue clarification or read-only reconnaissance; do not start implementation. After cancellation, yield for fresh user intent." : "Respond only to the user's fresh request; automatic goal work remains held."}`
+			: workHeld ? "\n\nAny work described above waits for confirmation or explicit resumption. This discussion grants no new implementation authority." : "";
+		let prompt = (scopePrompt ?? (workHeld
+			? `[PI GOAL ${drafting ? "DISCUSSION" : "HELD"} goalId=${activeGoal.id}]\nApproved lifecycle: active.\n${stoppedContext}\n${drafting ? "Continue clarification or read-only reconnaissance; do not start implementation. After cancellation, yield for fresh user intent." : "Respond only to the user's fresh request; automatic goal work remains held."}`
 			: goalPrompt(activeGoal, settings))) + auditorExtra;
 		// F5: [GOAL STALLED] steering note when the detector fired.
 		if (pendingStall?.goalId === activeGoal.id) prompt += pendingStall.text;

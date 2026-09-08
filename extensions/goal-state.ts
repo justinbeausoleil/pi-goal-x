@@ -75,8 +75,8 @@ export interface GoalCore {
 	exitGoalModal(): void;
 	auditAborted: boolean;
 	goalWorkToolCalledThisTurn: boolean;
-	/** Draft discussion, including cancellation, holds work until explicit resumption. */
-	draftContinuationHeld: boolean;
+	/** Draft discussion/cancellation and tree navigation hold automatic work until explicit resumption. */
+	continuationHeld: boolean;
 	tasksEnabled: boolean;
 	debugMode: boolean;
 	terminalInputUnsubscribe: (() => void) | null;
@@ -387,7 +387,7 @@ export function createGoalCore(
 	}
 
 	function isActionableContinuationGoal(goalId: string | null | undefined): goalId is string {
-		return !core.draftContinuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue && !scopeProposalWarning(state.goal);
+		return !core.continuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue && !scopeProposalWarning(state.goal);
 	}
 
 	function isStaleCheckpointBlockedToolCall(toolName: string): boolean {
@@ -447,7 +447,7 @@ export function createGoalCore(
 	}
 
 	function armFocusedContinuation(ctx: ExtensionContext): void {
-		core.draftContinuationHeld = false;
+		core.continuationHeld = false;
 		beginAccounting();
 		if (state.goal?.status === "active" && state.goal.autoContinue) queueContinuation(ctx, true);
 	}
@@ -720,7 +720,7 @@ export function createGoalCore(
 	}
 
 	async function loadState(ctx: ExtensionContext): Promise<void> {
-		core.draftContinuationHeld = false;
+		core.continuationHeld = false;
 		goalsById = await readActiveGoalPoolAsync(ctx);
 		tasksEnabled = !loadGoalSettings(ctx.cwd).disableTasks;
 		focusRevision += 1; // Session reload/tree navigation invalidates pending async focus operations.
@@ -904,7 +904,7 @@ export function createGoalCore(
 			}] : []),
 		],
 		});
-		core.draftContinuationHeld = false;
+		core.continuationHeld = false;
 		if (result.focusChanged) appendFocusEntry(result.goalId, "created");
 		beginAccounting();
 		ctx.ui.notify(buildGoalRunningNotification(config), "info");
@@ -914,7 +914,7 @@ export function createGoalCore(
 	const core: GoalCore = {
 		pi,
 		dependencies,
-		draftContinuationHeld: false,
+		continuationHeld: false,
 		state,
 		get goalsById() {
 			return goalsById;

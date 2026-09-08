@@ -338,7 +338,7 @@ export function registerGoalCommands(core: GoalCore): void {
 				return;
 			}
 		}
-		if (core.draftContinuationHeld && !hasActiveDraft(core) && core.state.goal?.status === "active" && core.state.goal.autoContinue) {
+		if (core.continuationHeld && !hasActiveDraft(core) && core.state.goal?.status === "active" && core.state.goal.autoContinue) {
 			core.armFocusedContinuation(ctx);
 			ctx.ui.notify("Goal resumed.", "info");
 			return;

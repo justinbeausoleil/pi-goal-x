@@ -915,3 +915,31 @@
   and child isolation. Acceptance remains the existing006 checklist. Initial
   trace finds session_tree calls loadState then queues continuation without an
   explicit navigation hold; the next step is a native reproduction before repair.
+
+### Ticket 006 tree/fork ownership subset
+
+- Ticket005 closure and reviewed runtime are pushed at c5dc4fc. The new native
+  ownership worker creates the goal and contracted task through public tools,
+  writes/independently reads verified.txt, completes the task, then resumes and
+  navigates before queued work dispatch. On the baseline tree navigation wrote
+  unsolicited.txt (tree-first.log); real host fork already detaches correctly.
+- session_tree now applies the existing continuation hold after loadState and
+  before scheduling. The field is renamed continuationHeld across its four
+  modules to reflect both drafting and navigation, with no extra latch/service.
+  Held active context distinguishes actual drafting from navigation and gives
+  explicit focus/resume guidance. Project goal status/scope/progress is unchanged.
+- Native tree/fork follow-ups pass: eight executor requests each, one approved
+  work artifact, zero boundary work/provider requests, and one explicitly
+  authorized post-boundary checkpoint. Tree also passes native compaction while
+  held (two summaries); current disk evidence survives earlier-chat navigation.
+- A new payload assertion initially assumed string content; actual SDK arrays
+  are now read as such. Native compaction initially reported session too small;
+  the fixture now uses the existing small keepRecentTokens=100 setup. Neither
+  failure was a product regression. A prior unit expected active work steering
+  after tree navigation; it now requires the same focused ID with held guidance
+  at both branch switches, preserving explicit-null assertions.
+- All67 drafting/unfocus/pool/session-safety checks, type/lint and unchanged
+  context28/provider7 pass. Evidence stays under Data/pi-goal-x/reliability/006.
+  This subset is uncommitted/unreviewed; remaining006 acceptance still includes
+  reopen/reload/new/explicit-null/missing focus, legacy reconciliation, storage
+  faults, recovery UI and delegated sessions. No006 checkbox is yet complete.

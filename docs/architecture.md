@@ -178,6 +178,12 @@ latest focus entry, scans active goal files, and resolves focus as follows:
    detached without modifying the shared goal or appending a project-global
    focus event.
 
+Native tree navigation reloads current project progress and holds automatic
+continuation until explicit focus/resume. The existing hold used for drafting
+also covers navigation; compaction cannot release it. A held active goal's
+context exposes its approved state and resume guidance without granting work
+authority. Forks append explicit null focus before any scheduling.
+
 Focus is human-owned. No agent tool can switch focus. Lifecycle tools operate
 only on the focused goal.
 

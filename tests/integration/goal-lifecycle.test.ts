@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+for (const scenario of ["tree", "fork"]) test(`S1/S2: native ${scenario} preserves progress without inherited work authority`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
+		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
+	});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const mode of ["goal", "sisyphus"]) for (const scenario of ["draft-affordances", "cancel", "branches", "stale", "stale-question", "stale-questionnaire", "selector-stale", "fork", "fork-tweak", "active-refine", "active-cancel", "active-settings", "paused-refine", "blocked-refine", "scope", "scope-tweak", "scope-external", "scope-external-goal-contract", "scope-external-task-contract", "scope-external-task-title", "scope-external-new-task", "scope-audit", ...["active", "paused", "blocked", "budget_limited"].map(status => `tweak-lifecycle-${status}`)]) {
 	test(`S1/S2: ${mode} draft ${scenario} uses native dialogs and branch state`, { timeout: 15000 }, async () => {
 		const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-draft-worker.mjs", import.meta.url)), scenario, mode], {
