@@ -338,6 +338,11 @@ export function registerGoalCommands(core: GoalCore): void {
 				return;
 			}
 		}
+		if (core.draftContinuationHeld && !hasActiveDraft(core) && core.state.goal?.status === "active" && core.state.goal.autoContinue) {
+			core.armFocusedContinuation(ctx);
+			ctx.ui.notify("Goal resumed.", "info");
+			return;
+		}
 		const resumeGate = validateResumeGoal(core.state.goal);
 		if (!resumeGate.ok) {
 			const level = resumeGate.message.includes("already running") ? "info" : "warning";
@@ -356,9 +361,8 @@ export function registerGoalCommands(core: GoalCore): void {
 			},
 			ctx,
 		);
-		core.beginAccounting();
 		ctx.ui.notify("Goal resumed.", "info");
-		core.queueContinuation(ctx, true);
+		core.armFocusedContinuation(ctx);
 		// Append ledger event for resumption
 		try {
 			core.goalService.appendEvents(ctx, [{
@@ -751,7 +755,7 @@ export function registerGoalCommands(core: GoalCore): void {
 			}
 			clearGoalDrafting(core, ctx);
 			core.clearContinuationState();
-			ctx.ui.notify("Draft cancelled; no goal was created. The execution profile is restored.", "info");
+			ctx.ui.notify(core.state.goal ? "Draft cancelled; the approved goal is unchanged. Use /goal-resume to continue its work." : "Draft cancelled; no goal was created.", "info");
 		},
 	});
 	pi.registerCommand("goal-direct", {

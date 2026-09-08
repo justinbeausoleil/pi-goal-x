@@ -43,6 +43,7 @@ import { buildGoalRunningNotification } from "./widgets/goal-notifications.ts";
 import { GOAL_WIDGET_KEY, GoalWidgetComponent, liveDisplayGoal, makeGoalWidgetFactory, type AuditorWidgetProgress } from "./widgets/goal-widget.ts";
 import type { AuditVerdict } from "./widgets/auditor-dashboard-model.ts";
 import { runGoalCompletionAuditor } from "./goal-auditor.ts";
+import { hasActiveDraft } from "./goal-drafting.ts";
 
 
 
@@ -73,6 +74,8 @@ export interface GoalCore {
 	exitGoalModal(): void;
 	auditAborted: boolean;
 	goalWorkToolCalledThisTurn: boolean;
+	/** Draft discussion, including cancellation, holds work until explicit resumption. */
+	draftContinuationHeld: boolean;
 	tasksEnabled: boolean;
 	debugMode: boolean;
 	terminalInputUnsubscribe: (() => void) | null;
@@ -145,7 +148,7 @@ export function createGoalCore(
 	function assignFocusedGoalId(next: string | null): void {
 		if (focusedGoalId !== next) focusRevision += 1;
 		focusedGoalId = next;
-  if (profileInitialized && !draftingProfile) installGoalToolProfile(tasksEnabled);
+  if (profileInitialized) installGoalToolProfile(tasksEnabled);
 	}
 
 	function focusedOperationToken(goalId: string): { goalId: string; revision: number } {
@@ -283,7 +286,6 @@ export function createGoalCore(
 	// settings (disableTasks). Stage 4 replaces them with the two task tools.
 	let tasksEnabled = true;
  let profileInitialized = false;
- let draftingProfile = false;
 
 	// Transient runtime state: set when the user aborts a running audit via
 	// Escape. No ledger event is appended from the low-level abort callback;
@@ -302,7 +304,11 @@ export function createGoalCore(
 	 */
 	function installGoalToolProfile(tasksEnabledArg: boolean): void {
   profileInitialized = true;
-  draftingProfile = false;
+		if (hasActiveDraft(core)) {
+			tasksEnabled = tasksEnabledArg;
+			installDraftingToolProfile();
+			return;
+		}
 		try {
 			const current = new Set(pi.getActiveTools());
 			for (const knownGoalTool of ALL_REGISTERED_GOAL_TOOLS) current.delete(knownGoalTool);
@@ -326,7 +332,6 @@ export function createGoalCore(
 	 * by an explicit user drafting command and is removed on confirm/cancel.
 	 */
 	function installDraftingToolProfile(): void {
-  draftingProfile = true;
 		try {
 			const current = new Set(pi.getActiveTools());
 			for (const knownGoalTool of ALL_REGISTERED_GOAL_TOOLS) current.delete(knownGoalTool);
@@ -381,7 +386,7 @@ export function createGoalCore(
 	}
 
 	function isActionableContinuationGoal(goalId: string | null | undefined): goalId is string {
-		return !draftingProfile && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue;
+		return !core.draftContinuationHeld && !hasActiveDraft(core) && !!goalId && state.goal?.id === goalId && state.goal.status === "active" && state.goal.autoContinue;
 	}
 
 	function isStaleCheckpointBlockedToolCall(toolName: string): boolean {
@@ -441,6 +446,7 @@ export function createGoalCore(
 	}
 
 	function armFocusedContinuation(ctx: ExtensionContext): void {
+		core.draftContinuationHeld = false;
 		beginAccounting();
 		if (state.goal?.status === "active" && state.goal.autoContinue) queueContinuation(ctx, true);
 	}
@@ -713,6 +719,7 @@ export function createGoalCore(
 	}
 
 	async function loadState(ctx: ExtensionContext): Promise<void> {
+		core.draftContinuationHeld = false;
 		goalsById = await readActiveGoalPoolAsync(ctx);
 		tasksEnabled = !loadGoalSettings(ctx.cwd).disableTasks;
 		focusRevision += 1; // Session reload/tree navigation invalidates pending async focus operations.
@@ -899,15 +906,17 @@ export function createGoalCore(
 			}] : []),
 		],
 		});
+		core.draftContinuationHeld = false;
 		if (result.focusChanged) appendFocusEntry(result.goalId, "created");
 		beginAccounting();
 		ctx.ui.notify(buildGoalRunningNotification(config), "info");
 		if (startNow && state.goal?.autoContinue) queueContinuation(ctx, true);
 	}
 
-	return {
+	const core: GoalCore = {
 		pi,
 		dependencies,
+		draftContinuationHeld: false,
 		state,
 		get goalsById() {
 			return goalsById;
@@ -1049,4 +1058,5 @@ export function createGoalCore(
 		checkStall,
 		replaceGoal,
 	};
+	return core;
 }

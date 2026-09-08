@@ -123,6 +123,7 @@ export function rehydrateDraft(core: GoalCore, ctx: ExtensionContext): void {
 	}
 	activeDrafts.set(core, { mode: session.mode, originalTopic: session.seed, targetGoalId: session.targetGoalId, startedAt: session.startedAt, auditorEnabled: session.auditorEnabled,
 		questionnaireEcho: typeof session.questionnaireEcho === "string" ? session.questionnaireEcho : undefined });
+	core.draftContinuationHeld = true;
 	core.installDraftingToolProfile();
 }
 
@@ -171,6 +172,7 @@ export async function startGoalDrafting(core: GoalCore, ctx: ExtensionContext, m
 		? !(targetGoal?.skipAuditor ?? loadGoalSettings(ctx.cwd).disabled)
 		: !loadGoalSettings(ctx.cwd).disabled;
 	activeDrafts.set(core, { mode, originalTopic: trimmed, targetGoalId: targetGoal?.id, startedAt, auditorEnabled });
+	core.draftContinuationHeld = true;
 	draftSessionEntry(core, { version: 1, mode, seed: trimmed, targetGoalId: targetGoal?.id, startedAt, auditorEnabled });
 	core.clearContinuationState();
 	core.clearActiveAccounting();
@@ -461,6 +463,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				ledger: (written) => [{ type: "goal_tweaked", goalId: written.id, changeSummary: "Goal revised through /goal-tweak drafting.", at: written.updatedAt }, ...(taskResult.value ? [{ type: "task_list_set" as const, goalId: written.id, taskCount: countTasks(written.taskList?.tasks), blockCompletion: taskResult.value.blockCompletion, at: written.updatedAt }] : [])],
 			});
 			if (!result.ok) return { content: [{ type: "text", text: "Goal tweak was not applied: " + result.message }], details: goalDetails(core.state.goal) };
+			core.draftContinuationHeld = false;
 			if (resumed) {
 				try {
 					core.goalService.appendEvents(ctx, [{ type: "goal_resumed", goalId: result.goal.id, reason: "tweak", at: nowIso() }]);

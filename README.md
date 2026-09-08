@@ -78,7 +78,7 @@ Tasks can also have their own completion requirements—for example, “The down
 
 Use `/goal-tweak <change>` to discuss revisions to the goal and its plan. Task tracking, completion requirements, and subtask depth are configurable in `/goal-settings`.
 
-Cancelling a proposal keeps the discussion for refinement. Use `/goal-cancel` to discard the draft. Draft discussions suspend automatic goal continuation; a fork can inherit the discussion but starts without goal execution focus.
+Cancelling a proposal keeps the discussion for refinement. Use `/goal-cancel` to discard the draft, then `/goal-resume` to continue the approved goal's work. Draft discussions suspend automatic goal continuation, including through task-setting changes; a fork can inherit the discussion but starts without goal execution focus.
 
 ## Completion auditor
 

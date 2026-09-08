@@ -20,8 +20,8 @@ process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
 process.env.PI_GOAL_AUTO_CONFIRM = "0";
 const settings = SettingsManager.inMemory({ compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 100 }, retry: { enabled: false } });
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
-const results = [], errors = [], dialogs = [];
-let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles;
+const results = [], errors = [], dialogs = [], notices = [];
+let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles, settingsChoices = [];
 const objective = label => `1) Discuss ${label}. Done when the requirements are agreed.\n2) Implement ${label}. Done when its tests pass.`;
 const proposal = (selectedMode, label) => ({ name: "propose_goal_draft", args: { objective: objective(label), sisyphus: selectedMode === "sisyphus", auto_continue: false } });
 const latestDraft = () => session.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-draft");
@@ -47,10 +47,16 @@ async function open(manager, sessionStartEvent) {
   const created = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager: settings, sessionStartEvent });
   session = created.session;
   await session.bindExtensions({ mode: "rpc", onError: error => errors.push(error), uiContext: {
-    notify() {}, setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
+    notify(message) { notices.push(message); }, setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
     input: async () => "Fixture custom answer", confirm: async () => false,
     select: async (title, choices) => {
       dialogs.push({ title, choices });
+      if (title === "Goal settings" || title.startsWith("disableTasks (")) {
+        const label = settingsChoices.shift();
+        const selected = choices.find(choice => choice.trim().startsWith(label));
+        assert(selected, "scripted public settings choice exists");
+        return selected;
+      }
       if (title.startsWith(duringDialogTitle) && duringDialog) { const action = duringDialog; duringDialog = undefined; await action(); }
       const label = title.startsWith("Completion auditor") ? auditor : title.includes("already active") ? replacement : title.startsWith("Confirm") ? decision : "1.";
       return choices.find(choice => choice.includes(label)) ?? choices[0];
@@ -162,20 +168,43 @@ try {
     }
     assert.equal(shutdownFiles.length, before.length);
     assert.deepEqual(files(), shutdownFiles, "fork changes no approved goal files after outgoing settlement");
-  } else if (scenario === "active-refine") {
+  } else if (["active-refine", "active-cancel", "active-settings"].includes(scenario)) {
     decision = "Confirm";
     afterTool = async event => {
       if (event.toolName !== "propose_goal_draft" || !event.details.goal) return;
       afterTool = undefined;
       decision = "Continue";
+      if (scenario === "active-cancel") duringDialog = () => session.prompt("/goal-cancel");
       await session.prompt("/goal-tweak Discuss a possible change before continuing work");
     };
     const approved = proposal(mode, "Existing active goal");
     approved.args.auto_continue = true;
     await run("Confirm, then immediately discuss a possible revision.", [approved, proposal(mode, "Possible change")]);
+    if (scenario === "active-settings") {
+      settingsChoices = ["disableTasks:", "Set project override to true", "Done"];
+      await session.prompt("/goal-settings");
+      assert.deepEqual(settingsChoices, [], "public settings menu completed");
+      assert(!notices.some(n => /Settings change failed/.test(n)), JSON.stringify(notices));
+      assert.deepEqual(errors, []);
+      assert(session.getActiveToolNames().includes("propose_goal_draft"), "settings refresh preserves the live drafting profile before compaction");
+      await session.compact();
+    }
     await delay(150); // Three native continuation retry intervals.
     assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 0, "active drafting must not dispatch autonomous goal checkpoints");
     assert.equal(latestDraft().data.mode, "tweak");
+    if (scenario === "active-settings") assert(session.getActiveToolNames().includes("propose_goal_draft"), "settings refresh preserves the live drafting profile");
+    if (scenario === "active-cancel") {
+      assert(latestDraft().data.clearedAt, "explicit cancellation persists its tombstone");
+      await run("Inspect the unchanged approved goal.", [{ name: "get_goal", args: {} }]);
+      assert.equal(results.at(-1).details.goal.status, "active");
+      assert.equal(results.at(-1).details.goal.objective, approved.args.objective);
+      await session.compact();
+      await delay(150);
+      assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 0, "cancelled drafting remains stopped after compaction");
+      await run("/goal-resume", [{ name: "update_goal", args: { status: "paused", reason: "Explicit resume verified." } }]);
+      assert.equal(results.at(-1).details.goal.status, "paused", "explicit resume permits a fresh execution response: " + JSON.stringify(results.at(-1)));
+      assert.equal(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length, 1, "explicit resume dispatches once");
+    }
   } else if (scenario === "selector-stale") {
     const firstDraft = latestDraft();
     const before = requests;

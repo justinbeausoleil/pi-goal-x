@@ -515,3 +515,27 @@
   fork, detached tweak fork, and active refinement. Follow-up native scenarios,
   86 targeted drafting/questionnaire/task/session checks, type and lint pass.
   Final slice review/qualification and retained-scope work remain outstanding.
+
+### Ticket 005 continuation review repairs (partial)
+
+- Full tests at aa9ace1 passed 1029/1029 across 76 files. Independent Spec
+  then reproduced explicit /goal-cancel during an active tweak allowing the
+  old drafting turn to rearm work; Standards found disableTasks changes could
+  replace the live drafting tool profile. Neither interim review closes 005.
+- Permanent native regressions reproduce 61 unwanted checkpoints after cancel
+  and loss of drafting tools through the public settings menu. The first two
+  settings probes accidentally consumed dialog choices inside Array.find and
+  passed without changing settings; retained logs are not evidence of the bug.
+  active-settings-public-red.log is the valid settings reproduction.
+- Continuation now checks actual drafting state and a session-local discussion
+  hold, independent of the advertised tools. Explicit cancellation preserves
+  that hold; confirmation, creation, or explicit focus/resume releases it.
+  Reload restores eligibility under D4, with live drafts reinstating the hold.
+  The shared profile installer preserves an active draft while updating the
+  effective task setting. No approved lifecycle or scope is changed by cancel.
+- Native checks include cancel through manual compaction, unchanged approved
+  status/objective, one explicit resume, settings changes, and both goal modes.
+  An initial resume check omitted the required pause reason; the public tool
+  correctly rejected it, and the corrected fixture supplies the reason.
+  Type/lint and 110 targeted drafting/settings/session checks pass. Final native
+  verification and independent review follow; retained scope remains next.
