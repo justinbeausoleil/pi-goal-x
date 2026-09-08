@@ -1,6 +1,6 @@
 # 006: recover sessions without inherited autonomous authority
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; blocker 002 verified, frontier advanced after 005 on 2026-09-08.
 **Blocked by:** 002.
 **Requirements:** G6, G13; seams S1, S2.
 **What to build:** Reopening, forking, navigating, refreshing, or repairing a session preserves project work and obeys explicit focus rules.

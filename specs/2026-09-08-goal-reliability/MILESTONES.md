@@ -891,3 +891,27 @@
   and draft-disabled-derived-unit-red.log. Native assertions also check the
   actual confirmation text, not only stored task absence. This small follow-up
   receives fixed-base independent review and a new frozen full qualification.
+
+### Ticket 005 completed; ticket 006 starts
+
+- Both independent review axes clear dc4d94e. Standards independently passes67
+  drafting/core checks; Spec passes those and both18-request native affordance
+  modes, with no remaining concrete005 behavior/coverage gap. The independent
+  active/automatic probe at970330a (16requests, one confirmed checkpoint, zero
+  resume events) is retained as review-active-auto-970330a.{mjs,log} in Data005.
+- Fresh isolated npm ci --ignore-scripts succeeds (368 packages, audit0), then
+  frozen dc4d94e type/lint, full1083/1083 tests/76files/113.7s and discovery +952
+  unit checks pass. Dry pack and production audit pass. Unchanged context28/
+  provider7, NAF historical gate and ranking5 checks pass; fresh B2/B7 53-limit
+  evidence remains applicable to unchanged runtime hot paths. Review-checks.json
+  and docs/reviews/2026-09-08-ticket-005.md map exact outcomes and limitations.
+- All005 criteria are checked on evidence; 001–005 are complete. No installed
+  package, real-Qwen acceptance, latest-audit durability or live adoption is
+  claimed. The approved goal remains active for006–014.
+-006 is the next single-writer frontier (blocker002 already satisfied). Plan:
+  characterize native reopen/reload/new/fork/tree focus and current project
+  progress; reproduce/fix ownership defects at existing lifecycle boundaries;
+  then exercise legacy reconciliation, fault/lock/ledger handling, recovery UI
+  and child isolation. Acceptance remains the existing006 checklist. Initial
+  trace finds session_tree calls loadState then queues continuation without an
+  explicit navigation hold; the next step is a native reproduction before repair.
