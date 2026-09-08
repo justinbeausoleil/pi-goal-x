@@ -1179,3 +1179,29 @@
 - All three new native reproductions fail before repair and pass afterward.
   Existing archive/file and mutation regressions plus affected native cases,
   type/lint and fixed follow-up review qualify this slice before006 closure.
+
+### Ticket 006 closure and ticket 007 frontier
+
+- Final runtime d5ad5cbdb8bff83b39df860ea211aa3b94308f08 passes1141/1141
+  full tests (76files,143.4s), type/lint, discovery/selfcheck952, context28,
+  provider7, historicalNAF, ranking5 and dry pack. Fresh B1/B2/B5b/B7 checks75
+  matched timing limits with zero regressions. Dependencies are unchanged from
+  the isolated005 npm ci --ignore-scripts; latest production audit at781 is0.
+- Both independent axes are clear. Spec independently passes all58 native
+  ownership/storage/record/recovery cases, Standards six final compositions.
+  Standards' architecture documentation request is implemented and reviewed:
+  partial archive copies are diagnosed, the active file stays authoritative,
+  and an unchanged-record retry updates the same copy. Intervening record
+  updates may choose another timestamped archive path; retained copies grant
+  no execution authority. No material review finding remains for006.
+- docs/reviews/2026-09-08-ticket-006.md maps every criterion to actual-host
+  evidence; Data006/review-checks.json records commands and exact versions.
+  All006 criteria are complete. G6/G13 broader completion/package obligations
+  remain with011/012; no live installation or Qwen acceptance is claimed.
+- Frontier007 starts with a native stop/steering matrix: public pause, Esc,
+  agent pause, unfocus, focus switch and clear against queued checkpoints,
+  active responses, task dialogs and async audit/Oracle callbacks. Trace the
+  existing runtime generation and dispatch guards, reproduce failures, then
+  repair through those shared boundaries. Preserve ordinary explicit user
+  work and already-dispatched effects; do not substitute hasPendingMessages
+  for actual host queue behavior. All008–014 gates remain unchanged.

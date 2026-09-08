@@ -1,6 +1,6 @@
 # 007: stop queued goal work and prioritize user steering
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; 006 verified at `d5ad5cb` on 2026-09-08.
 **Blocked by:** 006.
 **Requirements:** G5; seams S1, S2.
 **What to build:** User or agent control changes stop future goal work while preserving unrelated explicit user requests.

@@ -113,6 +113,23 @@ authoritative state write. Handlers keep validation and
 runtime/UI effects; they never touch storage directly. `goal.ts` has zero
 direct write or ledger calls.
 
+During a response, mutations may be buffered until a turn boundary. A live
+lock retains that buffer for retry and reports pending persistence. Other
+access/write failures discard unsaved work, restore the authoritative record,
+retain incurred usage and report the storage error. Immediate mutation failures
+return an unsuccessful outcome; user pause fields and resume controls cannot
+commit to memory before their write. Lifecycle replacements validate the whole
+prior normalized record, apart from usage/update time, as well as work revision.
+
+Clear flushes an existing buffer before attempting an immediate archive and
+detaches focus only after successful archival. Archival writes the copy before
+removing the active file. If removal fails, the active file remains authoritative;
+focus and success-ledger entries stay unchanged. The diagnostic identifies the
+retained archive copy and asks for restored storage access and an explicit retry.
+Retrying the unchanged record updates that same copy and completes removal.
+An intervening record update can yield a different timestamped archive path;
+the earlier partial copy remains retained evidence, never execution authority.
+
 ## Lifecycle
 
 ```text
@@ -190,6 +207,28 @@ solely to hold or release session authority.
 
 Focus is human-owned. No agent tool can switch focus. Lifecycle tools operate
 only on the focused goal.
+
+Paused-reopen confirmation is bound to the current record and focus/session
+generation. External prompt or lifecycle changes invalidate the old decision;
+tree navigation or session replacement prevents the old callback from resuming
+work. A missing cached explicit focus triggers an authoritative file scan before
+it is treated as unavailable. Snapshot entries are normalized and path-checked;
+unsafe embedded paths never replace the authoritative file's actual location.
+
+## Storage diagnosis and repair
+
+`/goal-refresh` bypasses the pool/parse cache, reports changed records and
+reconciles focus. Legacy prompt-body edits and legacy session focus remain
+readable. `/goal-status health` and `/goal-recovery` are read-only; the recovery
+report performs fresh reads, including unreadable files and malformed ledger
+lines, without repairing them.
+
+Confirmed recovery backs up each repair target in a unique directory under
+`.pi/goals/.recovery-backup`. It rechecks lock content and file identity before
+removal, including changes during backup copying. Snapshot refresh requires a
+successful authoritative scan and write before replacing its cache. Failed
+backup/scan/read/write operations produce explicit diagnostics and retain valid
+progress. Cancelled or stale-session confirmations apply no repair.
 
 ## Goal styles
 
