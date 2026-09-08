@@ -1,6 +1,6 @@
 # 008: exhaust a budget once and preserve accurate usage
 
-**Status:** in-progress — Codex; 007 verified at `55188db` on 2026-09-08.
+**Status:** done — Codex; verified at `40dfcf7` on 2026-09-08.
 **Blocked by:** 007.
 **Requirements:** G2, G11; seams S1, S2.
 **What to build:** A budget-limited goal stops with an honest wrap-up and resumes only after the user makes budget available.
@@ -15,11 +15,11 @@ Use the plan's navigation/test table; trace the selected public flow before edit
 
 ## Acceptance criteria
 
-- [ ] Trace executor token/time accounting through custom kickoff, normal turns, repeated events, user abort, provider retry, compaction, focus changes, and reopen; charge once to the originating goal.
-- [ ] Exercise exactly-at and overshoot budgets. Persist one budget_limited transition, cancel queued work, and show at most one wrap-up with current task/remaining work and no false completion.
-- [ ] Compaction/reopen preserves limited status and visible usage; a still-exhausted /goal-resume cannot dispatch new substantive work.
-- [ ] Raise/remove the budget using the supported user-owned metadata/refresh path, then resume explicitly without losing prior usage or requirements.
-- [ ] Keep positive-integer budget validation and existing accounting meaning; auxiliary summarizer/auditor/Oracle usage is not silently rebilled as executor usage. Use controlled time and usage fixtures rather than wall-clock sleeps.
+- [x] Trace executor token/time accounting through custom kickoff, normal turns, repeated events, user abort, provider retry, compaction, focus changes, and reopen; charge once to the originating goal.
+- [x] Exercise exactly-at and overshoot budgets. Persist one budget_limited transition, cancel queued work, and show at most one wrap-up with current task/remaining work and no false completion.
+- [x] Compaction/reopen preserves limited status and visible usage; a still-exhausted /goal-resume cannot dispatch new substantive work.
+- [x] Raise/remove the budget using the supported user-owned metadata/refresh path, then resume explicitly without losing prior usage or requirements.
+- [x] Keep positive-integer budget validation and existing accounting meaning; auxiliary summarizer/auditor/Oracle usage is not silently rebilled as executor usage. Use controlled time and usage fixtures rather than wall-clock sleeps.
 
 ## Proof and completion
 
@@ -33,4 +33,10 @@ Baseline: native agent pause at55188db loses220 reported executor tokens from
 the pause and its final follow-up. Public storage remains at220 tokens instead
 of charging either response. Reproduction and log:
 `~/Data/pi-goal-x/reliability/008/accounting-baseline.mjs` and
-`terminal-pause-red-55188db.log`. Implementation and remaining criteria pending.
+`terminal-pause-red-55188db.log`. Subsequent repairs and evidence are recorded below.
+
+Candidate40dfcf7 passes1276/1276 full tests, type/lint and all53 fresh B2/B7
+timing limits. Both independent reviews are clear. See the
+[review/evidence map](../reviews/2026-09-08-ticket-008.md) and milestone log for
+the native acceptance cases, remaining gate results and retained failures.
+Exact package qualification and real-model acceptance remain tickets012–014.

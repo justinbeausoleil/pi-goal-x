@@ -1609,6 +1609,24 @@
   and another8 before completion, and archives8 rather than16 seconds.
   completion-clock-registered-red.log retains this failure. The single shared
   completion mutation now keeps current.usage while committing the reviewed
-  goal fields. Native green and16 completion/auditor/dashboard regressions
+  goal fields. Native green and30 completion/auditor/dashboard regressions
   pass in completion-clock-green.log and completion-regressions.log; typecheck
   passes in completion-check.log. Re-review of this delta is next.
+
+### Ticket 008 accepted; frontier009
+
+- Frozen40dfcf72bb4a960496485b5fd8843bb8ff7012eb passes1276/1276 full
+  tests,48 suites,76 files,219315ms and zero skips (Data008/completion-full.log).
+  Final type/lint, dry pack and fresh B2/B7 pass:53 unchanged timing limits,
+  zero regressions or agent/network/spawn violations. Other required ticket
+  gates passed at48191cc; exact commands and identities are in review-checks.json.
+- Both cumulative reviews from35a1093 are clear, including the final completion
+  repair. Standards ran10 native checks; spec ran18 plus its original completion
+  reproduction. The ticket review maps all five criteria to observable evidence.
+  Tickets001–008 are accepted; package/model/adoption acceptance remains pending.
+- User's value check: the host tracker reports approximately8.4M tokens.
+  Demonstrated improvements are substantial, but expenditure is disproportionate
+  and real-Qwen value remains unproven. Preserve approved scope; batch checks
+  and reviews and avoid further process expansion.
+- Next009: trace blocker/Oracle and no-progress continuation paths; reuse existing
+  native workers for required characterizations and root-cause reproductions.
