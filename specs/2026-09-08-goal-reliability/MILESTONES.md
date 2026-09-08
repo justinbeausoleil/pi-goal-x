@@ -137,3 +137,22 @@
   self-check, both context gates, NAF benchmark, dry pack and production audit.
   Clean upstream fe430b25 installation/check/typecheck/full tests also passed:
   961/961 tests with its locked original dependencies. Main remains unchanged.
+
+### Ticket 001 complete; ticket 002 frontier
+
+- Final standards follow-up at 5619d5f verified native-summary measurement and
+  reports no remaining issue. The specification follow-up at 3ac2d4c reports
+  both findings resolved. All five review findings are closed; the separate
+  reports and evidence are in docs/reviews/2026-09-08-ticket-001.md.
+- G1 / 001 acceptance is now checked against actual host requests, work effects,
+  public results, persisted markers, all four command starts, explicit tool
+  creation, malformed/stale/paused/replaced/unfocused triggers and ordinary
+  user work. Required current gates pass; no later gate is marked complete.
+- Implementation branch feat/goal-reliability was pushed to origin at 3ac2d4c;
+  the measurement/review records are being pushed in this checkpoint. Main and
+  live Pi package selection remain unchanged. No package has been qualified
+  for adoption and no Qwen matrix has begun.
+- Next eligible ticket: 002, now in progress. Reread its D1/ADR0003 acceptance
+  and public task/compaction paths. First step is a public-tool off-preview
+  task reproduction and three actual manual/threshold/overflow compactions,
+  then aggregate text bounds and state/pairing/duplicate-continuation proof.

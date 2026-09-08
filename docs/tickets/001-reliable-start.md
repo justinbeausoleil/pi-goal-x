@@ -1,6 +1,6 @@
 # 001: reliably start and continue a goal
 
-**Status:** in-progress — Codex; approved 2026-09-08.
+**Status:** done — Codex; verified and independently reviewed 2026-09-08.
 **Blocked by:** None (first slice after implementation approval).
 **Requirements:** G1; seams S1.
 **What to build:** A direct or confirmed regular/ordered goal starts with its objective and can make a second automatic checkpoint.
@@ -15,11 +15,11 @@ Use the plan's navigation/test table; trace the selected public flow before edit
 
 ## Acceptance criteria
 
-- [ ] Port the missing-objective reproduction to a real Pi session/provider boundary; record the failing upstream command and register one reusable deterministic lifecycle command in the existing test setup.
-- [ ] Load with aligned Pi 0.85.1 development and peer dependencies. Exercise /goal, /sisyphus, /goal-direct, /sisyphus-direct, and explicit-user create_goal; a subsequent checkpoint also receives identity/objective or lossless retrieval before work.
-- [ ] Trace all actual custom/user kickoff callers. Execution identity, reconciliation, and stale checkpoint validation work even when before_agent_start is skipped.
-- [ ] Inject stale, malformed, paused, replaced, and unfocused checkpoints through the real message path; none dispatches a goal work tool. Ordinary explicit user work still works.
-- [ ] Keep tiny persisted triggers; no manually emitted startup hooks, direct goal-file seeding, or private-core assertions can satisfy the startup proof.
+- [x] Port the missing-objective reproduction to a real Pi session/provider boundary; record the failing upstream command and register one reusable deterministic lifecycle command in the existing test setup.
+- [x] Load with aligned Pi 0.85.1 development and peer dependencies. Exercise /goal, /sisyphus, /goal-direct, /sisyphus-direct, and explicit-user create_goal; a subsequent checkpoint also receives identity/objective or lossless retrieval before work.
+- [x] Trace all actual custom/user kickoff callers. Execution identity, reconciliation, and stale checkpoint validation work even when before_agent_start is skipped.
+- [x] Inject stale, malformed, paused, replaced, and unfocused checkpoints through the real message path; none dispatches a goal work tool. Ordinary explicit user work still works.
+- [x] Keep tiny persisted triggers; no manually emitted startup hooks, direct goal-file seeding, or private-core assertions can satisfy the startup proof.
 
 ## Proof and completion
 
@@ -29,10 +29,10 @@ suites, and the plan's required checks. Record baseline/red (or preservation
 characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
-Evidence: pending implementation.
-
-Implementation checkpoint: the ten-case `npm run test:lifecycle` passes on
-Pi 0.85.1 (Node 26.8.1 development host). Typecheck/lint and 22 inherited
-budget/unfocus/stale checks pass. See the milestone log for red reproductions,
-harness corrections, and external log location. Full gates and independent
-review remain pending; acceptance is not yet marked done.
+Evidence: [independent review and verification](../reviews/2026-09-08-ticket-001.md).
+Runtime repair: 169b790 and 3ac2d4c; measurement correction: 5619d5f.
+G1 passes through the real Pi 0.85.1 loader/session: 12 lifecycle scenarios,
+973 full tests, required payload/benchmark/package/audit gates, and resolved
+independent standards/specification findings. Exact commands, failed attempts,
+and external evidence paths are recorded in the linked review and milestone log.
+Node/package matrix and full SDK serial qualification remain ticket 012.

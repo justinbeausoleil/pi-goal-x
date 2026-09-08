@@ -1,6 +1,6 @@
 # 002: preserve every lifecycle state through compaction
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; blocker 001 verified 2026-09-08.
 **Blocked by:** 001.
 **Requirements:** G2, G4; seams S1.
 **What to build:** The next response sees current durable work and the correct allowed action after compaction or an in-run mutation.

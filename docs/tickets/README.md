@@ -1,14 +1,14 @@
 # Development tickets: goal reliability
 
 These are development tickets for the goal package, not tasks it generates.
-Status: implementation approved 2026-09-08. Ticket 001 is in progress; evidence pending.
+Status: implementation approved 2026-09-08. Ticket 001 is verified; 002 is in progress.
 Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 [source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
 | ID | Observable outcome | Blocked by | Status | Spec |
 | --- | --- | --- | --- | --- |
-| [001](001-reliable-start.md) | reliably start and continue a goal | None | in-progress | G1 |
-| [002](002-compaction-continuity.md) | preserve every lifecycle state through compaction | 001 | ready-for-agent | G2, G4 |
+| [001](001-reliable-start.md) | reliably start and continue a goal | None | done | G1 |
+| [002](002-compaction-continuity.md) | preserve every lifecycle state through compaction | 001 | in-progress | G2, G4 |
 | [003](003-large-task-plans.md) | incrementally build a 200-node task plan | 002 | ready-for-agent | G3 |
 | [004](004-large-plan-details.md) | inspect and continue large plans losslessly | 003 | ready-for-agent | G2, G4 |
 | [005](005-guided-scope.md) | confirm drafts and revise scope without losing requirements | 004 | ready-for-agent | G7, G10 |
@@ -22,7 +22,7 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | ready-for-agent | G8 |
 | [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
 
-The current frontier is **001** (Codex, single implementation writer). After 002,
+The current frontier is **002** (Codex, single implementation writer). After 002,
 003 and 006 are independently eligible; later tickets follow only their
 listed blockers. Use one writer unless parallel work is explicitly requested.
 Blockers are numbered before dependents; approval is a shared entry condition,
