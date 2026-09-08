@@ -24,6 +24,25 @@ function mockCtx(): ExtensionContext {
 // ── GoalAccounting ──────────────────────────────────────────────────────────
 
 describe("GoalAccounting", () => {
+	it("retains fractional active time across frequent charges and response starts", ({mock}) => {
+		let now = 0;
+		mock.method(Date, "now", () => now);
+		const acct = new GoalAccounting();
+		acct.begin("g1");
+		now = 600;
+		assert.equal(acct.charge().seconds, 0);
+		now = 1200;
+		assert.equal(acct.charge().seconds, 1);
+		now = 5000;
+		acct.begin("g1"); // Time between responses retains the existing excluded-gap meaning.
+		now = 5800;
+		assert.equal(acct.liveSeconds(), 1);
+		assert.equal(acct.charge().seconds, 1);
+		acct.clear();
+		now = 9000;
+		acct.begin("g2");
+		assert.equal(acct.charge().seconds, 0);
+	});
 	it("charges elapsed seconds and advances the baseline (idempotent)", () => {
 		const acct = new GoalAccounting();
 		acct.begin("g1");

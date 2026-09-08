@@ -145,12 +145,15 @@ test("goal without a budget never transitions", async () => {
 		const sessionEntries = [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(goal.id, "created") }];
 		const { handlers, ctx } = createHarness(cwd, sessionEntries);
 		await handlers.get("session_start")?.({ reason: "start" }, ctx);
-		await handlers.get("turn_end")?.({ message: turnEndMessage(5000) }, ctx);
+		const response = { message: turnEndMessage(5000) };
+		await handlers.get("turn_end")?.(response, ctx);
+		await handlers.get("turn_end")?.(response, ctx);
 		const active = activeGoalFiles(cwd);
 		assert.equal(active.length, 1);
 		const disk = parseGoalFile(path.join(cwd, ".pi", "goals", active[0]!));
 		assert.ok(disk, "goal file must parse");
 		assert.equal(disk.status, "active", "no budget → no transition");
+		assert.equal(disk.usage.tokensUsed, 5000, "repeated delivery of the same response cannot double-charge it");
 		assert.equal(ledgerEvents(cwd).filter((e) => e.type === "goal_budget_limited").length, 0);
 	} finally {
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}

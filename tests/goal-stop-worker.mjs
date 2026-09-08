@@ -8,6 +8,7 @@ import {fileURLToPath} from "node:url";
 import {setTimeout as delay} from "node:timers/promises";
 import {AssistantMessageEventStream} from "@earendil-works/pi-ai";
 import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager} from "@earendil-works/pi-coding-agent";
+import {parseGoalFile} from "../extensions/storage/goal-files.ts";
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const switching = control.startsWith("switch");
@@ -333,11 +334,17 @@ try {
     assert(existsSync(join(cwd, "secondary-proof.txt")), "the old abort cannot pause the user's newly authorized successor");
   }
   assert.deepEqual(errors, []);
+  const ownedTokens = requests.length * 110;
+  if (process.argv.includes("--accounting")) {
+    const saved = parseGoalFile(resolve(cwd, primary.activePath));
+    assert.equal(saved.usage.tokensUsed, ownedTokens, "all executor responses, including final paused responses, are charged once");
+  }
   responses = [];
   await run("Write ordinary-user.txt as a new, explicit ordinary user request.", [write("ordinary-user.txt")]);
   assert.equal(readFileSync(join(cwd, "ordinary-user.txt"), "utf8"), "ordinary-user.txt", "fresh user work remains available after a goal stop");
   await run("Inspect the focused goal without resuming work.", [{name: "get_goal", args: {}}]);
   const focused = results.at(-1).details.goal;
+  if (process.argv.includes("--accounting")) assert.equal(focused.usage.tokensUsed, ownedTokens, "fresh ordinary work and inspection do not bill the paused goal");
   if (["unfocus", "clear"].includes(control) && boundary !== "agent") assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, "paused");

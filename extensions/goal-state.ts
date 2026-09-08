@@ -1,6 +1,6 @@
 import { type AgentToolResult, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isDeepStrictEqual } from "node:util";
-import { FOCUS_ENTRY, STATE_ENTRY, GOAL_EVENT_ENTRY, goalDetails } from "./goal-format.ts";
+import { FOCUS_ENTRY, STATE_ENTRY, GOAL_EVENT_ENTRY, goalDetails, usageChannelTokens } from "./goal-format.ts";
 import { loadGoalSettings, loadGoalSettingsFileConfig } from "./goal-settings.ts";
 import {
 	ALL_REGISTERED_GOAL_TOOLS,
@@ -505,6 +505,14 @@ export function createGoalCore(
 		// Skip disk reconciliation for complete goals — they are pending archival at turn_end.
 		if (state.goal?.activePath && state.goal?.status !== "complete" && !reconcileFocusedGoalFromDisk(ctx, { preserveMemoryUsage: true })) return;
 		if (!state.goal || state.goal.status !== "active" || !accounting.isActiveFor(state.goal.id)) {
+			// Lifecycle controls stop elapsed time, but the owning response still owes tokens.
+			const tokens = usageChannelTokens(opts.completedTurnTokens);
+			if (state.goal && runningGoalId === state.goal.id && tokens > 0) {
+				const charged = goalService.apply(ctx, {reconcile: false, mutate: goal => ({...goal,
+					usage: {...goal.usage, tokensUsed: goal.usage.tokensUsed + tokens}, updatedAt: nowIso(),
+				})});
+				if (!charged.ok) ctx.ui.notify(`Could not save ${tokens} executor tokens for goal ${state.goal.id}: ${charged.message}`, "warning");
+			}
 			beginAccounting();
 			return;
 		}

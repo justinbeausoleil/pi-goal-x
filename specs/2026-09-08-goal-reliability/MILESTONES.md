@@ -1459,3 +1459,35 @@
   verify exact/overshoot budgets, compaction/reopen and metadata/refresh resume.
 - Tickets008–014, exact package/compatibility, six real-Qwen runs and concrete
   adoption/rollback preparation remain open. No live selection is changed.
+
+### Ticket 008 first accounting repairs (still open)
+
+- Reproduced and registered the native final-pause loss: the five executor
+  responses report550 input/output tokens; storage had220. The stopped-status
+  and cleared-clock guard was dropping the owning run's remaining responses.
+  accountProgress now records final tokens through the existing mutation service
+  without restarting stopped elapsed time. A rejected save reports the exact
+  unpaid token count; durable retry/attribution across all stop/focus paths still
+  needs the remaining008 work and is not claimed complete by this slice.
+- Pi0.85.1 emits turn_end before agent_end for normal, error, aborted and fatal
+  failure responses (agent-loop.js and agent.js). Removed duplicate aborted
+  charging at agent_end. The turn_end handler uses a WeakSet of response objects
+  to reject repeated delivery. A helper regression was red at10000 versus5000
+  and is now green; native pause observes550 exactly and verifies fresh ordinary
+  work/get_goal do not bill the paused goal.
+- Controlled clock reproduction lost both600ms charges; accounting now retains
+  fractional active milliseconds through frequent charges and new response
+  starts on the same goal. Existing excluded gaps and whole-second storage
+  remain. Clear/switch resets the fractional remainder. The fixture uses a
+  controlled Date.now, with no wall-clock sleeping to establish elapsed usage.
+- Data008 evidence: terminal-pause-registered-red.log, repeated-event-red.log,
+  fractional-time-red.log retain failures. terminal-pause-first-green.log passes;
+  first-native.log passes15 native terminal/abort/agent/serial/budget regressions;
+  first-targeted.log passes57. fractional-and-repeat-green.log passes17. Initial
+  type/lint pass at first-check/first-lint; final fractional type/lint results
+  are recorded separately. All008 acceptance checkboxes remain open.
+- Next: charge old goal A after focus switch/replacement/unfocus/clear, account
+  aborted/final work once through retry and compaction, preserve usage across
+  reopen and supported metadata changes, exact/overshoot budgets and one wrap-up.
+  Full qualification and independent008 review remain pending. 007 closure
+  35a1093 is pushed; no live package changes.

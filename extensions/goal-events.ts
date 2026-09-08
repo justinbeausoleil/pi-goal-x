@@ -101,6 +101,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	let userTriggerPending = false;
 	let stopListeningForAbort: (() => void) | undefined;
 	let runningFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
+	const accountedResponses = new WeakSet<object>();
 	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
 	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
 	pi.on("agent_start", (_event, ctx) => {
@@ -243,7 +244,8 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	pi.on("turn_end", async (event, ctx) => {
 		const message = event.message as AssistantMessageLike;
-		const tokens = assistantTurnTokens(message);
+		const tokens = accountedResponses.has(message) ? 0 : assistantTurnTokens(message);
+		accountedResponses.add(message);
 		core.touchGoalActivity(); // F5
 		core.accountProgress(ctx, { completedTurnTokens: tokens });
 
@@ -577,14 +579,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			continuationAfterSettleFor = selectedGoalId;
 		}
 
-		// Account for any tokens from aborted in-flight assistant messages so
-		// they are not silently lost (but charge them to the original goal).
-		const abortedTokens = event.messages
-			.filter(isAbortedAssistantMessage)
-			.reduce((sum, message) => sum + assistantTurnTokens(message), 0);
-		if (abortedTokens > 0 && endedGoalId && core.state.goal?.id === endedGoalId) {
-			core.accountProgress(ctx, { completedTurnTokens: abortedTokens });
-		}
+		// Pi emits turn_end for final/aborted responses before agent_end; usage is already charged.
 
 		// Keep any prior recovery attempt while Pi finishes its own automatic
 		// retries. A user-driven path resets it through the default argument.

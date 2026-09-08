@@ -24,9 +24,11 @@ export interface BudgetLike {
 export class GoalAccounting {
 	private activeGoalId: string | null = null;
 	private lastAccountedAt: number | null = null;
+	private remainderMs = 0;
 
 	/** Start accounting for a goal id (or clear when null). */
 	begin(goalId: string | null): void {
+		if (goalId !== this.activeGoalId) this.remainderMs = 0;
 		this.activeGoalId = goalId;
 		this.lastAccountedAt = goalId ? Date.now() : null;
 	}
@@ -34,6 +36,7 @@ export class GoalAccounting {
 	clear(): void {
 		this.activeGoalId = null;
 		this.lastAccountedAt = null;
+		this.remainderMs = 0;
 	}
 
 	get goalId(): string | null {
@@ -53,9 +56,11 @@ export class GoalAccounting {
 	 */
 	charge(opts: { now?: number; completedTurnTokens?: number } = {}): AccountingCharge {
 		const now = opts.now ?? Date.now();
-		const elapsedSeconds = this.lastAccountedAt === null
+		const elapsedMs = this.lastAccountedAt === null
 			? 0
-			: Math.max(0, Math.floor((now - this.lastAccountedAt) / 1000));
+			: Math.max(0, now - this.lastAccountedAt) + this.remainderMs;
+		const elapsedSeconds = Math.floor(elapsedMs / 1000);
+		this.remainderMs = elapsedMs % 1000;
 		this.lastAccountedAt = now;
 		const tokens = Math.max(0, Math.trunc(opts.completedTurnTokens ?? 0));
 		return { tokens, seconds: elapsedSeconds };
@@ -64,7 +69,7 @@ export class GoalAccounting {
 	/** Live elapsed whole seconds for display; does not advance the baseline. */
 	liveSeconds(now = Date.now()): number {
 		if (this.lastAccountedAt === null) return 0;
-		return Math.max(0, Math.floor((now - this.lastAccountedAt) / 1000));
+		return Math.floor((Math.max(0, now - this.lastAccountedAt) + this.remainderMs) / 1000);
 	}
 }
 

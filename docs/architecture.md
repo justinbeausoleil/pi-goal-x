@@ -464,15 +464,19 @@ turn is no longer actionable (stale checkpoint).
 
 ## Accounting, runtime, and token budgets
 
-`GoalAccounting` (goal-accounting.ts) charges serialized, idempotent
-token/time intervals per turn; a goal never double-charges the same interval.
+`GoalAccounting` (goal-accounting.ts) advances the active-time baseline and
+retains sub-second remainders across charges and response starts for the same
+goal. Pi emits turn_end for final and aborted responses; the event handler
+deduplicates response objects there instead of charging aborted messages again
+at agent_end. A stopped, still-focused goal accepts its owning run's final
+tokens without restarting its active clock. Fresh ordinary work stays separate.
 `GoalRuntime` (goal-runtime.ts) owns continuation scheduling, the stale
 checkpoint state, the turn-stop guard, and one-shot steering reminders.
 
 An optional `token_budget` may be set at creation. When accounted usage
 reaches the budget, `accountProgress` transitions the goal to the distinct
-`budget_limited` status exactly once (status leaves `active`, so accounting
-stops and the transition cannot re-fire), emits a `goal_budget_limited` ledger
+`budget_limited` status exactly once (status leaves `active`, so active-time
+accounting stops and the transition cannot re-fire), emits a `goal_budget_limited` ledger
 event, arms the one-time wrap-up steering, and cancels pending continuations.
 `budget_limited` never implies completion.
 
