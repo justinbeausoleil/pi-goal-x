@@ -254,8 +254,9 @@ test("provider-error guard: turn_end with stopReason=error never queues a contin
 		}, h.ctx);
 
 		// A work turn that ends in a provider error (work tool ran, then error).
+		h.ctx.hasPendingMessages = () => false;
 		await h.handlers["turn_start"]!({}, h.ctx);
-		await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
+		assert.equal(await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx), undefined);
 		await h.handlers["tool_execution_end"]!({}, h.ctx);
 		await h.handlers["turn_end"]!({ message: { role: "assistant", stopReason: "error" } }, idleCtx(h.ctx));
 
@@ -278,8 +279,9 @@ test("provider-error guard: normal work turn still queues a continuation", async
 			systemPromptOptions: {},
 		}, h.ctx);
 
+		h.ctx.hasPendingMessages = () => false;
 		await h.handlers["turn_start"]!({}, h.ctx);
-		await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
+		assert.equal(await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx), undefined);
 		await h.handlers["tool_execution_end"]!({}, h.ctx);
 		await h.handlers["turn_end"]!({ message: { role: "assistant", content: [{ type: "text", text: "done" }] } }, idleCtx(h.ctx));
 

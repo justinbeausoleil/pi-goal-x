@@ -12,7 +12,8 @@ for (const [boundary, control] of [
 	...["pause", "unfocus", "switch", "clear"].map(control => ["next-turn", control]),
 	...["pause", "unfocus", "switch", "clear"].map(control => ["host-followup", control]),
 	["replay", "pause-resume"],
-	...["steering", "steering-followup"].flatMap(boundary => ["pause", "esc", "abort", "unfocus", "switch", "clear"].map(control => [boundary, control])),
+	...["steering", "steering-followup"].flatMap(boundary => ["steering-only", "pause", "esc", "abort", "unfocus", "switch", "clear"].map(control => [boundary, control])),
+	...["dialog", "audit", "oracle"].flatMap(boundary => ["pause", "esc", "abort", "unfocus", "switch", "clear", "pause-resume", "switch-active"].map(control => [boundary, control])),
 	...["pause", "esc", "unfocus", "switch", "clear"].map(control => ["queued", control]),
 	["agent", "pause"],
 ]) test(`S1/S2: native stop ${boundary}/${control} prevents later work and preserves fresh user intent`, {timeout: 15000}, async () => {

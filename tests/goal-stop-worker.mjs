@@ -1,8 +1,9 @@
 /** S1/S2: real dispatch boundaries and ordinary user work after a goal stop. */
 import assert from "node:assert/strict";
-import {existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync} from "node:fs";
+import {existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs";
+import http from "node:http";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {setTimeout as delay} from "node:timers/promises";
 import {AssistantMessageEventStream} from "@earendil-works/pi-ai";
@@ -11,6 +12,7 @@ import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, Mo
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const switching = control.startsWith("switch");
 const successor = control === "switch-active" || control === "pause-resume";
+const reviewing = boundary === "audit" || boundary === "oracle";
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
 mkdirSync(cwd); mkdirSync(agentDir);
@@ -23,17 +25,37 @@ const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "ope
 const results = [], errors = [], requests = [], notices = [];
 const timeline = [];
 const checkpoints = [];
-let session, host, terminalInput, selectId, primary, secondary, responses = [], beforeResponse, failure, deadline;
+let session, host, terminalInput, selectId, primary, secondary, responses = [], beforeResponse, duringDialog, failure, deadline;
+let dialogSeen = false;
 let triggerGoalId, testing = false, secondaryDone = false, replaying = false, forbiddenOffered = false;
 let queuedUserSeen = false, queuedUserDone = false;
 const pause = {name: "update_goal", args: {status: "paused", reason: "Fixture requested a deliberate stop.", suggested_action: "Wait for explicit user instructions."}};
 const write = path => ({name: "write", args: {path, content: path}});
 const currentGoal = () => results.findLast(result => result.details?.goal)?.details.goal;
+let childRequests = 0, transportAborted = false;
+let resolveChildClosed;
+const childClosed = new Promise(resolve => { resolveChildClosed = resolve; });
+const advice = {diagnosis: "Late Oracle advice", alternatives: [{title: "Inspect evidence", rationale: "Use actual files", steps: ["Read proof.txt"], expectedEvidence: ["proof"]}], recommendedIndex: 0, unresolvedQuestions: [], disposition: "actionable"};
+const server = http.createServer(async (req, res) => {
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  const payload = JSON.parse(body);
+  childRequests++;
+  res.on("close", () => { if (!res.writableEnded) transportAborted = true; resolveChildClosed(); });
+  if (childRequests === 1) { await stop(); await delay(30); }
+  if (res.destroyed) return;
+  res.writeHead(200, {"content-type": "text/event-stream"});
+  const submit = boundary === "oracle" && !payload.messages.some(message => message.role === "tool");
+  const delta = submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(advice)}}]} : {role: "assistant", content: boundary === "audit" ? "Late approval\n<approved/>" : "Advice recorded."};
+  for (const [d, finish_reason] of [[delta, null], [{}, submit ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({id: "stop-review", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta: d, finish_reason}]})}\n\n`);
+  res.end("data: [DONE]\n\n");
+});
 
 async function stop() {
+  if (control === "steering-only") return;
   if (control === "pause") await session.prompt("/goal-pause");
   else if (control === "pause-resume") { await session.prompt("/goal-pause"); await session.prompt("/goal-resume"); }
-  else if (control === "esc") { terminalInput("\x1b"); void session.abort(); }
+  else if (control === "esc") { const result = terminalInput("\x1b"); if (!result?.consume) void session.abort(); }
   else if (control === "abort") void session.abort();
   else if (control === "unfocus") await session.prompt("/goal-unfocus");
   else if (switching) { selectId = secondary.id; await session.prompt("/goal-focus"); }
@@ -46,6 +68,13 @@ async function bind() {
     onTerminalInput: handler => { terminalInput = handler; return () => {}; },
     confirm: async title => title === "Clear goal?",
     select: async (_title, choices) => choices.find(choice => choice.includes(selectId)),
+    custom: async () => {
+      dialogSeen = true;
+      if (boundary === "audit") return "continue_working";
+      if (control === "esc") { assert.equal(terminalInput("\x1b"), undefined); return {decision: "cancel"}; }
+      await duringDialog?.();
+      return {decision: "confirm"};
+    },
   }});
 }
 async function create({sessionManager, sessionStartEvent}) {
@@ -69,6 +98,7 @@ async function create({sessionManager, sessionStartEvent}) {
   assert.deepEqual(loader.getExtensions().errors, []);
   const runtime = await ModelRuntime.create({authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false});
   await runtime.setRuntimeApiKey("openai", "synthetic-unused");
+  if (reviewing) runtime.registerProvider("fixture", {baseUrl: `http://127.0.0.1:${server.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: model.cost}]});
   const created = await createAgentSession({cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager, settingsManager: settings, sessionStartEvent});
   session = created.session;
   session.subscribe(event => { if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason}); });
@@ -81,7 +111,7 @@ async function create({sessionManager, sessionStartEvent}) {
     if (staleFollowup) forbiddenOffered = true;
     const userWork = queuedUserSeen && !queuedUserDone;
     if (userWork) queuedUserDone = true;
-    const calls = failure ? [] : userWork ? [write("queued-user.txt")] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
+    const calls = failure ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     if (startSecondary) secondaryDone = true;
     const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: "Waiting for explicit authorization."}];
     const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
@@ -113,13 +143,19 @@ async function run(prompt, calls) {
   await settled();
 }
 try {
+  if (reviewing) {
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    mkdirSync(join(cwd, ".pi"));
+    writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({provider: "fixture", model: "reviewer", disabled: false, oracle: {enabled: boundary === "oracle", provider: "fixture", model: "reviewer"}}));
+  }
   host = await createAgentSessionRuntime(create, {cwd, agentDir, sessionManager: SessionManager.create(cwd, join(work, "sessions"))});
   host.setRebindSession(async current => { session = current; await bind(); });
   await bind();
   deadline = setTimeout(() => { failure = new Error("Stop fixture deadline exceeded"); void session.abort(); }, 8000);
   await run("Create a goal to verify explicit stop boundaries.", [
     {name: "create_goal", args: {objective: "Write only explicitly authorized fixture files; preserve user stop boundaries."}},
-    {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof"}]}}, pause,
+    {name: "set_goal_tasks", args: {tasks: [{id: "work", title: "Write the authorized fixture proof"}]}},
+    ...(boundary === "audit" ? [write("proof.txt"), {name: "update_goal_task", args: {task_id: "work", status: "complete", evidence: "proof.txt contains proof.txt"}}] : []), pause,
   ]);
   primary = structuredClone(currentGoal());
   assert.equal(primary.status, "paused");
@@ -147,6 +183,27 @@ try {
     await settled();
     assert.equal(readFileSync(join(cwd, "ordinary-finished.txt"), "utf8"), "complete", "a paused goal does not own this running ordinary tool");
     assert(existsSync(join(cwd, "ordinary-later.txt")), "goal controls preserve subsequent ordinary dispatches");
+  } else if (boundary === "dialog") {
+    process.env.PI_GOAL_AUTO_CONFIRM = "";
+    duringDialog = stop;
+    const revision = results.findLast(result => result.details?.goal?.id === primary.id)?.details.work_revision;
+    assert(revision);
+    await run("Review this task addition and honor any control while the dialog is open.", [{name: "set_goal_tasks", args: {mode: "upsert", expected_work_revision: revision, tasks: [{id: "late", title: "Must not apply after a stop"}]}}, ...(control === "esc" ? [pause] : [])]);
+    assert(dialogSeen, "the task confirmation really opened");
+    const result = results.findLast(result => result.toolName === "set_goal_tasks");
+    assert.match(JSON.stringify(result.content), /cancel|no longer|stopped|changed/i, "the old dialog cannot commit");
+    if (control === "esc") assert.equal(result.details.goal.status, "active", "dialog Escape cancels the dialog without pausing the goal");
+    const file = control === "clear" ? join(cwd, ".pi/goals/archived", readdirSync(join(cwd, ".pi/goals/archived")).find(name => name.endsWith(".md"))) : resolve(cwd, primary.activePath);
+    assert(!readFileSync(file, "utf8").includes("Must not apply after a stop"));
+  } else if (reviewing) {
+    const resultIndex = results.length;
+    await run("Consult the independent review and honor a concurrent user control.", [{name: "update_goal", args: {status: boundary === "audit" ? "complete" : "blocked", reason: "The same actual blocker persisted over three attempts."}}, ...(boundary === "audit" && control === "esc" ? [pause] : [])]);
+    if (boundary === "audit" && control === "esc") assert.equal(results[resultIndex].details.goal.status, "active", "Escape aborts the audit and the continue choice preserves the open goal");
+    assert(childRequests > 0, "the actual child transport reached the async boundary");
+    const ledger = readFileSync(join(cwd, ".pi/goals/goal_events.jsonl"), "utf8");
+    assert.doesNotMatch(ledger, /"type":"(?:audit_result|goal_completed|oracle_result)"/, "late child results cannot mutate or arm the stopped goal");
+    await childClosed;
+    assert(transportAborted, "supported child transport is aborted after a user stop");
   } else if (boundary.startsWith("steering")) {
     beforeResponse = async () => {
       assert.equal(triggerGoalId, primary.id, "steering races an actual autonomous checkpoint");
@@ -229,5 +286,6 @@ try {
   clearTimeout(deadline);
   await session?.abort();
   await host?.dispose();
+  if (reviewing) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   rmSync(work, {recursive: true, force: true});
 }

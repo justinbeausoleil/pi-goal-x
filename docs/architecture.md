@@ -85,6 +85,11 @@ user work begun while the goal is paused remains available through these
 controls. Already-dispatched effects are preserved; supported running tools
 are aborted. Native Pi settlement delivers queued user steering before any
 new automatic checkpoint.
+At dispatch, queued ordinary user input also blocks new goal work without
+requiring a separate pause command. Native abort signals invalidate the run
+immediately, including while a task dialog or review is awaiting a result.
+Oracle receives the parent signal; the auditor retains its separate controller
+so Escape can cancel only the review and offer the existing completion choice.
 
 Automatic goal text, including the retained checkpoint, is capped at 10,000
 characters. Long data uses marked excerpts and detail/history retrieval links;

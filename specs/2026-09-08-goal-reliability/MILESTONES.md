@@ -1324,3 +1324,42 @@
   steering-pause-{first,trace}; intermediate green logs are retained too.
 - 007 remains open for task-dialog and async audit/Oracle races, further controls
   and full qualification. No ticket acceptance checkbox is closed by this slice.
+
+### Ticket 007 immediate abort and async-review boundary
+
+- Frozen2fec3f7 passes1188/1188 tests in76 files (165.2s). Standards review is
+  clear. Spec independently passes47 native cases but finds standalone pending
+  steer/followUp still permits automatic dispatch before the user request.
+  The prior tests also sent a stop command. New standalone native reds reproduce
+  the ordering; tool_call now yields goal work to queued ordinary user input.
+  No lifecycle state is changed merely because input is pending.
+- Native task confirmation committed after raw host abort because pause arrived
+  only at end-of-turn. Listen to the native run AbortSignal and invalidate/pause
+  its still-current origin immediately. The same shared repair protects async
+  completion/Oracle returns. A superseded abort still cannot pause new intent.
+- Oracle's supported signal parameter was never wired at the caller. It now
+  receives ctx.signal; native HTTP cancellation proves the connection closes
+  without accepting late advice. Completion keeps its separate controller.
+  Fourteen pause/abort/unfocus/switch/clear/resume-successor child races pass.
+  Three additional Esc cases preserve modal semantics: task cancellation leaves
+  the goal active; audit Escape cancels only the child and honors Continue;
+  Oracle Escape stops the goal. All use native Pi/public tools and real child
+  HTTP, no direct invocation of extension lifecycle hooks.
+- A transport fixture first asserted before the server's close event; corrected
+  it to await that observable boundary. Audit then passed without product change;
+  Oracle still failed before the signal wiring. Retain both first attempts and
+  transport-close evidence. Corrected task-storage assertions resolve public
+  relative active paths against the synthetic project and read the actual file
+  (or clear's archived copy), rather than silently skipping absent relative paths.
+- All73 native cases pass (async-native.log), plus122 targeted checks
+  (async-targeted-corrected.log). One old golden fixture claimed a normal work
+  turn while hardcoding hasPendingMessages:true: the new guard correctly blocked
+  it. The two provider-turn fixtures now explicitly have no queued user input
+  and assert the work dispatch is allowed; continuation/error assertions remain.
+  Original121/122 failure retained at async-targeted.log. Type/lint pass.
+- Evidence remains Data007: dialog-abort-first, steering-only-red,
+  oracle-pause-transport-close, *-signal-green, *-esc-special and async-* logs.
+  Remaining007 work: agent-pause compositions/host serialization, additional
+  cross-session stale-control coverage if required, post-stop allowlist and
+  dashboard Esc preservation, final fixed review/qualification and criterion
+  mapping. Tickets008–014 and final packaged/Qwen/adoption gates remain open.

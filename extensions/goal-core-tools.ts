@@ -370,6 +370,7 @@ pi.registerTool(defineTool({
 
 	const run = await runBlockerOracle({
 		ctx,
+		signal: ctx.signal,
 		goal: goalAtBlock,
 		reason,
 		attemptedActions: attemptedActions.slice(0, 8),

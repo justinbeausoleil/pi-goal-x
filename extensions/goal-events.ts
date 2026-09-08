@@ -99,10 +99,20 @@ export function registerGoalEvents(core: GoalCore): void {
 	let pendingStall: { goalId: string; text: string } | undefined;
 	let draftingRun = false;
 	let userTriggerPending = false;
+	let stopListeningForAbort: (() => void) | undefined;
 	let runningFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
 	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
 	const draftAllowedTools = new Set<string>([...DRAFTING_GOAL_TOOLS, "get_goal", "read", "grep", "find", "ls"]);
-	pi.on("agent_start", () => { userTriggerPending = false; });
+	pi.on("agent_start", (_event, ctx) => {
+		userTriggerPending = false;
+		stopListeningForAbort?.();
+		const signal = ctx.signal;
+		const stopped = () => {
+			if (runIsCurrent() && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
+		};
+		signal?.addEventListener("abort", stopped, {once: true});
+		stopListeningForAbort = () => signal?.removeEventListener("abort", stopped);
+	});
 
 	pi.on("message_start", async (event) => {
 		const message = event.message;
@@ -169,6 +179,9 @@ export function registerGoalEvents(core: GoalCore): void {
 
 	// #4 + C9 fix + Phase 5 C3: gate in-turn tool calls based on lifecycle state.
 	pi.on("tool_call", async (event, ctx) => {
+		if (core.runningGoalId && ctx.hasPendingMessages() && core.runtime.isStaleCheckpointBlocked(event.toolName)) {
+			return {block: true, reason: "User input is queued. Yield to that request before dispatching more goal work."};
+		}
 		if ((hasActiveDraft(core) || (draftingRun && core.continuationHeld)) && !draftAllowedTools.has(event.toolName)) {
 			return { block: true, reason: "This drafting run has no approval to start goal work. Continue the discussion or yield after cancellation; wait for a fresh user request or confirmed goal." };
 		}
@@ -548,6 +561,8 @@ export function registerGoalEvents(core: GoalCore): void {
 	}
 
 	pi.on("agent_end", async (event, ctx) => {
+		stopListeningForAbort?.();
+		stopListeningForAbort = undefined;
 		const endedGoalId = core.runningGoalId;
 		const superseded = !runIsCurrent();
 		core.runningGoalId = null;
