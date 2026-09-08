@@ -424,7 +424,11 @@ test("tasks-disabled settings reject task proposals and confirm without a task l
 		await h.commands.get("goal")!.handler("Write a guide", h.ctx);
 		const withTasks = await runProposal(h, proposalParams("Write a guide.", { tasks: [{ id: "a", title: "A" }] }));
 		assert.match(withTasks.content[0].text, /disabled by settings/);
-		const ok = await runProposal(h, proposalParams("Write a guide."));
+		const objective = "1) Write a guide. Done when readers can follow it.\n2) Verify the examples. Done when they pass.";
+		const params = proposalParams(objective);
+		const rendered = h.tools.get("propose_goal_draft").renderCall(params, createMockTheme(), {}).render(120).join("\n");
+		assert.doesNotMatch(rendered, /Tasks derived from the objective/);
+		const ok = await runProposal(h, params);
 		assert.equal(activeGoalFiles(cwd).length, 1, "task-free proposal confirms");
 		const goal = firstGoal(cwd);
 		assert.equal(goal.taskList, undefined, "no task list created when tasks disabled");

@@ -328,6 +328,8 @@ stored evidence remains an untrusted claim to verify against real artifacts.
 The resume policy rejects exhausted budgets with guidance to raise/remove the
 budget in goal metadata and refresh before resuming. Tweak confirmation preserves
 active status, resumes paused/blocked once, and leaves budget-limited goals stopped.
+Disabled task tracking also suppresses new derived task plans and their proposal
+previews. Existing tasks remain visible for scope review and remain preserved.
 
 The existing flat-tree converter validates the complete resulting plan. Upsert
 edits supplied fields, preserving omitted values; new IDs require a title and

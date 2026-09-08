@@ -223,7 +223,7 @@ pi.registerTool(defineTool({
 			: "";
 		// F2: the agent path stays tool-driven — surface the derivable task plan
 		// as guidance so the agent proposes it via set_goal_tasks.
-		const derived = !created?.taskList ? deriveTasksFromObjective(cleanedObjective) : null;
+		const derived = core.tasksEnabled && !created?.taskList ? deriveTasksFromObjective(cleanedObjective) : null;
 		const bootstrapLine = derived && derived.length > 0
 			? `\n\nThe objective contains ${derived.length} ordered step${derived.length === 1 ? "" : "s"}; propose them as the task tree with set_goal_tasks if the user wants tracked milestones.`
 			: "";

@@ -870,3 +870,24 @@
   tweak-budget-policy-red.log. The auditor/lifecycle subset now proceeds to
   frozen full qualification and independent fixed-base review against e0d0cb4.
   Ticket 005 remains in progress until its evidence and review are complete.
+
+- Frozen 970330a passes 1081/1081 full tests (76 files, 112.2s), discovery/
+  self-check, type/lint, context28/provider7, NAF gate, production audit and
+  dry pack; ranking harness passes 5/5. Standards independently passes26
+  auditor/policy checks and reports no material finding. Spec review is pending
+  a final native affordances follow-up before closing the ticket.
+- Native question/questionnaire cancellation and selector resume/cancel/replace
+  now run in both modes. The task-disabled structured-objective case revealed
+  automatic bootstrap still created two hidden tasks: the old unit used an
+  unstructured objective and missed it. The existing bootstrap and preview
+  callers now honor tasksEnabled, including direct-create guidance. Existing
+  tweak tasks remain preserved. Both native variants pass18requests; the
+  strengthened unit and core-tool suites pass67checks. A named task-derive
+  test file did not exist and Node silently omitted it; the67 count is explicitly
+  the two existing drafting/core-tool suites, not a derivation suite.
+- The initial affordances probe compared serialized and nonserialized optional
+  fields; using structuredClone removes that fixture-only mismatch. Red hidden
+  derived-task attempts and permanent unit red remain in draft-affordances-*
+  and draft-disabled-derived-unit-red.log. Native assertions also check the
+  actual confirmation text, not only stored task absence. This small follow-up
+  receives fixed-base independent review and a new frozen full qualification.

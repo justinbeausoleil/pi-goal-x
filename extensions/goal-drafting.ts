@@ -210,7 +210,7 @@ function tweakProposal(current: GoalRecord, objective: string, proposed: GoalTas
 	return {...after, currentTaskId: after.currentTaskId && currentTaskIdIsPending(after.taskList?.tasks, after.currentTaskId) ? after.currentTaskId : undefined};
 }
 
-export function proposalText(draft: ActiveGoalDraft, objective: string, autoContinue: boolean, taskList: GoalTaskList | undefined, current?: GoalRecord, contract?: string | null): string {
+export function proposalText(draft: ActiveGoalDraft, objective: string, autoContinue: boolean, taskList: GoalTaskList | undefined, current?: GoalRecord, contract?: string | null, tasksEnabled = true): string {
 	const base = draft.mode === "tweak" && current
 		? buildTweakConfirmationText({ currentObjective: current.objective, newObjective: objective, changeSummary: draft.originalTopic || "Goal revised through guided drafting.", sisyphus: current.sisyphus, tasks: taskList?.tasks,
 			currentScope: scopeText(retainedGoalScope(current)), newScope: scopeText(revisedGoalScope(current, tweakProposal(current, objective, taskList, contract), taskList !== undefined)) })
@@ -231,7 +231,7 @@ export function proposalText(draft: ActiveGoalDraft, objective: string, autoCont
 		}
 	} else if (taskList && taskList.tasks.length > 0) {
 		tasksText = "\n\nTasks proposed for confirmation:\n" + renderConfirmationTasks(taskList.tasks, 0).join("\n");
-	} else {
+	} else if (tasksEnabled) {
 		// §single-task-set: the derived preview must derive from the SAME
 		// objective text the apply path persists (extracted — the Verification
 		// contract line removed), so shown == persisted.
@@ -371,7 +371,7 @@ export function registerDraftingTools(core: GoalCore): void {
 			} else {
 				core.enterGoalModal();
 				try {
-					confirmation = await showProposalDialog(ctx, proposalText(draft, objective, params.auto_continue !== false, taskResult.value, target ?? undefined, params.verification_contract), draft.mode === "sisyphus" ? "sisyphus" : "goal", draft.auditorEnabled);
+					confirmation = await showProposalDialog(ctx, proposalText(draft, objective, params.auto_continue !== false, taskResult.value, target ?? undefined, params.verification_contract, core.tasksEnabled), draft.mode === "sisyphus" ? "sisyphus" : "goal", draft.auditorEnabled);
 				} catch (error) {
 					return { content: [{ type: "text", text: `${proposalDialogFailureMessage(error)} Do not retry the dialog until the host issue is resolved.` }], details: goalDetails(core.state.goal) };
 				} finally {
@@ -414,6 +414,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				// F2: if the confirmation carried no task plan but the objective has
 				// structure, bootstrap the derived tree so the goal starts trackable.
 				const effectiveTaskList: GoalTaskList | undefined = taskResult.value ?? (() => {
+					if (!core.tasksEnabled) return undefined;
 					const derived = deriveTasksFromObjective(extracted.objective);
 					return derived && derived.length > 0 ? { tasks: derived, blockCompletion: false, proposedAt: nowIso() } : undefined;
 				})();
@@ -510,7 +511,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				if (retained && retained.length > 0) {
 					taskBlock = { header: "Current task list (retained unchanged):", lines: renderConfirmationTasks(retained, 0) };
 				}
-			} else {
+			} else if (core.tasksEnabled) {
 				const derived = deriveTasksFromObjective(extractVerificationContract(objective).objective) ?? [];
 				if (derived.length > 0) {
 					taskBlock = { header: "Tasks derived from the objective (confirm or ask the agent to adjust):", lines: renderConfirmationTasks(derived, 0) };

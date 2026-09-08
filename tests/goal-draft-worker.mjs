@@ -65,6 +65,7 @@ async function open(manager, sessionStartEvent) {
     input: async () => "Fixture custom answer", confirm: async () => false,
     select: async (title, choices) => {
       dialogs.push({ title, choices });
+      if (title === "Cancel this question?") return undefined;
       if (title === "Goal settings" || /^(disableTasks|disableContracts) \(/.test(title)) {
         const label = settingsChoices.shift();
         const selected = choices.find(choice => choice.trim().startsWith(label));
@@ -418,6 +419,44 @@ try {
     await run("Add a later contract with an arbitrary valid stable ID.", [{ name: "set_goal_tasks", args: { mode: "upsert", expected_work_revision: "$current", tasks: [{ id: "__proto__", title: "Later requirement", verification_contract: "This later requirement also remains owed." }] } }]);
     assert(Object.hasOwn(results.at(-1).details.goal.retainedScope.tasks, "__proto__"));
     assert.equal(results.at(-1).details.goal.retainedScope.tasks.__proto__.verificationContract, "This later requirement also remains owed.");
+  } else if (scenario === "draft-affordances") {
+    const original = structuredClone(latestDraft().data);
+    const question = {question: "Cancel this question?", options: ["Leave unanswered"], allow_custom: false};
+    for (const step of [{name: "goal_question", args: question}, {name: "goal_questionnaire", args: {questions: [{id: "cancel", ...question}]}}]) {
+      await run("Dismiss the question and preserve this discussion.", [step]);
+      assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /cancelled.*Continue drafting/);
+      assert.deepEqual(latestDraft().data, original, "question cancellation preserves the draft and its prior answers");
+    }
+    const otherMode = mode === "goal" ? "sisyphus" : "goal";
+    for (const choice of ["Resume", "Cancel"]) {
+      replacement = choice;
+      const before = requests;
+      await session.prompt(`/${otherMode} Unaccepted replacement`);
+      assert.equal(requests, before, "resume/cancel selector does not start another draft run");
+      assert.deepEqual(latestDraft().data, original);
+      await checkProposal(mode, "Existing draft remains available");
+    }
+    replacement = "Replace";
+    await run(`/${otherMode} Accepted replacement`, [proposal(otherMode, "Replacement discussion")]);
+    assert.equal(latestDraft().data.mode, otherMode);
+    assert.equal(latestDraft().data.seed, "Accepted replacement");
+    assert(session.sessionManager.getBranch().some(e => e.customType === "pi-goal-draft" && e.data.mode === mode && e.data.clearedAt), "replacement tombstones the old draft");
+    settingsChoices = ["disableTasks:", "Set project override to true", "Done"];
+    await session.prompt("/goal-settings");
+    assert.deepEqual(settingsChoices, []);
+    const proposed = proposal(otherMode, "Goal with optional tracking disabled");
+    proposed.args.tasks = [{id: "optional", title: "Optional planning node"}];
+    decision = "Confirm";
+    await run("Try an explicit task list while tracking is disabled.", [proposed]);
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /Task lists are disabled/);
+    assert.deepEqual(files(), []);
+    delete proposed.args.tasks;
+    await run("Confirm the fully specified objective without task tracking.", [proposed]);
+    assert(!dialogs.findLast(d => d.title.startsWith("Confirm")).title.includes("Tasks derived from the objective"), "confirmation does not promise a hidden derived plan");
+    assert.equal(results.at(-1).details.goal.sisyphus, otherMode === "sisyphus");
+    assert.equal(results.at(-1).details.goal.taskList, undefined);
+    assert.equal(results.at(-1).details.goal.retainedScope.objective, proposed.args.objective);
+    assert(!session.getActiveToolNames().includes("set_goal_tasks"));
   } else if (scenario === "cancel") {
     decision = "Cancel";
     await run("Cancel this proposal, retaining the discussion.", [proposal(mode, "First discussion")]);
