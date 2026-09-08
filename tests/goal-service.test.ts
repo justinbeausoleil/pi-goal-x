@@ -135,6 +135,28 @@ function activeFiles(cwd: string): string[] {
 	}
 }
 
+it("a successful single task write advances the owed-usage baseline", () => {
+	const f = fixture();
+	try {
+		assert(f.service.apply(f, {mutate: g => ({...g, taskList: {tasks: [{id: "work", title: "Work", status: "pending"}], blockCompletion: false, proposedAt: g.createdAt}})}).ok);
+		const original = cloneGoal(f.ref.getFocused()!);
+		f.service.beginTurn(f, original.id);
+		f.ref.getFocused()!.usage = {tokensUsed: 121, activeSeconds: 8};
+		f.service.persist(f);
+		const file = path.join(f.cwd, original.activePath!);
+		writeFileSync(file, serializeGoalFile({...original, objective: "External proposal"}));
+		f.service.reconcileFocused(f);
+		writeFileSync(file, serializeGoalFile(original));
+		f.service.reconcileFocused(f);
+		assert(f.service.updateTask(f, {taskId: "work", update: task => ({...task, status: "complete", evidence: "Verified."})}).ok);
+		f.service.reconcileFocused(f);
+		f.service.persist(f);
+		const written = parseGoalFile(file)!;
+		assert.deepEqual(written.usage, {tokensUsed: 121, activeSeconds: 8});
+		assert.equal(written.taskList!.tasks[0]!.status, "complete");
+	} finally { f.cleanup(); }
+});
+
 for (const buffered of [false, true]) it(`migrates surviving legacy scope on the first successful ${buffered ? "buffered" : "immediate"} write without invalidating work`, () => {
 	const f = fixture();
 	try {

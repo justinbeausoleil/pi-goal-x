@@ -798,3 +798,18 @@
   A first targeted command named nonexistent goal-transactions.test.ts (Node
   silently omits it); its 51 passing cases cover service/presentation only.
   The actual goal-turn-transaction and accounting-runtime checks follow explicitly.
+
+- Frozen 1bffa0c passes 1068/1068 full tests (102.2s); its actual transaction/
+  accounting checks pass 17/17. Spec clears the repair. Standards then reproduced
+  a missing baseline update in the single-task immediate write: after proposal
+  rejection/reversion, task completion writes 121/8, then reconciliation charges
+  it again as 242/16. The permanent red and one-line successful-write baseline
+  repair follow the same existing bookkeeping as batch/apply/persist. All
+  successful write callers were traced; targeted service/transaction/accounting
+  follow-up passes. This repair receives its own review before integration.
+- An isolated detached qualification worktree now exists at
+  ~/Developer/scratch/pi-goal-x-qualification, sharing the installed dependency
+  tree by symlink. Future frozen test runs there can proceed while the sole
+  implementation writer works in the main checkout. It is not a package install
+  or live Pi selection. Auditor input implementation/fixture work in the main
+  checkout remains uncommitted and outside the external-scope repair review.

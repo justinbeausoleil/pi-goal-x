@@ -800,6 +800,7 @@ export class GoalService {
 				}
 			}
 			this.ref.setFocused(written);
+			this.trackBaseline(written.id, written.usage);
 			return { ok: true, goal: written, task: updatedTask };
 		} finally {
 			lock.release();
