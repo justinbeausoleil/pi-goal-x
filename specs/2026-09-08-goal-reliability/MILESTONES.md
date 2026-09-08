@@ -41,3 +41,22 @@
   adoption preparation is independent of live-install permission. The user
   authorized this red-team/document repair; implementation approval and
   runtime acceptance remain pending.
+
+## 2026-09-08 implementation approval and start
+
+- The maintainer explicitly approved the reviewed baseline
+  7ac9380e9c25285125d6c2ef4c8b94b1818dd3f5: specification, D1–D6, S1–S3,
+  all 14 tickets, and ADRs 0002–0004. Earlier pending-approval entries above
+  remain historical. No implementation criterion is satisfied by approval.
+- Authorization includes dependency alignment, isolated installation/rollback,
+  fixed local-Qwen trials, documentation, commits, and pushes to origin's
+  implementation branch. No live package selection, main mutation, npm
+  publication, external issues/messages, or upstream contribution.
+- Inspected clean repository at reviewed baseline; origin is the user's fork,
+  upstream is the reference. Created feat/goal-reliability from the reviewed
+  commit without changing main. Read all canonical records and tickets.
+- Current ticket: 001, Codex as sole writer. Plan: port S1 startup reproduction,
+  align Pi 0.85.1, repair public custom-start context/guards, verify all starts
+  and stale-trigger cases, then fixed-base independent standards/spec review.
+- Acceptance and all runtime evidence remain pending; next eligible ticket
+  after 001 is 002. The complete G1–G13 / 001–014 scope remains unchanged.

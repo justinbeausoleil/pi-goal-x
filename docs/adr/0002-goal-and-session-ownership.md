@@ -1,6 +1,6 @@
 # Preserve project goal authority and session-local focus
 
-Status: proposed; clarified during ticket red team.
+Status: accepted by the maintainer, 2026-09-08; implementation evidence pending.
 
 Retain project goal files as authoritative and session focus as branch-local;
 conversation compaction/navigation never rewinds project requirements or

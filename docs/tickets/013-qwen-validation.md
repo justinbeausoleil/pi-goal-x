@@ -1,6 +1,6 @@
 # 013: execute the fixed real-Qwen acceptance matrix
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 012.
 **Requirements:** G8; seams S3.
 **What to build:** The maintainer sees all outcomes from a frozen six-run artifact-producing experiment on the installable candidate.

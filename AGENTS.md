@@ -4,9 +4,9 @@ This package manages persistent goals. SDLC is our development process; add
 product behavior only for the goal-reliability requirements in spec.md.
 
 Before changing code, read intent.md, spec.md, plan.md, the selected ticket in
-docs/tickets/, and applicable ADRs. Confirm the plan's test seams and ticket
-breakdown are approved before starting implementation. The current records
-are drafts; never infer approval from a committed draft.
+docs/tickets/, and applicable ADRs. The maintainer approved the specification, D1–D6 contracts, S1–S3 seams,
+14 tickets, and ADRs 0002–0004 on 2026-09-08; see the milestone log. Execute
+the ticket frontier and record evidence before marking acceptance complete.
 
 Inspect git status and preserve unrelated work. Use upstream as the read-only
 integration remote and origin as the maintainer's fork. Use separate worktrees

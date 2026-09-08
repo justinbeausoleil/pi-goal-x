@@ -1,6 +1,6 @@
 # 011: persist trustworthy completion outcomes and archive safely
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 005, 007, 008, 009.
 **Requirements:** G6, G7; seams S1, S2.
 **What to build:** The user can distinguish reviewed completion, bypass, rejection, cancellation, and archival failure after compaction or reopen.

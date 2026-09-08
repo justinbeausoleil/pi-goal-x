@@ -1,6 +1,6 @@
 # 001: reliably start and continue a goal
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** in-progress — Codex; approved 2026-09-08.
 **Blocked by:** None (first slice after implementation approval).
 **Requirements:** G1; seams S1.
 **What to build:** A direct or confirmed regular/ordered goal starts with its objective and can make a second automatic checkpoint.

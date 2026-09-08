@@ -1,6 +1,6 @@
 # Rebuild bounded goal context before every model response
 
-Status: proposed; supported by the triage reproduction.
+Status: accepted by the maintainer, 2026-09-08; implementation evidence pending.
 
 Use Pi's per-response context seam for authoritative executor goal state and
 validate custom/user starts, removing obsolete dynamic system state while

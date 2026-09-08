@@ -1,6 +1,6 @@
 # 009: retain blocker and Oracle recovery through compaction
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 007.
 **Requirements:** G2, G12; seams S1, S2.
 **What to build:** The executor retains blocker guidance and durable Oracle advice without confusing consultation with progress.

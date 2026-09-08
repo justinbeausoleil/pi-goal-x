@@ -1,6 +1,6 @@
 # 010: coordinate provider recovery with Pi and user stops
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 007.
 **Requirements:** G5, G12; seams S1.
 **What to build:** A transient outage can recover according to settings without duplicate turns or overruling a user stop.

@@ -1,6 +1,6 @@
 # 008: exhaust a budget once and preserve accurate usage
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 007.
 **Requirements:** G2, G11; seams S1, S2.
 **What to build:** A budget-limited goal stops with an honest wrap-up and resumes only after the user makes budget available.

@@ -1,6 +1,6 @@
 # 005: confirm drafts and revise scope without losing requirements
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 004.
 **Requirements:** G7, G10; seams S1, S2.
 **What to build:** A user refines, cancels, confirms, or tweaks a goal with complete visibility of retained requirements.

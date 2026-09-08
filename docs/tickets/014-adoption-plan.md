@@ -1,6 +1,6 @@
 # 014: prepare the verified fork for an intentional live trial
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 013 (behavioral acceptance PASS required).
 **Requirements:** G9; seams S2 evidence plus prepared configuration diff.
 **What to build:** The maintainer has an exact package-selection change and rollback plan ready to review without disturbing the live setup.

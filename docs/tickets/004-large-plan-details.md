@@ -1,6 +1,6 @@
 # 004: inspect and continue large plans losslessly
 
-**Status:** draft — red-team complete; implementation approval pending.
+**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
 **Blocked by:** 003.
 **Requirements:** G2, G4; seams S1, S2.
 **What to build:** The user and executor can inspect every task and long field while automatic context stays bounded.

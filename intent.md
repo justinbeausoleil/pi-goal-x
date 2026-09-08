@@ -1,6 +1,6 @@
 # Intent: reliable persistent goals
 
-Status: requested; implementation design is awaiting review.
+Status: implementation approved by the maintainer, 2026-09-08; evidence pending.
 Owner: Justin Beausoleil. Created: 2026-09-08.
 
 ## Problem
@@ -44,7 +44,7 @@ configuration form the compatibility baseline.
 - Fork creation and documentation are authorized. Changing the live Pi package
   selection, npm publication, and upstream contributions are separate actions.
 
-## Open design review
+## Approved design
 
 The concrete proposal is in [spec.md](spec.md), the delivery order and test
 seams in [plan.md](plan.md), and decisions in [docs/adr](docs/adr).

@@ -1,6 +1,6 @@
 # Plan: repair pi-goal-x goal continuity
 
-Status: red-teamed proposal; implementation approval remains pending.
+Status: approved by the maintainer, 2026-09-08; implementation in progress.
 Read [intent](intent.md), [spec](spec.md), and the [ticket index](docs/tickets/README.md).
 The [review and lifecycle matrix](docs/reviews/2026-09-08-ticket-red-team.md)
 records gaps, resolutions, source anchors, and preservation coverage.
@@ -20,11 +20,13 @@ records gaps, resolutions, source anchors, and preservation coverage.
 - **S3 — local Qwen through Pi:** use the packed candidate, real work tools and
   summaries, and independently checked synthetic artifacts.
 
-The current request authorizes red-team review and document repair, not runtime
-implementation. One approval of the resulting plan covers the ordinary
-implementation/check loop; it is not a per-edit approval gate.
+The maintainer approved this plan, S1–S3, D1–D6, all 14 tickets, and ADRs
+0002–0004 on 2026-09-08. Authorization covers implementation, dependency
+alignment, local/isolated tests, the fixed Qwen matrix, documentation, commits,
+and pushes to the fork implementation branch. Live adoption, publication,
+main changes, and messages to others remain outside this goal.
 
-The ticket index is the single dependency graph. Start with 001 after approval.
+The ticket index is the single dependency graph. Start with the first unfinished eligible ticket, initially 001.
 003 and 006 become independent after 002; use one writer unless parallel work
 is requested. Each ticket states its demo, contract, non-goals, and proof.
 Preservation tickets first characterize existing behavior; fix regressions
@@ -342,5 +344,5 @@ runtime matrix. Review each fixed-base diff against standards and spec.
 
 Update docs/architecture.md when runtime behavior changes, then ticket
 evidence and [milestones](specs/2026-09-08-goal-reliability/MILESTONES.md).
-This planning change modifies no runtime code, dependencies, or installed Pi
-configuration.
+Historical planning changes modified no runtime code or dependencies. The
+approved implementation keeps live Pi configuration unchanged.

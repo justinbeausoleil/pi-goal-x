@@ -1,6 +1,6 @@
 # Specification: compaction-safe, large-task goals
 
-Status: red-teamed draft; implementation approval and evidence are pending.
+Status: approved by the maintainer, 2026-09-08; implementation evidence pending.
 Source: [intent](intent.md). Vocabulary: [CONTEXT.md](CONTEXT.md).
 Evidence: [triage](docs/research/goal-reliability.md).
 Coverage and review: [lifecycle review](docs/reviews/2026-09-08-ticket-red-team.md).
