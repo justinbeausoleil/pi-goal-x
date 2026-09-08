@@ -156,7 +156,7 @@ Session focus is separate. Focus changes append a custom session entry:
 {
   version: 1,
   focusedGoalId: string | null,
-  reason: "created" | "selected" | "unfocused" | "resumed" | "completed" | "cleared" | "migrated"
+  reason: "created" | "selected" | "unfocused" | "resumed" | "completed" | "cleared" | "aborted" | "migrated" | "navigated"
 }
 ```
 
@@ -183,6 +183,10 @@ continuation until explicit focus/resume. The existing hold used for drafting
 also covers navigation; compaction cannot release it. A held active goal's
 context exposes its approved state and resume guidance without granting work
 authority. Forks append explicit null focus before any scheduling.
+The navigated branch records focus with reason `navigated`, preserving the
+hold through reload/reopen. Explicit focus/resume or a bound human scope
+confirmation records the released focus; no project lifecycle event is added
+solely to hold or release session authority.
 
 Focus is human-owned. No agent tool can switch focus. Lifecycle tools operate
 only on the focused goal.

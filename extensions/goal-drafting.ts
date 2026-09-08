@@ -467,7 +467,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				ledger: (written) => [{ type: "goal_tweaked", goalId: written.id, changeSummary: "Goal revised through /goal-tweak drafting.", at: written.updatedAt }, ...(taskResult.value ? [{ type: "task_list_set" as const, goalId: written.id, taskCount: countTasks(written.taskList?.tasks), blockCompletion: taskResult.value.blockCompletion, at: written.updatedAt }] : [])],
 			});
 			if (!result.ok) return { content: [{ type: "text", text: "Goal tweak was not applied: " + result.message }], details: goalDetails(core.state.goal) };
-			core.continuationHeld = false;
+			core.releaseContinuationHold(ctx);
 			if (resumed) {
 				try {
 					core.goalService.appendEvents(ctx, [{ type: "goal_resumed", goalId: result.goal.id, reason: "tweak", at: nowIso() }]);

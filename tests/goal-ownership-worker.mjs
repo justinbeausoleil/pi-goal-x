@@ -1,6 +1,6 @@
 /** S1/S2 project progress and execution authority through native session boundaries. */
 import assert from "node:assert/strict";
-import {existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync} from "node:fs";
+import {existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -18,7 +18,7 @@ process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
 process.env.PI_GOAL_AUTO_CONFIRM = "1";
 const settings = SettingsManager.inMemory({compaction: {enabled: false, reserveTokens: 16384, keepRecentTokens: 100}, retry: {enabled: false}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
-const results = [], errors = [], requests = [], notices = [];
+const results = [], errors = [], requests = [], notices = [], confirmations = [];
 let session, host, steps = [], earlyLeaf, failure, shutdownFile, summaries = 0;
 const goalResult = () => results.findLast(r => r.details?.goal)?.details.goal;
 const checkpoints = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-event").length;
@@ -33,7 +33,7 @@ async function open(manager, sessionStartEvent) {
         results.push(event);
         if (event.toolName === "set_goal_tasks") earlyLeaf = session.sessionManager.getLeafId();
       });
-      pi.on("session_shutdown", () => { if (goalResult()) shutdownFile = readGoal(); });
+      pi.on("session_shutdown", () => { if (goalResult() && existsSync(join(cwd, goalResult().activePath))) shutdownFile = readGoal(); });
     }],
   });
   await loader.reload({resolveProjectTrust: async () => true});
@@ -57,7 +57,7 @@ async function open(manager, sessionStartEvent) {
   };
   await session.bindExtensions({mode: "rpc", onError: error => errors.push(error), uiContext: {
     notify: message => notices.push(message), setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
-    confirm: async () => false, select: async () => undefined, input: async () => undefined,
+    confirm: async title => { confirmations.push(title); return title === "Resume paused goal?" && scenario.endsWith("-confirm"); }, select: async () => undefined, input: async () => undefined,
   }});
   return {...created, services: {cwd, agentDir, modelRuntime: runtime, settingsManager: settings, resourceLoader: loader, diagnostics: []}, diagnostics: []};
 }
@@ -115,11 +115,79 @@ try {
       await session.compact();
       await delay(150);
       assert.equal(checkpoints(), boundaryCheckpoints, "compaction cannot release navigation's hold");
+      for (const boundary of ["reopen", "reload"]) {
+        const before = requests.length;
+        steps = [{name: "write", args: {path: "unsolicited.txt", content: "Reopening a navigated branch is not resume"}}, pause];
+        if (boundary === "reopen") await host.switchSession(session.sessionManager.getSessionFile());
+        else await session.reload();
+        await delay(150);
+        assert.equal(existsSync(join(cwd, "unsolicited.txt")), false, `${boundary} cannot release the navigation hold`);
+        assert.equal(requests.length, before);
+        assert.equal(checkpoints(), boundaryCheckpoints);
+      }
     }
     else assert.equal(results.at(-1).details.goal, null);
-    await run(scenario === "tree" ? "/goal-resume" : "/goal-focus", [pause]);
+    steps = [pause];
+    await session.prompt(scenario === "tree" ? "/goal-resume" : "/goal-focus");
+    if (scenario === "tree") await host.switchSession(session.sessionManager.getSessionFile());
+    await settled();
     assert.equal(checkpoints() - boundaryCheckpoints, 1, "explicit user action authorizes one checkpoint");
     assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
+  } else if (["new", "new-auto", "missing-focus"].includes(scenario)) {
+    if (scenario !== "new") writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({autoSelectSingleGoal: true}));
+    await session.prompt("/goal-resume");
+    if (scenario === "missing-focus") {
+      await run("/goal-direct A goal whose saved focus will become unavailable.", [pause]);
+      renameSync(join(cwd, goalResult().activePath), join(work, "removed-goal.md"));
+    }
+    const before = requests.length, priorSession = session.sessionId;
+    steps = scenario === "new-auto" ? [pause] : [];
+    if (scenario === "missing-focus") await host.switchSession(session.sessionManager.getSessionFile());
+    else {
+      assert.equal((await host.newSession()).cancelled, false);
+      assert.notEqual(session.sessionId, priorSession, "actual host creates a distinct new session");
+    }
+    if (scenario === "new-auto") await settled();
+    await delay(150);
+    assert.equal(requests.length - before, scenario === "new-auto" ? 1 : 0, "new sessions require explicit auto-selection and a valid focus");
+    await run("Inspect the new session's focus.", [{name: "get_goal", args: {}}]);
+    if (scenario === "new-auto") {
+      assert.equal(goalResult().id, approved.id);
+      assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
+      await session.prompt("/goal-unfocus");
+      const nullEntry = session.sessionManager.getBranch().findLast(e => e.customType === "pi-goal-focus");
+      assert.equal(nullEntry.data.focusedGoalId, null);
+      const nullBefore = requests.length;
+      await host.switchSession(session.sessionManager.getSessionFile());
+      await delay(150);
+      assert.equal(requests.length, nullBefore, "explicit null survives reopen despite auto-selection setting");
+      await run("Inspect the explicitly detached session.", [{name: "get_goal", args: {}}]);
+    }
+    assert.equal(results.at(-1).details.goal, null, "default/null/missing focus cannot silently adopt another goal");
+    assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
+  } else if (/^(reopen|reload)-/.test(scenario)) {
+    const status = scenario.split("-")[1];
+    if (status === "active") await session.prompt("/goal-resume");
+    if (status === "blocked") await run("/goal-resume", [{name: "update_goal", args: {status: "blocked", reason: "Dependency missing before session replacement."}}]);
+    if (status === "budget_limited") await run("Create a separate goal with a one-token budget.", [{name: "create_goal", args: {objective: "Retain the exhausted budget through session replacement.", token_budget: 1}}]);
+    const expectedId = goalResult().id;
+    const before = requests.length, checkpointCount = checkpoints(), confirmationCount = confirmations.length;
+    const continues = status === "active" || scenario.endsWith("-confirm");
+    const priorSession = session.sessionId;
+    steps = continues ? [pause] : [];
+    if (scenario.startsWith("reload")) await session.reload();
+    else assert.equal((await host.switchSession(session.sessionManager.getSessionFile())).cancelled, false);
+    assert.equal(session.sessionId, priorSession, "same saved session retains its identity");
+    if (continues) await settled();
+    await delay(150);
+    assert.equal(requests.length - before, continues ? 1 : 0, "only eligible active/restored goals continue, with no disposed-runtime duplicate");
+    assert.equal(checkpoints() - checkpointCount, continues ? 1 : 0);
+    assert.equal(confirmations.slice(confirmationCount).includes("Resume paused goal?"), scenario.startsWith("reopen-paused"), "only a paused reopen offers the existing resume choice");
+    await run("Inspect the restored goal and current project progress.", [{name: "get_goal", args: {}}]);
+    assert.equal(results.at(-1).details.goal.id, expectedId);
+    assert.equal(goalResult().status, continues ? "paused" : status);
+    if (status !== "budget_limited") assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
+    else assert(goalResult().usage.tokensUsed >= goalResult().tokenBudget, "reopen retains exhausted usage");
   } else throw new Error(`Unknown ownership scenario ${scenario}`);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({passed: true, scenario, requests: requests.length, summaries, checkpoints: checkpoints(), effects: results.filter(r => r.toolName === "write").length}));

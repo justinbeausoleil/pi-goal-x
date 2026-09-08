@@ -112,6 +112,7 @@ export interface GoalCore {
 	setFocusedGoalId(goalId: string | null, ctx: ExtensionContext, reason: GoalFocusReason, opts?: { recordLedger?: boolean }): void;
 	updateFocusedGoal(next: GoalRecord, ctx: ExtensionContext, shouldPersist?: boolean): void;
 	armFocusedContinuation(ctx: ExtensionContext): void;
+	releaseContinuationHold(ctx: ExtensionContext): void;
 	removeFocusedGoal(ctx: ExtensionContext, reason: GoalFocusReason): void;
 	beginAccounting(): void;
 	goalForDisplay(): GoalRecord | null;
@@ -446,8 +447,13 @@ export function createGoalCore(
 		updateUI(ctx);
 	}
 
-	function armFocusedContinuation(ctx: ExtensionContext): void {
+	function releaseContinuationHold(ctx: ExtensionContext): void {
+		if (core.continuationHeld && focusedGoalId) appendFocusEntry(focusedGoalId, "resumed");
 		core.continuationHeld = false;
+	}
+
+	function armFocusedContinuation(ctx: ExtensionContext): void {
+		releaseContinuationHold(ctx);
 		beginAccounting();
 		if (state.goal?.status === "active" && state.goal.autoContinue) queueContinuation(ctx, true);
 	}
@@ -747,6 +753,7 @@ export function createGoalCore(
 		}
 		const settings = loadGoalSettings(ctx.cwd);
 		hasExplicitSessionFocus = focusEntry !== null;
+		core.continuationHeld = focusEntry?.reason === "navigated";
 		assignFocusedGoalId(resolveSessionFocus({ pool: goalsById, focusEntry, legacyGoal, autoSelectSingleGoal: settings.autoSelectSingleGoal }));
 		if (!focusEntry && focusedGoalId) {
 			try {
@@ -1035,6 +1042,7 @@ export function createGoalCore(
 		setFocusedGoalId,
 		updateFocusedGoal,
 		armFocusedContinuation,
+		releaseContinuationHold,
 		removeFocusedGoal,
 		beginAccounting,
 		goalForDisplay,

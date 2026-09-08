@@ -943,3 +943,36 @@
   This subset is uncommitted/unreviewed; remaining006 acceptance still includes
   reopen/reload/new/explicit-null/missing focus, legacy reconciliation, storage
   faults, recovery UI and delegated sessions. No006 checkbox is yet complete.
+
+### Ticket 006 durable navigation finding and session matrix
+
+- Frozen a7bfe4b passes1085/1085 full tests (76files,114.4s). Standards clears
+  the slice and independently passes native tree/fork. Spec then reproduces
+  a reopened navigated branch losing its ephemeral hold: two executor requests,
+  one checkpoint and an unauthorized write. This blocks integration despite
+  the suite pass. Exact independent script/log review-tree-reopen-a7bfe4b.* and
+  root tree-reopen-permanent-red.log retain the red. The delayed native tree
+  summarization probe was independently safe; no second finding was reported.
+- Navigation now appends the same focused ID with reason=navigated in the
+  existing branch-local focus entry, with no project ledger event. loadState
+  restores the hold from that reason. Existing explicit arm and bound human
+  confirmation share releaseContinuationHold, recording resumed focus before
+  clearing the hold. Native tree now verifies compaction, reopen and reload
+  cannot dispatch its armed write, then immediate reopen after explicit resume
+  can execute exactly one checkpoint. The expanded tree/fork follow-ups pass.
+- Native reopen/reload covers active, paused, blocked and budget_limited, plus
+  paused reopen confirmation/decline. Nine cases pass: only eligible active or
+  explicitly confirmed paused goals issue one request; no disposed runtime
+  duplicate appears, and current project evidence/limited usage is retained.
+- New-session default and explicit autoSelectSingleGoal cases pass. The opt-in
+  case explicitly unfocuses then reopens and stays detached. Missing-focus
+  coverage creates another goal through /goal-direct, moves only its goal file,
+  and reopens with a still-valid sole alternative goal; it remains unfocused.
+  The first fixture attempted a create_goal continuation from an active run
+  and timed out before the following pause; the public direct command removes
+  that fixture ambiguity. Both attempts remain in missing-focus-*.log.
+- All75 record/drafting/unfocus/pool/session-safety checks and type/lint pass.
+  The new matrix and durable repair proceed to frozen full checks and review.
+  No006 criterion is marked complete; legacy reads, storage fault/recovery
+  checks and child qualification remain next after this ownership subset.
+  The overall development goal is still active.

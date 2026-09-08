@@ -6,7 +6,7 @@ export type StopReason = "user" | "agent";
 export type GoalEventKind = "checkpoint" | "stale";
 /** Goal creation mode used by the /goal and /sisyphus commands. */
 export type GoalMode = "goal" | "sisyphus";
-export type GoalFocusReason = "created" | "selected" | "unfocused" | "resumed" | "completed" | "cleared" | "aborted" | "migrated";
+export type GoalFocusReason = "created" | "selected" | "unfocused" | "resumed" | "completed" | "cleared" | "aborted" | "migrated" | "navigated";
 
 export type TaskStatus = "pending" | "complete" | "skipped";
 
@@ -249,7 +249,7 @@ export function normalizeGoalFocusEntry(value: unknown): GoalFocusEntry | null {
 		? safeIdPart(raw.focusedGoalId)
 		: null;
 	const reason: GoalFocusReason =
-		raw.reason === "created" || raw.reason === "selected" || raw.reason === "unfocused" || raw.reason === "resumed" || raw.reason === "completed" || raw.reason === "cleared" || raw.reason === "aborted" || raw.reason === "migrated"
+		raw.reason === "created" || raw.reason === "selected" || raw.reason === "unfocused" || raw.reason === "resumed" || raw.reason === "completed" || raw.reason === "cleared" || raw.reason === "aborted" || raw.reason === "migrated" || raw.reason === "navigated"
 			? raw.reason
 			: "selected";
 	return { version: 1, focusedGoalId, reason };

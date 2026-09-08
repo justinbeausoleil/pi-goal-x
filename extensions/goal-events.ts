@@ -389,6 +389,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.goalService.flushTurn(ctx); // P1-3: persist any buffered transaction before reload
 		await core.loadState(ctx);
 		core.continuationHeld = true;
+		core.setFocusedGoalId(core.focusedGoalId, ctx, "navigated", {recordLedger: false});
 		rehydrateDraft(core, ctx);
 		syncTerminalInputPause(core, ctx);
 		core.beginAccounting();
