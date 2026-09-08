@@ -1430,3 +1430,32 @@
   replacement-ordinary-first independently pass. The registered matrix now has
   93 stop cases plus14 startup checks. No criterion is closed yet; next are
   independent follow-up review and frozen qualification, then008.
+
+### Ticket 007 accepted; ticket 008 opened
+
+- Final runtime55188dbdfd8619cac309adefdd4a1044843f80d5 passes1234/1234
+  tests (76files,184.8s), including all93 native stop cases and14 startup
+  cases. Type/lint, discovery952, context28/provider7, historical NAF gate,
+  ranking5, dry pack65files and fresh B2/B7 (53 unchanged timing limits,
+  zero regressions/agent/network/spawn violations) pass. Production audit at
+  0601fa9 reports zero findings; dependencies are unchanged. Exact evidence:
+  Data007/review-checks.json, lifecycle-full.log and closure-*.
+- Both cumulative reviews against7680b30 are clear. Standards independently
+  verifies12 compositions, including tool-driven create replacement; Spec
+  passes93 native cases and its original immediate-resume reproduction. Its
+  old count assumption was corrected without changing the forbidden-write
+  assertion; the first count failure remains in Data007. Final probe artifacts
+  and criterion mapping are in docs/reviews/2026-09-08-ticket-007.md.
+- All007 criteria are accepted. Remaining G5 provider coordination belongs to
+  010. 008 is the current frontier;009/010 also have their listed prerequisite
+  satisfied. One implementation writer continues in ticket order.
+- 008 diagnosis: a real checkpoint pauses and consumes a final blocked-tool
+  result in a second response;220 executor tokens are reported, but public
+  goal usage does not increase at all. Repro/log Data008/accounting-baseline.mjs
+  and terminal-pause-red-55188db.log. The current status check discards final
+  response usage once paused; focus attribution and repeated-event paths also
+  need tracing. Plan: bind each executor response to its origin, repair once-only
+  accounting and controlled elapsed time through the existing service, then
+  verify exact/overshoot budgets, compaction/reopen and metadata/refresh resume.
+- Tickets008–014, exact package/compatibility, six real-Qwen runs and concrete
+  adoption/rollback preparation remain open. No live selection is changed.

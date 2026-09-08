@@ -1,6 +1,6 @@
 # 008: exhaust a budget once and preserve accurate usage
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; 007 verified at `55188db` on 2026-09-08.
 **Blocked by:** 007.
 **Requirements:** G2, G11; seams S1, S2.
 **What to build:** A budget-limited goal stops with an honest wrap-up and resumes only after the user makes budget available.
@@ -29,4 +29,8 @@ suites, and the plan's required checks. Record baseline/red (or preservation
 characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
-Evidence: pending implementation.
+Baseline: native agent pause at55188db loses220 reported executor tokens from
+the pause and its final follow-up. Public storage remains at220 tokens instead
+of charging either response. Reproduction and log:
+`~/Data/pi-goal-x/reliability/008/accounting-baseline.mjs` and
+`terminal-pause-red-55188db.log`. Implementation and remaining criteria pending.

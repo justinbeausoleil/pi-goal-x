@@ -30,4 +30,7 @@ suites, and the plan's required checks. Record baseline/red (or preservation
 characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
-Evidence: pending implementation.
+Investigation input: Data007/replacement-ordered-trace.log shows the original
+active goal repeatedly continuing text-only responses after an invalid ordered
+replacement command was rejected. Preserve the failed attempt; diagnose the
+D5 no-progress/nudge boundary here. Other implementation evidence pending.

@@ -1,7 +1,7 @@
 # Development tickets: goal reliability
 
 These are development tickets for the goal package, not tasks it generates.
-Status: implementation approved 2026-09-08. Tickets 001–006 are verified; 007 is in progress.
+Status: implementation approved 2026-09-08. Tickets 001–007 are verified; 008 is in progress.
 Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 [source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
@@ -13,8 +13,8 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [004](004-large-plan-details.md) | inspect and continue large plans losslessly | 003 | done | G2, G4 |
 | [005](005-guided-scope.md) | confirm drafts and revise scope without losing requirements | 004 | done | G7, G10 |
 | [006](006-session-recovery.md) | recover sessions without inherited autonomous authority | 002 | done | G6, G13 |
-| [007](007-stop-controls.md) | stop queued goal work and prioritize user steering | 006 | in-progress | G5 |
-| [008](008-budget-accounting.md) | exhaust a budget once and preserve accurate usage | 007 | ready-for-agent | G2, G11 |
+| [007](007-stop-controls.md) | stop queued goal work and prioritize user steering | 006 | done | G5 |
+| [008](008-budget-accounting.md) | exhaust a budget once and preserve accurate usage | 007 | in-progress | G2, G11 |
 | [009](009-blocker-oracle.md) | retain blocker and Oracle recovery through compaction | 007 | ready-for-agent | G2, G12 |
 | [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | ready-for-agent | G5, G12 |
 | [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | ready-for-agent | G6, G7 |
@@ -22,7 +22,7 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | ready-for-agent | G8 |
 | [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
 
-The current frontier is **007** (Codex, single implementation writer).
+The current frontier is **008** (Codex, single implementation writer).
 Later tickets follow only their
 listed blockers. Use one writer unless parallel work is explicitly requested.
 Blockers are numbered before dependents; approval is a shared entry condition,
