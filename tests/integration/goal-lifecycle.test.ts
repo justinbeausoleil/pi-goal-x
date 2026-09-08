@@ -30,7 +30,7 @@ for (const control of ["pause", "abort", "unfocus", "switch", "replace", "clear"
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "response", control, "--accounting", "--clock"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });
-for (const boundary of ["agent", "agent-block"]) test(`S1: native controlled active time through ${boundary} stop`, {timeout: 15000}, async () => {
+for (const boundary of ["agent", "agent-block", "completion"]) test(`S1: native controlled active time through ${boundary} stop`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary, "pause", "--accounting", "--clock"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });

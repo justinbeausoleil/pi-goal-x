@@ -98,7 +98,7 @@ function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
 		completeResult = core.goalService.apply(ctx, {
 			reconcile: false,
 			focusToken: opts.completionFocus,
-			mutate: () => ({ ...opts.goal, status: "complete" as const, stopReason: "agent" as const, updatedAt: nowIso() }),
+			mutate: (current) => ({ ...opts.goal, usage: current.usage, status: "complete" as const, stopReason: "agent" as const, updatedAt: nowIso() }),
 		});
 	} catch (err) {
 		// The authoritative file write throws on failure; surface it as a typed

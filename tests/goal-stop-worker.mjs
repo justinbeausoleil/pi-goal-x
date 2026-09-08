@@ -185,6 +185,7 @@ async function create({sessionManager, sessionStartEvent}) {
     if (retryError) retryOffered = true;
     const calls = failure || retryError ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
     if (startSecondary) secondaryDone = true;
+    if (controlledClock && boundary === "completion" && calls.some(call => call.name === "update_goal" && call.args.status === "complete")) clockNow += 8000;
     const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: "Waiting for explicit authorization."}];
     const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
       usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: retryError ? "error" : calls.length ? "toolUse" : "stop", ...(retryError ? {errorMessage: "503 Service Unavailable"} : {}), timestamp: Date.now()};
@@ -228,7 +229,7 @@ function assertBilling() {
   for (const [id, record] of records) {
     const expected = bills.filter(bill => bill.goalId === id).reduce((sum, bill) => sum + bill.tokens, 0);
     assert.equal(record.usage.tokensUsed, expected, `executor usage belongs to the goal selected for its run: ${id}; bills=${JSON.stringify(bills)}`);
-    if (controlledClock) assert.equal(record.usage.activeSeconds, record.id === primary.id ? 10 : 0, "active time includes creation and work before the stop, excluding the stopped response interval");
+    if (controlledClock) assert.equal(record.usage.activeSeconds, record.id === primary.id ? boundary === "completion" ? 16 : 10 : 0, "active time includes creation and work before the stop, excluding the stopped response interval");
   }
   for (const bill of bills) if (bill.goalId) assert(records.has(bill.goalId), "the billed goal remains observable in active or archived storage");
   if (lateBudget) {
@@ -238,6 +239,10 @@ function assertBilling() {
   }
 }
 try {
+  if (boundary === "completion") {
+    mkdirSync(join(cwd, ".pi"));
+    writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({disabled: true}));
+  }
   if (reviewing) {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     mkdirSync(join(cwd, ".pi"));
@@ -375,6 +380,11 @@ try {
     await stop();
     await delay(100);
     assert.equal(requests.length, before, "stopping a scheduled checkpoint issues no new request");
+  } else if (boundary === "completion") {
+    await run("Write proof and complete this goal with verified task evidence.", [write("proof.txt"), {name: "update_goal_task", args: {task_id: "work", status: "complete", expected_work_revision: results.findLast(result => result.details?.work_revision)?.details.work_revision, evidence: "proof.txt contains proof.txt"}}, {name: "update_goal", args: {status: "complete"}}]);
+    const archived = parseGoalFile(join(cwd, ".pi", "goals", "archived", readdirSync(join(cwd, ".pi", "goals", "archived"))[0]));
+    assert.equal(archived.taskList.tasks[0].status, "complete", "completion used accepted task evidence");
+    assert.equal(archived.status, "complete");
   } else if (boundary === "provider-retry") {
     responses = [[write("retry-proof.txt"), pause]];
     await session.prompt("Perform the authorized work when the provider recovers, then pause.");
@@ -444,7 +454,7 @@ try {
   const focused = results.at(-1).details.goal;
   if (process.argv.includes("--accounting")) assertBilling();
   if (exhaustedEdit) assert.equal(focused.status, "budget_limited");
-  else if (clearUnpaid || (["unfocus", "clear"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
+  else if (boundary === "completion" || clearUnpaid || (["unfocus", "clear"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, boundary === "agent-block" ? "blocked" : "paused");
   if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {
