@@ -1,6 +1,6 @@
 {
   "name": "pi-goal-x",
-  "version": "0.31.1",
+  "version": "0.31.2",
   "description": "Adds /goal to pi: conversational goal planning, flexible or ordered goals, persistent progress, and an independent completion auditor.",
   "license": "MIT",
   "author": "pi-goal-x contributors",
@@ -36,7 +36,9 @@
     "docs/architecture.md",
     "docs/pi-autoresearch-survey.md",
     "docs/pi-goal-x-unified-dashboard-plan.md",
-    "docs/unified-dashboard.md"
+    "docs/unified-dashboard.md",
+    "assets/badge-light.svg",
+    "assets/badge-dark.svg"
   ],
   "pi": {
     "extensions": [

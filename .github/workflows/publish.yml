@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   publish:
+    needs: ranking
     if: github.repository == 'tmonk/pi-goal-x'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -72,6 +73,15 @@ jobs:
       - run: npm run context:provider-check
       - run: npm audit --omit=dev
       - run: npm run bench:gate:naf
+      - name: Download release ranking
+        if: env.DRY_RUN != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ranking-${{ env.RELEASE_TAG }}-${{ github.run_attempt }}
+          path: assets
+      - name: Apply release ranking to package
+        if: env.DRY_RUN != 'true'
+        run: python3 scripts/update-ranking.py --release "$RELEASE_TAG"
       - name: Pack once and smoke-test recovery CLI
         run: |
           mkdir -p "$RUNNER_TEMP/release"
@@ -156,4 +166,54 @@ jobs:
         with:
           name: registry-${{ env.RELEASE_TAG }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release/registry.json
+          if-no-files-found: error
+
+  ranking:
+    name: Prepare release ranking
+    if: github.repository == 'tmonk/pi-goal-x'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Validate release before updating ranking
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          git merge-base --is-ancestor "refs/tags/$RELEASE_TAG" origin/main
+          git show "refs/tags/$RELEASE_TAG:package.json" > "$RUNNER_TEMP/release-package.json"
+          node -e 'const p = require(process.env.RUNNER_TEMP + "/release-package.json"); if (p.name !== "pi-goal-x" || "v" + p.version !== process.env.RELEASE_TAG) process.exit(1)'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test ranking updater
+        run: python3 -B scripts/test-update-ranking.py
+      - name: Update badges and release observation
+        if: env.DRY_RUN != 'true'
+        run: python scripts/update-ranking.py --release "$RELEASE_TAG" --record-release
+      - name: Commit ranking update
+        if: env.DRY_RUN != 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md assets/badge-light.svg assets/badge-dark.svg assets/ranking.json
+          if git diff --cached --quiet; then
+            echo 'Ranking already recorded for this release.'
+            exit 0
+          fi
+          git commit -m "docs: update Pi ranking for $RELEASE_TAG"
+          git push origin HEAD:main
+      - name: Save release ranking for package
+        if: env.DRY_RUN != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ranking-${{ env.RELEASE_TAG }}-${{ github.run_attempt }}
+          path: assets/ranking.json
           if-no-files-found: error

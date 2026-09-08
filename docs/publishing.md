@@ -10,6 +10,8 @@ git push origin vX.Y.Z
 gh run list --workflow publish.yml
 ```
 
+Before publishing, the workflow records the Pi extension download ranking and commits updated light/dark badges and README text to main. It uses the same best-recorded-rank method as the website. The tagged checkout receives that release’s saved observation before packing, so the npm package includes the updated badges. Ranking updates run only for real releases, never daily or during dry runs. A ranking failure stops publication. Retries reuse the release observation instead of fetching a new rank.
+
 The workflow checks main ancestry and version metadata, runs validation, packs once, uploads the tarball, publishes it with provenance, verifies registry integrity, and creates a GitHub release. Stable releases only; publication is serialized. An existing npm version is accepted only if the tarball integrity matches. Existing GitHub release notes/assets are preserved.
 
 To rehearse without publishing, run the workflow on main with an existing tag:

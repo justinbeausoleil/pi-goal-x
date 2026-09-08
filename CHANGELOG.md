@@ -2,6 +2,14 @@
 
 All notable changes to pi-goal-x are documented here.
 
+## [0.31.2] — 2026-09-08
+
+### Changed
+
+- Simplified the README and package description to explain goal creation, regular and Sisyphus goals, tasks, completion auditing, commands, and core settings.
+- Update the Pi extension ranking before each release, including both badge themes and README accessibility text. Release retries reuse the recorded ranking; dry runs do not update it. No daily schedule is used.
+- Include badge images in the npm package.
+
 ## [0.31.1] — 2026-09-08
 
 ### Fixed
