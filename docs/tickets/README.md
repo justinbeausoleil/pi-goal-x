@@ -1,7 +1,7 @@
 # Development tickets: goal reliability
 
 These are development tickets for the goal package, not tasks it generates.
-Status: implementation approved 2026-09-08. Tickets 001–009 are verified; 010 is in progress.
+Status: implementation approved 2026-09-08. Tickets 001–010 are verified; 011 is in progress.
 Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 [source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
@@ -16,13 +16,13 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [007](007-stop-controls.md) | stop queued goal work and prioritize user steering | 006 | done | G5 |
 | [008](008-budget-accounting.md) | exhaust a budget once and preserve accurate usage | 007 | done | G2, G11 |
 | [009](009-blocker-oracle.md) | retain blocker and Oracle recovery through compaction | 007 | done | G2, G12 |
-| [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | in-progress | G5, G12 |
-| [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | ready-for-agent | G6, G7 |
+| [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | done | G5, G12 |
+| [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | in-progress | G6, G7 |
 | [012](012-package-compatibility.md) | qualify the packed fork and rollback across existing surfaces | 004, 005, 006, 008, 009, 010, 011 | ready-for-agent | G9, G13 |
 | [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | ready-for-agent | G8 |
 | [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
 
-The current frontier is **010** (Codex, single implementation writer).
+The current frontier is **011** (Codex, single implementation writer).
 Later tickets follow only their
 listed blockers. Use one writer unless parallel work is explicitly requested.
 Blockers are numbered before dependents; approval is a shared entry condition,

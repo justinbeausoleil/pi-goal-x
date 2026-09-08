@@ -1766,3 +1766,21 @@
   replacement. Replacement preserves the old unfocused goal's active status;
   only the new goal's deliberate pause is asserted. Logs ending registered-red,
   successor-green and corrected-green retain those intermediate failures.
+- Repaired e819b8d passes6 native compaction/ownership regressions, type/lint,
+ 53 unchanged B2/B7 limits and dry pack. Both independent delta reviews clear:
+ Spec7 including its original reproduction; Standards2 pinned successor checks.
+ Standards retains an initial reviewer environment/loader mistake separately.
+ Frozen d29cb5a full passes1313/1313 (48 suites,76 files,237845ms), but does not
+ substitute for the repaired candidate's ongoing ownership-full.log run.
+ Data010/review-checks.json and the ticket010 review track remaining qualification.
+- Next011 read-only trace: goal-completion currently chooses disabled/model
+ labeling with project-only settings, stores outcomes primarily in the ledger,
+ and lacks a latest-review GoalRecord field. Existing GoalService.apply already
+ supports expectedWorkRevision and atomic metadata-before-ledger writes. Existing
+ /goal-recovery scans malformed records/locks/snapshots but not complete records
+  awaiting archival. These are the approved011 boundaries; no011 edits yet.
+- Final e819b8d full suite passes1315/1315,48 suites/76 files in238833ms with
+ zero failures/skips. Data010/review-checks.json records the complete qualification;
+ both review axes are clear. Ticket010 is accepted and011 is the next frontier.
+ No live selection or dependencies changed. The implementation branch is pushed
+ after recording this acceptance; exact artifact/model/adoption gates remain012–014.
