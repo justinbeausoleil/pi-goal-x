@@ -1395,3 +1395,38 @@
 - Current next step: freeze the completed85-case native matrix, final full
   qualification and cumulative007 independent review against7680b30, then
   close007 with exact criterion mapping. 008 is the next eligible ticket.
+
+### Ticket 007 cumulative review follow-up
+
+- Frozen0601fa9 passes1226/1226 full tests (76 files,180.2s), type/lint,
+  context28/provider7, dry pack and production audit (zero findings). These
+  results are inspected in Data007/final-*; acceptance remained open.
+- Final cumulative review found two material paths: direct replacement left
+  the previous goal's running process alive; agent pause followed by immediate
+  public resume allowed a later old-run response to write before any new
+  checkpoint. Independent probes and maintained-worker reds are retained as
+  review-standards-direct-switch-0601fa9, review-agent-pause-resume-0601fa9,
+  replacement-registered-red and agent-resume-registered-red.
+- Successful replaceGoal now calls the existing ownership-aware cancellation
+  boundary. The focused-record setter invalidates the generation when an active
+  goal becomes stopped, covering agent lifecycle transitions across responses.
+  The first attempt attached invalidation to every turn stop and broke normal
+  startup after task confirmation; it was removed. Failed logs include
+  stop-hook-startup-trace, agent-resume-generation-green and
+  replacement-cancel-green (their names do not imply success).
+- New native proof resumes from the real turn_end callback after agent pause;
+  only a newly issued checkpoint writes the successor proof. Replacement races
+  response, dispatched bash, task dialog, auditor and Oracle, and preserves an
+  unrelated ordinary request begun while paused. Ordered direct replacement
+  uses the same path. All assertions observe public tools, commands and effects.
+- lifecycle-native.log passes106/107; the ordered fixture was rejected because
+  its objective omitted required ordered steps. replacement-ordered-trace.log
+  exposes that notice; the corrected valid objective passes in
+  replacement-ordered-green.log. This also exposes the original goal repeatedly
+  continuing text-only responses after the rejected command; ticket009 owns
+  the no-progress/nudge behavior and must investigate this retained trace.
+- lifecycle-targeted.log passes109; lifecycle-check/lifecycle-lint pass.
+  agent-resume-lifecycle-green, replacement-cancel-lifecycle-green and
+  replacement-ordinary-first independently pass. The registered matrix now has
+  93 stop cases plus14 startup checks. No criterion is closed yet; next are
+  independent follow-up review and frozen qualification, then008.

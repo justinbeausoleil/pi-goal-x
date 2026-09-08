@@ -185,6 +185,8 @@ export function createGoalCore(
 		},
 		set goal(next: GoalRecord | null) {
 			if (next) {
+				// A lifecycle stop invalidates the whole run, including later responses.
+				if (state.goal?.id === next.id && state.goal.status === "active" && next.status !== "active") invalidateFocusedOperations();
 				goalsById.set(next.id, next);
 				assignFocusedGoalId(next.id);
 				return;
@@ -967,6 +969,7 @@ export function createGoalCore(
 			}] : []),
 		],
 		});
+		if (result.focusChanged && result.previousGoalId) cancelFocusedWork(ctx, result.previousGoalId);
 		core.continuationHeld = false;
 		if (result.focusChanged) appendFocusEntry(result.goalId, "created");
 		beginAccounting();

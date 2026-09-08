@@ -11,7 +11,8 @@ import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, Mo
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const switching = control.startsWith("switch");
-const successor = ["switch-active", "pause-resume", "reload", "reopen"].includes(control);
+const replacing = control.startsWith("replace");
+const successor = replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control);
 const reviewing = boundary === "audit" || boundary === "oracle";
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
@@ -38,6 +39,7 @@ let session, host, terminalInput, selectId, primary, secondary, responses = [], 
 let dialogSeen = false;
 let triggerGoalId, testing = false, secondaryDone = false, replaying = false, forbiddenOffered = false;
 let queuedUserSeen = false, queuedUserDone = false;
+let agentResumed = false, agentResumeCheckpoint = 0;
 const pause = {name: "update_goal", args: {status: "paused", reason: "Fixture requested a deliberate stop.", suggested_action: "Wait for explicit user instructions."}};
 const write = path => ({name: "write", args: {path, content: path}});
 const currentGoal = () => results.findLast(result => result.details?.goal)?.details.goal;
@@ -70,6 +72,9 @@ async function stop() {
   else if (control === "unfocus") await session.prompt("/goal-unfocus");
   else if (control === "reload") await session.reload();
   else if (control === "reopen") await host.switchSession(session.sessionManager.getSessionFile());
+  else if (replacing) await session.prompt(control === "replace-ordered"
+    ? "/sisyphus-direct 1) Write secondary-proof.txt. Done when the file exists. 2) Inspect the proof. Done when its contents match secondary-proof.txt."
+    : "/goal-direct Write only the newly authorized successor proof.");
   else if (switching) { selectId = secondary.id; await session.prompt("/goal-focus"); }
   else if (control === "clear") await session.prompt("/goal-clear");
   else throw new Error(`Unsupported user stop: ${control}`);
@@ -94,6 +99,13 @@ async function create({sessionManager, sessionStartEvent}) {
     systemPrompt: "Perform only the explicitly authorized fixture work.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
     extensionFactories: [pi => {
       pi.on("tool_result", event => { results.push(event); });
+      pi.on("turn_end", async () => {
+        if (testing && control === "agent-resume" && !agentResumed && currentGoal()?.status === "paused") {
+          agentResumed = true;
+          agentResumeCheckpoint = checkpoints.length;
+          await session.prompt("/goal-resume");
+        }
+      });
       pi.on("message_start", event => {
         if (event.message.role === "user") {
           triggerGoalId = null;
@@ -121,7 +133,9 @@ async function create({sessionManager, sessionStartEvent}) {
     requests.push(context);
     timeline.push({event: "request", count: requests.length});
     if (requests.length > 30) failure = new Error("Unbounded stop fixture continuation");
-    const startSecondary = testing && !replaying && successor && triggerGoalId === (switching ? secondary.id : primary.id) && !secondaryDone;
+    const startSecondary = testing && !replaying && successor && !secondaryDone
+      && (control !== "agent-resume" || (agentResumed && checkpoints.length > agentResumeCheckpoint))
+      && (replacing ? typeof triggerGoalId === "string" && triggerGoalId !== primary.id : triggerGoalId === (switching ? secondary.id : primary.id));
     const staleFollowup = testing && boundary === "host-followup" && triggerGoalId === primary.id && !forbiddenOffered;
     if (staleFollowup) forbiddenOffered = true;
     const userWork = queuedUserSeen && !queuedUserDone;
@@ -281,13 +295,13 @@ try {
     assert(results.slice(resultIndex).some(result => result.toolName === "get_goal" && !result.isError), "the stale run retains the read-only get_goal allowlist");
     await settled();
   } else if (boundary === "checkpoint-agent") {
-    responses = [[pause, write("forbidden.txt")]];
+    responses = [[pause, write("forbidden.txt")], ...(control === "agent-resume" ? [[write("forbidden.txt")]] : [])];
     await settled();
     const stoppedRequests = requests.length;
     await delay(50);
-    assert.equal(checkpoints.length - checkpointsBefore, 1, "agent pause consumes one actual checkpoint and schedules no successor");
+    assert.equal(checkpoints.length - checkpointsBefore, control === "agent-resume" ? 2 : 1, "only an explicit resume authorizes a successor checkpoint");
     assert.equal(requests.length, stoppedRequests, "the settled pause schedules no further requests");
-    assert.equal(pauseDispatches, 1);
+    assert.equal(pauseDispatches, control === "agent-resume" ? 2 : 1);
     assert.equal(checkpoints.at(-1).details.goalId, primary.id);
   } else if (boundary === "queued") {
     responses = [[write("forbidden.txt")]];
@@ -332,6 +346,9 @@ try {
     assert.equal(focused.pauseSuggestedAction, pause.args.suggested_action);
   }
   console.log(JSON.stringify({passed: true, boundary, control, requests: requests.length, toolResults: results.map(result => ({name: result.toolName, isError: result.isError}))}));
+} catch (error) {
+  console.error(JSON.stringify({testing, responses, notices, timeline, results: results.map(result => ({tool: result.toolName, content: result.content}))}));
+  throw error;
 } finally {
   clearTimeout(deadline);
   await session?.abort();

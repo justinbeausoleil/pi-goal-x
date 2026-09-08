@@ -79,7 +79,10 @@ a rejected checkpoint. An explicitly queued successor still runs after that
 old delivery settles. Persisted checkpoints remain tiny v2 markers.
 
 Runs retain their original goal and focus-generation token across responses.
-Pause, switch and clear cancel goal-owned work; unfocus uses the same boundary.
+Pause, switch and clear cancel goal-owned work; unfocus and successful goal
+replacement use the same boundary. An active goal becoming stopped invalidates
+its run even when the agent initiates the transition. Task confirmation retains
+its response-only stop so the active goal can continue at a new checkpoint.
 Late aborts cannot pause a freshly resumed or newly selected goal. Ordinary
 user work begun while the goal is paused remains available through these
 controls. Already-dispatched effects are preserved; supported running tools

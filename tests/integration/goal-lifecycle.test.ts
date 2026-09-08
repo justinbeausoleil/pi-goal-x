@@ -9,6 +9,8 @@ const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta
 for (const [boundary, control] of [
 	...["response", "dispatched"].flatMap(boundary => ["pause", "pause-resume", "esc", "abort", "unfocus", "switch", "switch-active", "clear"].map(control => [boundary, control])),
 	...["pause", "unfocus", "switch", "clear"].map(control => ["ordinary", control]),
+	...["response", "dispatched", "dialog", "audit", "oracle", "ordinary"].map(boundary => [boundary, "replace"]),
+	["dispatched", "replace-ordered"],
 	...["pause", "unfocus", "switch", "clear"].map(control => ["next-turn", control]),
 	...["pause", "unfocus", "switch", "clear"].map(control => ["host-followup", control]),
 	["replay", "pause-resume"],
@@ -20,6 +22,7 @@ for (const [boundary, control] of [
 	...["pause", "esc", "unfocus", "switch", "clear"].map(control => ["queued", control]),
 	["agent", "pause"],
 	["checkpoint-agent", "pause"],
+	["checkpoint-agent", "agent-resume"],
 ]) test(`S1/S2: native stop ${boundary}/${control} prevents later work and preserves fresh user intent`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary!, control!], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
