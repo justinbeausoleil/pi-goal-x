@@ -18,7 +18,7 @@ import { shouldArmPostCompactReminder, shouldInjectPostCompactReminder } from ".
 import { formatTokenValue } from "./goal-core.ts";
 import { loadGoalSettings, invalidateGoalSettingsCache } from "./goal-settings.ts";
 import { budgetLine } from "./goal-accounting.ts";
-import { asRecord, nowIso, type AssistantMessageLike, type GoalRecord } from "./goal-record.ts";
+import { asRecord, nowIso, goalWorkRevision, type AssistantMessageLike, type GoalRecord } from "./goal-record.ts";
 import { goalSelectorLabel, otherOpenGoalCount } from "./goal-pool.ts";
 import { invalidateGoalPoolCache } from "./storage/goal-files.ts";
 import { checkpointTriggerPrompt } from "./prompts/goal-prompts.ts";
@@ -410,6 +410,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		if (core.state.goal.status === "complete") return;
 		const settings = loadGoalSettings(ctx.cwd);
 		const stoppedContext = core.state.goal.status === "active" ? "" : [
+			`work_revision: ${goalWorkRevision(core.state.goal)}`,
 			untrustedObjectiveBlock(core.state.goal), taskListBlock(core.state.goal, settings, 0),
 			verificationContractBlock(core.state.goal, settings), budgetLine(core.state.goal),
 		].filter(Boolean).join("\n");

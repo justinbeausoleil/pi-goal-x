@@ -1,3 +1,4 @@
+import { readWorkRevision } from "./task-tool-client.ts";
 /**
  * P1-3: per-turn transaction buffer.
  *
@@ -86,7 +87,7 @@ describe("P1-3 per-turn transaction buffer", () => {
 
 			const update = h.tools.get("update_goal_task");
 			for (const id of ["t1", "t2", "t3"]) {
-				await update.execute("u", { task_id: id, status: "complete", evidence: `done ${id}` }, new AbortController().signal, undefined, h.ctx);
+				await update.execute("u", { expected_work_revision: await readWorkRevision(h), task_id: id, status: "complete", evidence: `done ${id}` }, new AbortController().signal, undefined, h.ctx);
 			}
 
 			// Mid-turn: in-memory state is current, disk is NOT yet written.
@@ -127,7 +128,7 @@ describe("P1-3 per-turn transaction buffer", () => {
 			await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 			await h.handlers.get("turn_start")?.({}, h.ctx);
 			const update = h.tools.get("update_goal_task");
-			await update.execute("u", { task_id: "t1", status: "complete", evidence: "done t1" }, new AbortController().signal, undefined, h.ctx);
+			await update.execute("u", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence: "done t1" }, new AbortController().signal, undefined, h.ctx);
 
 			const complete = h.tools.get("update_goal");
 			await complete.execute("c", { status: "complete" }, new AbortController().signal, undefined, h.ctx);

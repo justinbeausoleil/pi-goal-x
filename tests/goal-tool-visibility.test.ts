@@ -369,9 +369,10 @@ describe("Applicable tool profiles", () => {
 
 			const updateTaskTool = registeredTools.find((t) => t.name === "update_goal_task");
 			assert.ok(updateTaskTool, "update_goal_task tool must be registered");
+			const inspected = await (registeredTools.find(t => t.name === "get_goal")!.execute as Function)("inspect", {}, undefined, undefined, f.mockCtx);
 			const result1 = await (updateTaskTool.execute as Function)(
 				"call-task-1",
-				{ task_id: "t1", status: "complete", evidence: "Done" },
+				{ task_id: "t1", status: "complete", evidence: "Done", expected_work_revision: inspected.details.work_revision },
 				new AbortController().signal,
 				undefined,
 				f.mockCtx,

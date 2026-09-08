@@ -2,6 +2,26 @@
 
 All notable changes to pi-goal-x are documented here.
 
+## Unreleased fork reliability changes
+
+- Task plans support 200 total nodes. `set_goal_tasks(mode="upsert")` accepts
+  up to 50 entries, preserves omitted fields and other tasks, and appends new
+  or moved siblings in input order. `parent_id=null` moves a task to a root.
+  `mode="replace"` (also the omitted-mode default) specifies the full tree.
+- **Tool contract change:** task progress and existing-plan structural writes
+  require `expected_work_revision` from the latest projection, `get_goal`, or
+  mutation result. Missing/stale revisions reject without changing work;
+  usage and timestamps alone do not invalidate the revision. An empty initial
+  plan can be created without the field. Storage revisions remain separate.
+- Unchanged task requirements retain progress, evidence, and timestamps through
+  structural edits. Ordinary edits cannot erase contracts or edit completed
+  task requirements; the reviewed human scope-revision workflow is still
+  pending implementation. Structural cancellation preserves the current plan.
+- UI evidence dialogs reject results after concurrent work changes or pauses.
+
+These changes are under implementation and qualification. They are not a
+published package or a live-install recommendation.
+
 ## [0.31.2] — 2026-09-08
 
 ### Changed

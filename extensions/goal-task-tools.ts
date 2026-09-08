@@ -2,7 +2,7 @@
  * Task-tool support for the Stage 4 consolidation:
  * flat parent-linked `set_goal_tasks` input → recursive GoalTask[] tree,
  * with the same validation rules the recursive path enforced (unique ids,
- * non-empty titles, existing parents, acyclic, ≤50 tasks, configured depth,
+ * non-empty titles, existing parents, acyclic, ≤200 nodes, configured depth,
  * valid lightweight-subtask placement), plus id-stable merging that preserves
  * status/evidence/timestamps for matching ids.
  */
@@ -21,20 +21,23 @@ import {
 	SET_GOAL_TASKS_TOOL_NAME,
 	UPDATE_GOAL_TASK_TOOL_NAME,
 } from "./goal-tool-names.ts";
-import { nowIso, currentTaskIdIsPending, type GoalTask, type GoalTaskList } from "./goal-record.ts";
+import { nowIso, currentTaskIdIsPending, goalWorkRevision, workRevisionError, type GoalTask, type GoalTaskList } from "./goal-record.ts";
+import { taskIndex } from "./goal-task-index.ts";
 
-export const MAX_TASKS = 50;
+export const MAX_TASKS = 200;
 
 export interface FlatTaskInput {
 	id: string;
-	title: string;
-	parent_id?: string;
+	title?: string;
+	parent_id?: string | null;
 	verification_contract?: string;
 	lightweight_subtasks?: boolean;
 }
 
 export interface FlatTaskListInput {
 	tasks: FlatTaskInput[];
+	mode?: "upsert" | "replace";
+	expected_work_revision?: string;
 	block_completion?: boolean;
 	change_summary?: string;
 }
@@ -47,14 +50,40 @@ export type FlatTaskConversion =
  * Convert a flat parent-linked task list into the recursive GoalTask[]
  * representation, validating:
  *  - non-empty unique ids and titles;
- *  - parent_id references an existing task in the same input;
+ *  - parent_id references a task in the resulting plan;
  *  - acyclic parent relationships;
  *  - at most MAX_TASKS tasks total;
  *  - subtask depth within maxDepth (subtaskDepth setting, default 1);
  *  - lightweight_subtasks is only set on tasks that actually have children.
  */
-export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?: number } = {}): FlatTaskConversion {
+export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?: number; mode?: "upsert" | "replace"; existing?: GoalTask[] } = {}): FlatTaskConversion {
 	if (!Array.isArray(flat)) return { ok: false, message: "tasks must be an array." };
+	if (opts.mode === "upsert" && flat.length > 50) return { ok: false, message: "An upsert cannot exceed 50 entries." };
+	const suppliedIds = new Set<string>();
+	for (const item of flat) {
+		if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim()) return { ok: false, message: "All tasks must have a non-empty id." };
+		if (suppliedIds.has(item.id.trim())) return { ok: false, message: `Duplicate task id: "${item.id.trim()}".` };
+		suppliedIds.add(item.id.trim());
+		if (Object.keys(item).some(key => !["id", "title", "parent_id", "verification_contract", "lightweight_subtasks"].includes(key))) return { ok: false, message: "Structural input accepts only id, title, parent_id, verification_contract, and lightweight_subtasks; use update_goal_task for progress." };
+		if (item.title !== undefined && (typeof item.title !== "string" || !item.title.trim())) return { ok: false, message: `Task "${item.id}" must have a non-empty title.` };
+		if (item.parent_id !== undefined && item.parent_id !== null && (typeof item.parent_id !== "string" || !item.parent_id.trim())) return { ok: false, message: "parent_id must be a non-empty id or null for a root." };
+		if (item.verification_contract !== undefined && typeof item.verification_contract !== "string") return { ok: false, message: "verification_contract must be a string." };
+		if (item.lightweight_subtasks !== undefined && typeof item.lightweight_subtasks !== "boolean") return { ok: false, message: "lightweight_subtasks must be a boolean." };
+	}
+	if (opts.mode === "upsert") {
+		const combined = new Map<string, FlatTaskInput>(taskIndex(opts.existing).ordered.map(({ task, parentId }) => [task.id, {
+			id: task.id, title: task.title, parent_id: parentId, verification_contract: task.verificationContract, lightweight_subtasks: task.lightweightSubtasks,
+		}]));
+		for (const input of flat) {
+			const id = input.id.trim();
+			const prior = combined.get(id);
+			const parent = input.parent_id === undefined ? prior?.parent_id : input.parent_id?.trim() || undefined;
+			// Map insertion order keeps existing siblings and appends new/moved entries in input order.
+			if (prior && parent !== prior.parent_id) combined.delete(id);
+			combined.set(id, { ...prior, ...input, id, parent_id: parent });
+		}
+		flat = [...combined.values()];
+	}
 	if (flat.length > MAX_TASKS) return { ok: false, message: `Task list cannot exceed ${MAX_TASKS} tasks.` };
 
 	const ids = new Set<string>();
@@ -106,7 +135,7 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 	function buildNode(item: FlatTaskInput): GoalTask {
 		const node: GoalTask = {
 			id: item.id.trim(),
-			title: item.title.trim(),
+			title: item.title!.trim(),
 			status: "pending",
 			verificationContract: typeof item.verification_contract === "string" && item.verification_contract.trim()
 				? item.verification_contract.trim()
@@ -255,17 +284,19 @@ export function registerTaskTools(core: import("./goal-state.ts").GoalCore): voi
 pi.registerTool(defineTool({
 	name: SET_GOAL_TASKS_TOOL_NAME,
 	label: "Set Goal Tasks",
-	description: "Set or restructure the task tree with user confirmation. Matching IDs retain progress; removed IDs are deleted. Confirmation stops the turn; continuation follows.",
+	description: "Upsert tasks in batches of 50 or replace the complete tree (200 nodes), with structural confirmation. Use expected_work_revision for an existing plan. Unchanged IDs retain progress. Scope removal requires human revision.",
 	promptSnippet: "Set the goal task tree with confirmation.",
-	promptGuidelines: ["Use tasks only for useful milestones. Restructure an existing tree only when the user asks or requirements structurally change. Input is a flat parent-linked tree, at most 50 tasks, within configured depth. lightweight_subtasks is valid only on parents."],
+	promptGuidelines: ["Use tasks only for useful milestones. mode=upsert preserves omitted fields and other IDs; new IDs need titles. New/moved siblings append in input order; parent_id=null moves to a root. mode=replace (also the omitted-mode default) specifies the full tree/order. Upserts accept 50 entries, plans 200 nodes. Use the latest work_revision as expected_work_revision; stale/missing revisions do not mutate. lightweight_subtasks is valid only on parents. Ordinary structure confirmation cannot remove contracts or edit completed-task requirements."],
 	parameters: Type.Object({
+		mode: Type.Optional(StringEnum(["upsert", "replace"] as const, { description: "upsert edits supplied fields (50 entries); replace specifies the full plan (200 nodes). Omitted means replace." })),
+		expected_work_revision: Type.Optional(Type.String({ description: "Latest work_revision; required when the plan already contains tasks." })),
 		tasks: Type.Array(Type.Object({
 			id: Type.String({ description: "Short stable slug e.g. 'task-1'" }),
-			title: Type.String({ description: "Human-readable task title" }),
-			parent_id: Type.Optional(Type.String({ description: "Parent id; omit for roots." })),
+			title: Type.Optional(Type.String({ description: "Required for new IDs and replacement; omitted upsert fields retain their values." })),
+			parent_id: Type.Optional(Type.Union([Type.String(), Type.Null()], { description: "Parent id; null moves to root. Omitted upsert preserves parent." })),
 			verification_contract: Type.Optional(Type.String({ description: "Required completion evidence." })),
 			lightweight_subtasks: Type.Optional(Type.Boolean({ description: "Children do not gate parent completion." })),
-		}), { description: "Flat parent-linked task list" }),
+		}, { additionalProperties: false }), { description: "Flat parent-linked task list" }),
 		block_completion: Type.Optional(Type.Boolean({ description: "Require all tasks resolved; default false." })),
 		change_summary: Type.Optional(Type.String({ description: "Optional summary of the task list change" })),
 	}, { additionalProperties: false }),
@@ -291,14 +322,17 @@ pi.registerTool(defineTool({
 			};
 		}
 		const settings = loadGoalSettings(ctx.cwd);
-		const converted = convertFlatTasks(params.tasks as FlatTaskInput[], { maxSubtaskDepth: settings.subtaskDepth });
+		const revisionError = workRevisionError(core.state.goal, params.expected_work_revision ?? (core.state.goal.taskList?.tasks.length ? null : undefined));
+		if (revisionError) return { content: [{ type: "text", text: revisionError }], details: goalDetails(core.state.goal) };
+		const expectedWorkRevision = params.expected_work_revision ?? goalWorkRevision(core.state.goal);
+		const converted = convertFlatTasks(params.tasks as FlatTaskInput[], { maxSubtaskDepth: settings.subtaskDepth, mode: params.mode, existing: core.state.goal.taskList?.tasks });
 		if (!converted.ok) {
 			return {
 				content: [{ type: "text", text: converted.message }],
 				details: goalDetails(core.state.goal),
 			};
 		}
-		const blockCompletion = params.block_completion === true;
+		const blockCompletion = params.block_completion ?? (params.mode === "upsert" ? core.state.goal.taskList?.blockCompletion ?? false : false);
 		const now = nowIso();
 
 		// Render the proposed STRUCTURAL tree for the confirmation dialog.
@@ -340,9 +374,14 @@ pi.registerTool(defineTool({
 			};
 		}
 		const applyResult = core.goalService.apply(ctx, {
-			reconcile: false,
+			expectedWorkRevision,
 			focusToken: taskListFocus,
 			refreshFromDisk: true,
+			validate: (goal) => {
+				if (goal.status !== "active" && goal.status !== "paused") return { ok: false, message: `Task list changes require an active or paused goal; current status is ${goal.status}.` };
+				const fresh = convertFlatTasks(params.tasks, { mode: params.mode, existing: goal.taskList?.tasks, maxSubtaskDepth: loadGoalSettings(ctx.cwd).subtaskDepth });
+				return fresh.ok ? undefined : fresh;
+			},
 			// Merge the confirmed structural input against the disk-refreshed
 			// clone so a concurrent external edit is preserved unless the
 			// requested operation changes the same task.
@@ -375,7 +414,7 @@ pi.registerTool(defineTool({
 		core.updateUI(ctx);
 		const confirmedCount = countTasks(core.state.goal.taskList?.tasks);
 		return {
-			content: [{ type: "text", text: `Task list set and confirmed. ${confirmedCount} task${confirmedCount === 1 ? "" : "s"}.${gateLabel}` }],
+			content: [{ type: "text", text: `Task list set and confirmed. ${confirmedCount} task${confirmedCount === 1 ? "" : "s"}.${gateLabel}\nwork_revision: ${goalWorkRevision(core.state.goal)}` }],
 			details: goalDetails(core.state.goal),
 			terminate: true,
 		};
@@ -397,6 +436,7 @@ pi.registerTool(defineTool({
 	promptSnippet: "Start, complete, skip, or reopen tasks; batch related progress.",
 	promptGuidelines: ["start requires pending and sets current task. complete requires evidence for contracted tasks and completed/skipped non-lightweight children. skipped requires a reason and explicit user direction or a hard contradiction; never skip to avoid work. pending reopens skipped tasks only; completed tasks are immutable. Completing/skipping the current task clears focus."],
 	parameters: Type.Object({
+		expected_work_revision: Type.Optional(Type.String({ description: "Required latest work_revision from the goal projection or get_goal." })),
 		task_id: Type.Optional(Type.String({ description: "Single-task form; omit with updates." })),
 		status: Type.Optional(StringEnum(["start", "complete", "skipped", "pending"] as const)),
  updates: Type.Optional(Type.Array(Type.Object({task_id: Type.String(), status: StringEnum(["start", "complete", "skipped", "pending"] as const), evidence: Type.Optional(Type.String()), reason: Type.Optional(Type.String())}, {additionalProperties: false}), {minItems: 1, maxItems: 100, description: "Ordered atomic batch; omit all single-task fields."})),
@@ -414,10 +454,10 @@ pi.registerTool(defineTool({
    if (loadGoalSettings(ctx.cwd).disableTasks) return fail("update_goal_task is disabled by settings (disableTasks: true).");
    if (!core.state.goal) return fail("No goal is focused.");
    if (core.state.goal.status !== "active") return fail(`update_goal_task applies only to an active goal (current status: ${core.state.goal.status}).`);
-   const result = core.goalService.updateTasks(ctx, updates.map(u => progressSpec(u, core, ctx)));
+   const result = core.goalService.updateTasks(ctx, updates.map(u => progressSpec(u, core, ctx)), rawParams.expected_work_revision ?? null);
    if (!result.ok) return fail(result.message);
    core.updateUI(ctx);
-   return fail(`${updates.map(u => `${u.task_id} ${u.status}`).join("; ")}. ${buildTaskSummary(result.goal.taskList!)}.`);
+   return fail(`${updates.map(u => `${u.task_id} ${u.status}`).join("; ")}. ${buildTaskSummary(result.goal.taskList!)}.\nwork_revision: ${goalWorkRevision(result.goal)}`);
   }
   if (!rawParams.task_id || !rawParams.status) return {content: [{type: "text", text: "Provide task_id and status, or an updates batch."}], details: goalDetails(core.state.goal)};
   const params = rawParams as TaskProgressInput;
@@ -448,6 +488,7 @@ pi.registerTool(defineTool({
 
 		if (params.status === "start") {
 			const result = core.goalService.updateTask(ctx, {
+				expectedWorkRevision: rawParams.expected_work_revision ?? null,
 				focusToken: taskFocus,
 				taskId: params.task_id,
 				validate: (task) => {
@@ -476,7 +517,7 @@ pi.registerTool(defineTool({
 			const started = findTaskInTree(core.state.goal.taskList?.tasks ?? [], params.task_id);
 			const contract = started?.verificationContract ? ` Contract: ${started.verificationContract}` : "";
 			return {
-				content: [{ type: "text", text: `Started ${params.task_id}${contract}. ${buildTaskSummary(core.state.goal.taskList!)}.` }],
+				content: [{ type: "text", text: `Started ${params.task_id}${contract}. ${buildTaskSummary(core.state.goal.taskList!)}.\nwork_revision: ${goalWorkRevision(result.goal)}` }],
 				details: goalDetails(core.state.goal),
 			};
 		}
@@ -484,6 +525,7 @@ pi.registerTool(defineTool({
 		if (params.status === "complete") {
 			const evidence = params.evidence?.trim().slice(0, 200) || undefined;
 			const result = core.goalService.updateTask(ctx, {
+				expectedWorkRevision: rawParams.expected_work_revision ?? null,
 				focusToken: taskFocus,
 				taskId: params.task_id,
 				validate: (task) => {
@@ -510,7 +552,7 @@ pi.registerTool(defineTool({
 			}
 			core.updateUI(ctx);
 			return {
-				content: [{ type: "text", text: `${params.task_id} complete. ${buildTaskSummary(core.state.goal.taskList!)}.` }],
+				content: [{ type: "text", text: `${params.task_id} complete. ${buildTaskSummary(core.state.goal.taskList!)}.\nwork_revision: ${goalWorkRevision(result.goal)}` }],
 				details: goalDetails(core.state.goal),
 			};
 		}
@@ -524,6 +566,7 @@ pi.registerTool(defineTool({
 				};
 			}
 			const result = core.goalService.updateTask(ctx, {
+				expectedWorkRevision: rawParams.expected_work_revision ?? null,
 				focusToken: taskFocus,
 				taskId: params.task_id,
 				validate: (task) => {
@@ -550,13 +593,14 @@ pi.registerTool(defineTool({
 			}
 			core.updateUI(ctx);
 			return {
-				content: [{ type: "text", text: `${params.task_id} skipped. ${buildTaskSummary(core.state.goal.taskList!)}.` }],
+				content: [{ type: "text", text: `${params.task_id} skipped. ${buildTaskSummary(core.state.goal.taskList!)}.\nwork_revision: ${goalWorkRevision(result.goal)}` }],
 				details: goalDetails(core.state.goal),
 			};
 		}
 
 		// status === "pending": reopen a skipped task; completed tasks are immutable.
 		const result = core.goalService.updateTask(ctx, {
+			expectedWorkRevision: rawParams.expected_work_revision ?? null,
 			focusToken: taskFocus,
 			taskId: params.task_id,
 			validate: (task) => {
@@ -584,7 +628,7 @@ pi.registerTool(defineTool({
 		}
 		core.updateUI(ctx);
 		return {
-			content: [{ type: "text", text: `${params.task_id} reopened. ${buildTaskSummary(core.state.goal.taskList!)}.` }],
+			content: [{ type: "text", text: `${params.task_id} reopened. ${buildTaskSummary(core.state.goal.taskList!)}.\nwork_revision: ${goalWorkRevision(result.goal)}` }],
 			details: goalDetails(core.state.goal),
 		};
 	},

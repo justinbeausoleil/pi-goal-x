@@ -1,3 +1,4 @@
+import { readWorkRevision } from "./task-tool-client.ts";
 /**
  * Stage 4 task-tool tests: flat parent-linked set_goal_tasks conversion and
  * validation, id-stable merging, and the update_goal_task discriminated union.
@@ -17,6 +18,116 @@ import { parseGoalFile, writeActiveGoalFile } from "../extensions/storage/goal-f
 import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 
 // ── Flat conversion unit tests ───────────────────────────────────────────────
+
+test("task confirmation cancellation and concurrent public progress cannot overwrite the plan", async () => {
+	const f = fixtureWithTasks([]);
+	const oldAutoConfirm = process.env.PI_GOAL_AUTO_CONFIRM;
+	delete process.env.PI_GOAL_AUTO_CONFIRM;
+	try {
+		const h = createHarness(f.cwd, f.sessionEntries);
+		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
+		const call = (client: typeof h, name: string, params: unknown) => (client.tools.get(name)!.execute as any)("confirmation", params, undefined, undefined, client.ctx);
+		const initial = await call(h, "set_goal_tasks", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }] });
+		const other = createHarness(f.cwd, f.sessionEntries);
+		await other.handlers.get("session_start")?.({ reason: "start" }, other.ctx);
+		Object.assign(h.ctx, { hasUI: true });
+		h.ctx.ui.custom = (async () => {
+			const result = await call(other, "update_goal_task", { task_id: "a", status: "complete", evidence: "Concurrent proof", expected_work_revision: initial.details.work_revision });
+			assert.equal(result.details.goal.taskList.tasks[0].status, "complete");
+			return { decision: "confirm" };
+		}) as typeof h.ctx.ui.custom;
+		const stale = await call(h, "set_goal_tasks", { tasks: [{ id: "a", title: "A" }], expected_work_revision: initial.details.work_revision });
+		assert.match(stale.content[0].text, /expected_work_revision/);
+		assert.deepEqual(stale.details.goal.taskList.tasks.map((t: GoalTask) => [t.id, t.status]), [["a", "complete"], ["b", "pending"]]);
+		const before = readFileSync(path.join(f.cwd, f.goal.activePath!), "utf8");
+		h.ctx.ui.custom = (async () => ({ decision: "cancel" })) as typeof h.ctx.ui.custom;
+		const cancelled = await call(h, "set_goal_tasks", { tasks: [{ id: "a", title: "A" }], expected_work_revision: stale.details.work_revision });
+		assert.match(cancelled.content[0].text, /kept unchanged/);
+		assert.equal(readFileSync(path.join(f.cwd, f.goal.activePath!), "utf8"), before);
+	} finally {
+		if (oldAutoConfirm === undefined) delete process.env.PI_GOAL_AUTO_CONFIRM; else process.env.PI_GOAL_AUTO_CONFIRM = oldAutoConfirm;
+		f.cleanup();
+	}
+});
+
+test("public task writes reject missing/stale work revisions but accept accounting-only changes", async () => {
+	const f = fixtureWithTasks([]);
+	try {
+		const h = createHarness(f.cwd, f.sessionEntries);
+		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
+		const call = (name: string, params: unknown) => (h.tools.get(name)!.execute as any)("revision", params, undefined, undefined, h.ctx);
+		const initial = await call("set_goal_tasks", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }] });
+		const revision = initial.details.work_revision;
+		assert.equal(typeof revision, "string");
+		const snapshot = () => readFileSync(path.join(f.cwd, f.goal.activePath!), "utf8");
+		const before = snapshot();
+		for (const [name, params] of [
+			["set_goal_tasks", { mode: "upsert", tasks: [{ id: "b", title: "Changed" }] }],
+			["update_goal_task", { task_id: "a", status: "start" }],
+			["update_goal_task", { updates: [{ task_id: "a", status: "start" }] }],
+		] as const) {
+			const result = await call(name, params);
+			assert.match(result.content[0].text, /expected_work_revision.*get_goal/);
+			assert.equal(result.details.work_revision, revision);
+			assert.equal(snapshot(), before, "missing revision must not write any record");
+		}
+		const accounting = activeGoal(f.cwd)!;
+		accounting.usage.tokensUsed += 100; accounting.usage.activeSeconds += 20;
+		accounting.revision = (accounting.revision ?? 0) + 1; accounting.updatedAt = new Date().toISOString();
+		writeActiveGoalFile(h.ctx, accounting);
+		const complete = await call("update_goal_task", { task_id: "a", status: "complete", evidence: "Observed proof", expected_work_revision: revision });
+		assert.equal(complete.details.goal.taskList.tasks[0].status, "complete");
+		assert.notEqual(complete.details.work_revision, revision);
+		const after = snapshot();
+		for (const [name, params] of [
+			["set_goal_tasks", { mode: "upsert", tasks: [{ id: "b", title: "Changed" }] }],
+			["update_goal_task", { task_id: "b", status: "start" }],
+			["update_goal_task", { updates: [{ task_id: "b", status: "start" }] }],
+		] as const) {
+			const result = await call(name, { ...params, expected_work_revision: revision });
+			assert.match(result.content[0].text, /expected_work_revision.*get_goal/);
+			assert.equal(result.details.work_revision, complete.details.work_revision);
+			assert.equal(snapshot(), after, "stale revision must not write any member");
+		}
+		const timestamps = activeGoal(f.cwd)!;
+		timestamps.createdAt = "2026-09-01T00:00:00Z";
+		timestamps.taskList!.proposedAt = "2026-09-02T00:00:00Z";
+		timestamps.taskList!.tasks[0]!.completedAt = "2026-09-03T00:00:00Z";
+		writeActiveGoalFile(h.ctx, timestamps);
+		assert.equal((await call("get_goal", {})).details.work_revision, complete.details.work_revision, "all wall-clock fields are excluded");
+		const started = await call("update_goal_task", { task_id: "b", status: "start", expected_work_revision: complete.details.work_revision });
+		assert.equal(started.details.goal.currentTaskId, "b");
+	} finally { f.cleanup(); }
+});
+
+test("ordinary structural writes cannot erase contracts or edit completed task requirements", async () => {
+	const f = fixtureWithTasks([]);
+	try {
+		const h = createHarness(f.cwd, f.sessionEntries);
+		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
+		const call = (name: string, params: unknown) => (h.tools.get(name)!.execute as any)("scope", params, undefined, undefined, h.ctx);
+		const tasks = [{ id: "a", title: "A", verification_contract: "Observe A" }, { id: "b", title: "B" }];
+		const initial = await call("set_goal_tasks", { tasks });
+		const complete = await call("update_goal_task", { expected_work_revision: initial.details.work_revision, task_id: "a", status: "complete", evidence: "Observed A" });
+		const expected_work_revision = complete.details.work_revision;
+		const before = readFileSync(path.join(f.cwd, f.goal.activePath!), "utf8");
+		for (const params of [
+			{ mode: "upsert", tasks: [{ id: "a", title: "A changed" }] },
+			{ mode: "replace", tasks: [{ ...tasks[0], title: "A changed" }, tasks[1]] },
+			{ mode: "upsert", tasks: [{ id: "a", verification_contract: "Weaker evidence" }] },
+			{ mode: "replace", tasks: [{ id: "a", title: "A" }, tasks[1]] },
+			{ mode: "replace", tasks: [tasks[1]] },
+		]) {
+			const result = await call("set_goal_tasks", { ...params, expected_work_revision });
+			assert.match(result.content[0].text, /scope revision|completed task/);
+			assert.equal(readFileSync(path.join(f.cwd, f.goal.activePath!), "utf8"), before);
+		}
+		const unchanged = await call("set_goal_tasks", { expected_work_revision, tasks: [{ ...tasks[0], title: "  A  ", verification_contract: " Observe A " }, tasks[1]] });
+		assert.equal(unchanged.details.goal.taskList.tasks[0].status, "complete");
+		assert.equal(unchanged.details.goal.taskList.tasks[0].evidence, "Observed A");
+		assert.equal(unchanged.details.goal.taskList.tasks[0].completedAt, complete.details.goal.taskList.tasks[0].completedAt);
+	} finally { f.cleanup(); }
+});
 
 test("flat input converts to the same recursive tree", () => {
 	const result = convertFlatTasks([
@@ -39,6 +150,8 @@ test("flat conversion rejects duplicate ids, missing titles, and missing parents
 	assert.equal(convertFlatTasks([{ id: "", title: "X" }]).ok, false);
 	assert.equal(convertFlatTasks([{ id: "a", title: "" }]).ok, false);
 	assert.equal(convertFlatTasks([{ id: "a", title: "A", parent_id: "ghost" }]).ok, false);
+	assert.equal(convertFlatTasks([{ id: "a", title: "A", status: "complete" } as FlatTaskInput]).ok, false, "structural input never accepts progress");
+	assert.equal(convertFlatTasks([{ id: "a", title: "A", lightweight_subtasks: "yes" } as unknown as FlatTaskInput]).ok, false);
 });
 
 test("flat conversion rejects cyclic parent relationships", () => {
@@ -50,9 +163,11 @@ test("flat conversion rejects cyclic parent relationships", () => {
 	assert.ok((cyclic as { message: string }).message.includes("Cyclic"));
 });
 
-test("flat conversion enforces the 50-task cap, depth cap, and lightweight placement", () => {
-	const many = Array.from({ length: 51 }, (_, i) => ({ id: `t${i}`, title: `T${i}` }));
+test("flat conversion enforces the 200-node replacement / 50-entry upsert caps, depth, and lightweight placement", () => {
+	const many = Array.from({ length: 201 }, (_, i) => ({ id: `t${i}`, title: `T${i}` }));
 	assert.equal(convertFlatTasks(many).ok, false);
+	assert.equal(convertFlatTasks(many.slice(0, 200)).ok, true);
+	assert.equal(convertFlatTasks(many.slice(0, 51), { mode: "upsert" }).ok, false);
 	const deep = convertFlatTasks([
 		{ id: "a", title: "A" },
 		{ id: "b", title: "B", parent_id: "a" },
@@ -163,7 +278,7 @@ test("set_goal_tasks sets a structural task tree (headless auto-confirm)", async
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("set_goal_tasks")!;
-		const result = await (tool.execute as any)("set-1", {
+		const result = await (tool.execute as any)("set-1", { expected_work_revision: await readWorkRevision(h),
 			tasks: [
 				{ id: "t1", title: "Task one" },
 				{ id: "t2", title: "Task two", parent_id: "t1" },
@@ -190,7 +305,7 @@ test("update_goal_task(complete) marks a task complete with evidence and ledger"
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("update_goal_task")!;
-		const result = await (tool.execute as any)("upd-1", { task_id: "t1", status: "complete", evidence: "verified" }, undefined, undefined, h.ctx);
+		const result = await (tool.execute as any)("upd-1", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence: "verified" }, undefined, undefined, h.ctx);
 		assert.equal(result.terminate, undefined, "task update does not terminate the turn");
 		const goal = activeGoal(f.cwd);
 		assert.equal(goal?.taskList?.tasks[0]?.status, "complete");
@@ -208,7 +323,7 @@ test("update_goal_task(complete) requires evidence for contracted tasks", async 
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("update_goal_task")!;
-		const result = await (tool.execute as any)("upd-2", { task_id: "t1", status: "complete" }, undefined, undefined, h.ctx);
+		const result = await (tool.execute as any)("upd-2", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete" }, undefined, undefined, h.ctx);
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("verification contract"), `evidence required for contracted task, got: ${text}`);
 		const goal = activeGoal(f.cwd);
@@ -242,9 +357,9 @@ test("update_goal_task(skipped) requires a reason and cascades to subtasks", asy
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("update_goal_task")!;
-		const noReason = await (tool.execute as any)("upd-3", { task_id: "t1", status: "skipped" }, undefined, undefined, h.ctx);
+		const noReason = await (tool.execute as any)("upd-3", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "skipped" }, undefined, undefined, h.ctx);
 		assert.ok((noReason.content?.[0]?.text ?? "").includes("requires a non-empty reason"));
-		const ok = await (tool.execute as any)("upd-4", { task_id: "t1", status: "skipped", reason: "user direction" }, undefined, undefined, h.ctx);
+		const ok = await (tool.execute as any)("upd-4", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "skipped", reason: "user direction" }, undefined, undefined, h.ctx);
 		assert.ok((ok.content?.[0]?.text ?? "").includes("skipped"));
 		const files = readdirSync(path.join(cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"));
 		const parsed = parseGoalFile(path.join(cwd, ".pi", "goals", files[0]!));
@@ -274,9 +389,9 @@ test("update_goal_task(pending) reopens a skipped task; completed tasks are immu
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("update_goal_task")!;
-		const reopen = await (tool.execute as any)("upd-5", { task_id: "sk", status: "pending" }, undefined, undefined, h.ctx);
+		const reopen = await (tool.execute as any)("upd-5", { expected_work_revision: await readWorkRevision(h), task_id: "sk", status: "pending" }, undefined, undefined, h.ctx);
 		assert.ok((reopen.content?.[0]?.text ?? "").includes("reopened"));
-		const immutable = await (tool.execute as any)("upd-6", { task_id: "done", status: "pending" }, undefined, undefined, h.ctx);
+		const immutable = await (tool.execute as any)("upd-6", { expected_work_revision: await readWorkRevision(h), task_id: "done", status: "pending" }, undefined, undefined, h.ctx);
 		assert.ok((immutable.content?.[0]?.text ?? "").includes("cannot be reopened"));
 		const files = readdirSync(path.join(cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"));
 		const parsed = parseGoalFile(path.join(cwd, ".pi", "goals", files[0]!));
@@ -390,7 +505,7 @@ test("set_goal_tasks preserves an external disk edit made between confirmation a
 		writeActiveGoalFile({ cwd: f.cwd }, diskGoal);
 
 		const tool = h.tools.get("set_goal_tasks")!;
-		await (tool.execute as any)("set-ext", {
+		await (tool.execute as any)("set-ext", { expected_work_revision: await readWorkRevision(h),
 			tasks: [{ id: "t1", title: "T1" }, { id: "t2", title: "T2" }],
 		}, undefined, undefined, h.ctx);
 
@@ -425,7 +540,7 @@ test("update_goal_task updates only the requested path and preserves concurrent 
 		writeActiveGoalFile({ cwd: f.cwd }, diskGoal);
 
 		const tool = h.tools.get("update_goal_task")!;
-		await (tool.execute as any)("upd-ext", { task_id: "t1", status: "complete", evidence: "verified" }, undefined, undefined, h.ctx);
+		await (tool.execute as any)("upd-ext", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence: "verified" }, undefined, undefined, h.ctx);
 
 		const goal = activeGoal(f.cwd);
 		const byId = new Map(goal!.taskList!.tasks.map((t) => [t.id, t]));
@@ -452,7 +567,7 @@ test("update_goal_task returns a typed failure for a task removed on disk", asyn
 		writeActiveGoalFile({ cwd: f.cwd }, diskGoal);
 
 		const tool = h.tools.get("update_goal_task")!;
-		const result = await (tool.execute as any)("upd-gone", { task_id: "t1", status: "complete", evidence: "x" }, undefined, undefined, h.ctx);
+		const result = await (tool.execute as any)("upd-gone", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence: "x" }, undefined, undefined, h.ctx);
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("not found"), `removed task must return a typed failure, got: ${text}`);
 	} finally {
@@ -467,7 +582,7 @@ test("set_goal_tasks never creates per-goal auditor bypass state", async () => {
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("set_goal_tasks")!;
-		await (tool.execute as any)("set-nya", {
+		await (tool.execute as any)("set-nya", { expected_work_revision: await readWorkRevision(h),
 			tasks: [{ id: "t1", title: "T1" }],
 		}, undefined, undefined, h.ctx);
 		const goal = activeGoal(f.cwd);
@@ -495,7 +610,7 @@ test("update_goal_task(pending) writes a task_reopened ledger event", async () =
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("update_goal_task")!;
-		await (tool.execute as any)("upd-r", { task_id: "sk", status: "pending" }, undefined, undefined, h.ctx);
+		await (tool.execute as any)("upd-r", { expected_work_revision: await readWorkRevision(h), task_id: "sk", status: "pending" }, undefined, undefined, h.ctx);
 		const events = ledgerEvents(cwd);
 		const reopened = events.find((e) => e.type === "task_reopened") as Record<string, unknown> | undefined;
 		assert.ok(reopened, "task_reopened ledger event must be written");

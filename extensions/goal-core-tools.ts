@@ -14,7 +14,7 @@ import { loadGoalSettings } from "./goal-settings.ts";
 import { buildGoalHistoryBlock, buildGoalTaskDetailBlock } from "./goal-format.ts";
 import { sisyphusStepProgress } from "./goal-policy.ts";
 import { deriveTasksFromObjective } from "./goal-task-derive.ts";
-import { nowIso, type GoalRecord, type GoalTask, validateTokenBudgetInput } from "./goal-record.ts";
+import { nowIso, goalWorkRevision, type GoalRecord, type GoalTask, validateTokenBudgetInput } from "./goal-record.ts";
 import type { GoalCore } from "./goal-state.ts";
 import { promptProfile } from "./prompts/goal-prompts.ts";
 import {
@@ -50,7 +50,7 @@ pi.registerTool(defineTool({
 	label: "Get Goal",
 	description: "Read focused goal state. Default: compact summary. Retrieve full objective/contracts, tasks, or history in 4000-character pages with section and cursor. verbose preserves full legacy output.",
 	promptSnippet: "Inspect goal state or retrieve omitted requirements.",
-	promptGuidelines: [],
+		promptGuidelines: ["Use the latest work_revision as expected_work_revision for task mutations; accounting alone does not change it."],
 	parameters: Type.Object({
   section: Type.Optional(StringEnum(["summary", "objective", "tasks", "history"] as const)),
   task_id: Type.Optional(Type.String({description: "With section=tasks, retrieve one task."})),
@@ -86,7 +86,7 @@ pi.registerTool(defineTool({
   }
   if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
 		if (verbose && !params.section) {
-			const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`];
+			const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, `work_revision: ${goalWorkRevision(view)}`];
 			lines.push(`Objective: ${view.objective}`, "");
 			lines.push(`Status: ${statusLabel(view)}`);
 			lines.push(`Mode: ${view.sisyphus ? "sisyphus" : "regular"}`);
@@ -129,7 +129,7 @@ pi.registerTool(defineTool({
 		}
 
 		// Compact state read; full requirements remain available through detail pages.
-		const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`];
+		const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, `work_revision: ${goalWorkRevision(view)}`];
 		lines.push(`Objective: ${truncateText(view.objective, 180)}${view.objective.length > 180 ? " (full: get_goal section=objective)" : ""}`);
 		if (view.taskList) {
 			const { findCurrentTask, firstPendingTask } = conciseTaskPointers(view);

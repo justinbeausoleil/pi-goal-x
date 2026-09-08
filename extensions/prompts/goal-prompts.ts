@@ -1,7 +1,7 @@
 import { taskIndex } from "../goal-task-index.ts";
 import { statusLabel, truncateText } from "../goal-core.ts";
 import { promptSafeObjective } from "../goal-contract.ts";
-import type { GoalRecord, GoalTask } from "../goal-record.ts";
+import { goalWorkRevision, type GoalRecord, type GoalTask } from "../goal-record.ts";
 import type { GoalSettings } from "../goal-settings.ts";
 import { budgetLine } from "../goal-accounting.ts";
 
@@ -234,7 +234,7 @@ function retainedTaskChars(task: GoalTask): number {
 export function goalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
 	const fixed = cachedPrompt(goal, settings, "goal", () => buildGoalPrompt(goal, settings));
  const budget = budgetLine(goal);
- return `${fixed}\nUsage: ${formatUsage(goal)}${budget ? `\n${budget}` : ""}`;
+ return `${fixed}\nwork_revision: ${goalWorkRevision(goal)}\nUsage: ${formatUsage(goal)}${budget ? `\n${budget}` : ""}`;
 }
 
 function buildGoalPrompt(goal: GoalRecord, settings?: GoalSettings): string {

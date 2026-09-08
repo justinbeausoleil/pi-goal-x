@@ -1,3 +1,4 @@
+import { readWorkRevision } from "./task-tool-client.ts";
 /**
  * End-to-end regression coverage for /goal-tweak status persistence
  * (specs/2026-08-08-tweak-status-persistence, R1 / success criterion 3):
@@ -117,7 +118,7 @@ async function confirmDialog(h: Harness, pending: Promise<any>): Promise<void> {
 async function callTaskTool(h: Harness, name: string, params: Record<string, unknown>): Promise<any> {
 	const tool = h.tools.get(name);
 	assert.ok(tool, `${name} must be registered`);
-	return (tool.execute as any)(`call-${name}`, params, new AbortController().signal, undefined, h.ctx);
+	return (tool.execute as any)(`call-${name}`, {expected_work_revision: await readWorkRevision(h), ...params}, new AbortController().signal, undefined, h.ctx);
 }
 
 async function createGoalWithTasks(h: Harness, objective: string, tasks: Array<Record<string, unknown>>): Promise<void> {
@@ -153,12 +154,18 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 
 		// Tweak: same ids + a new task c. The merge must keep a complete.
 		await h.commands.get("goal-tweak")!.handler("Revise the plan", h.ctx);
-		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
+		const unsafe = runProposal(h, proposalParams("Revised objective", {
 			tasks: [
 				{ id: "a", title: "Task A (retitled)" },
 				{ id: "b", title: "Task B" },
 				{ id: "c", title: "Task C" },
 			],
+		}));
+		await confirmDialog(h, unsafe);
+		assert.match((await unsafe).content[0].text, /completed task/);
+		assert.equal(diskGoal(cwd).objective, "Initial objective\nSuccess criteria: tests pass.");
+		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
+			tasks: [{ id: "a", title: "Task A" }, { id: "b", title: "Task B" }, { id: "c", title: "Task C" }],
 		})));
 
 		// Reload the persisted goal from disk.
@@ -168,7 +175,7 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 		assert.equal(a.status, "complete", "completed status survives the tweak");
 		assert.equal(a.evidence, "verified-e2e", "evidence survives the tweak");
 		assert.ok(a.completedAt, "completedAt timestamp survives the tweak");
-		assert.equal(a.title, "Task A (retitled)", "structural title comes from the incoming proposal");
+		assert.equal(a.title, "Task A", "completed requirements remain unchanged until human scope revision is available");
 		assert.equal(goal.taskList!.tasks.find((t) => t.id === "c")!.status, "pending", "new id starts pending");
 		assert.equal(goal.taskList!.tasks.find((t) => t.id === "b")!.status, "pending", "pending task stays pending");
 		assert.equal(goal.currentTaskId, "b", "currentTaskId survives while its task is still pending");
@@ -223,11 +230,16 @@ test("e2e: subtask completion status survives a task-list tweak", async () => {
 
 		// Tweak proposing the same parent/subtask structure.
 		await h.commands.get("goal-tweak")!.handler("Revise", h.ctx);
-		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
+		const unsafe = runProposal(h, proposalParams("Revised objective", {
 			tasks: [
 				{ id: "p", title: "Parent" },
 				{ id: "p1", title: "Child one (renamed)", parent_id: "p" },
 			],
+		}));
+		await confirmDialog(h, unsafe);
+		assert.match((await unsafe).content[0].text, /completed task/);
+		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
+			tasks: [{ id: "p", title: "Parent" }, { id: "p1", title: "Child one", parent_id: "p" }],
 		})));
 
 		const goal = diskGoal(cwd);
@@ -235,7 +247,7 @@ test("e2e: subtask completion status survives a task-list tweak", async () => {
 		assert.equal(p1.status, "complete", "subtask completion survives the tweak");
 		assert.equal(p1.evidence, "child-done", "subtask evidence survives");
 		assert.ok(p1.completedAt, "subtask completedAt survives");
-		assert.equal(p1.title, "Child one (renamed)", "structural subtask title comes from the proposal");
+		assert.equal(p1.title, "Child one", "completed subtask requirements remain unchanged");
 	} finally {
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}

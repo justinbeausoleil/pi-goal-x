@@ -235,7 +235,7 @@ The extension registers five normal-execution tools and three drafting-only tool
 | `create_goal` | Create and focus a new goal after an explicit user request (objective 1–4000 chars, optional `mode` regular/sisyphus and `token_budget`). |
 | `get_goal` | Compact summary by default; lossless objective/tasks/history pages (up to 4,000 content characters), optional task selection, legacy verbose/history forms. |
 | `update_goal` | Run outcomes: `complete` (audited from actual evidence; optional `completion_summary` is an untrusted claim), `blocked` (after three consecutive identical blockers), or `paused` (immediate agent pause with required `reason`). |
-| `set_goal_tasks` | Create or structurally replace the task tree (flat parent-linked input, confirmation dialog, id-stable merge). |
+| `set_goal_tasks` | Upsert at most 50 entries or replace the full tree (at most 200 nodes), with structural confirmation and work-revision validation. |
 | `update_goal_task` | Update one task or an ordered atomic batch: start, complete (evidence for contracted tasks), skipped (reason), pending (reopens skipped). |
 | `goal_question` | Drafting-only structured clarification question. |
 | `goal_questionnaire` | Drafting-only multi-question clarification UI. |
@@ -248,6 +248,27 @@ task tools. A guided draft replaces goal tools with question/questionnaire/propo
 tools until confirmation or cancellation. Ordinary pi work tools remain available.
 The SDK active profile changes only when membership changes. Executors still
 validate lifecycle state, including stale calls made after a transition.
+
+Task writes carry `expected_work_revision`, an opaque content hash of the goal
+ID, objective/contract, ordered task structure/progress/evidence, task gate,
+and current task. It excludes usage, timestamps, storage revision, and ledger
+activity. Inspection, executor projections, and task mutation results expose
+the current value. Initial empty-plan creation may omit it. The mutation
+module checks it against reconciled work in both immediate and buffered paths;
+the existing per-goal lock and numeric storage CAS still protect disk writes.
+UI task dialogs capture it before waiting for evidence. Whole-record structural
+mutations currently reject removing/changing contracts or changing completed
+task requirements; ticket 005 owns retained-scope metadata and human revision.
+
+The existing flat-tree converter validates the complete resulting plan. Upsert
+edits supplied fields, preserving omitted values; new IDs require a title and
+start pending at the root. `parent_id=null` moves to a root. Existing siblings
+keep order, while new/moved nodes append in input order. Replacement (including
+omitted mode) specifies the complete order/tree and removes omitted uncontracted
+tasks only after confirmation. Unchanged IDs retain progress and timestamps;
+current-task focus survives only for a pending node. Cancelling or confirming
+a proposal after concurrent work changes leaves that work intact. The original
+normal-parent, lightweight-child, and ordered progress-batch gates remain.
 
 Normal prompt/dashboard reads use per-goal ledger indexes: 12 recent events,
 64 activity candidates in stable timestamp order, pinned audit/lifecycle state,

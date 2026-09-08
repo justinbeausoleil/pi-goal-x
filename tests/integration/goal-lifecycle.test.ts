@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+test("S1/S2: public 180+20-node task plan survives rejected writes and session reopen", { timeout: 25000 }, async () => {
+	const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-task-plan-worker.mjs", import.meta.url))], {
+		timeout: 22000, env: { ...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: "" },
+	});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const mode of ["goal-direct", "sisyphus-direct", "goal", "sisyphus", "create_goal", "reject-stale", "reject-malformed", "reject-malformed-prefix", "reject-malformed-large", "reject-malformed-long-id", "reject-paused", "reject-replaced", "reject-unfocused", "budget-wrapup"]) {
 test(`S1: actual Pi ${mode} startup and second checkpoint`, { timeout: 15000 }, async () => {
 	const { stdout } = await run(process.execPath, ["--experimental-strip-types", worker, mode], {

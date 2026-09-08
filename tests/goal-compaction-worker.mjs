@@ -195,7 +195,13 @@ try {
 			return message(requestedModel, [{ type: "text", text: "Ready for manual compaction." }], "stop");
 		}
 		if (step.overflow) return message(requestedModel, [], "error");
-		return message(requestedModel, [{ type: "toolCall", id: `call-${executorRequests}`, name: step.name, arguments: step.args }], "toolUse", step.input ?? (mode === "threshold" && step.name === "fixture_padding" ? 56000 : 100));
+		const args = { ...step.args };
+		if (["set_goal_tasks", "update_goal_task"].includes(step.name) && !baseline) {
+			const revision = automaticText(context).match(/work_revision: ([a-f0-9]+)/)?.[1];
+			assert(revision, "current work revision must be visible before public task mutation");
+			args.expected_work_revision = revision;
+		}
+		return message(requestedModel, [{ type: "toolCall", id: `call-${executorRequests}`, name: step.name, arguments: args }], "toolUse", step.input ?? (mode === "threshold" && step.name === "fixture_padding" ? 56000 : 100));
 	};
 	deadline = setTimeout(() => { failure ??= new Error("compaction fixture timed out"); void session.abort(); resolveFinished(); }, 15000);
 	await session.sendCustomMessage({ customType: "fixture-unrelated", content: "fixture-unrelated-sentinel", display: false }, { triggerTurn: false });

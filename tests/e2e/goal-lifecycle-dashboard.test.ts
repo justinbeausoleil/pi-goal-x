@@ -1,3 +1,4 @@
+import { readWorkRevision } from "../task-tool-client.ts";
 /**
  * End-to-end goal lifecycle test (plan §19.9): guided creation → clarification
  * → confirmation → auto-start → task focus → dashboard states → completion →
@@ -126,7 +127,7 @@ function ledgerEvents(cwd: string): any[] {
 async function callTool(h: ReturnType<typeof createHarness>, name: string, callId: string, params: Record<string, unknown>) {
 	const tool = h.tools.get(name)!;
 	assert.ok(tool, `${name} tool must be registered`);
-	return tool.execute(callId, params, undefined, undefined, h.ctx);
+	return tool.execute(callId, {...(["set_goal_tasks", "update_goal_task"].includes(name) ? {expected_work_revision: await readWorkRevision(h)} : {}), ...params}, undefined, undefined, h.ctx);
 }
 
 function dashboardText(goal: GoalRecord, expanded: boolean, cwd: string): string {

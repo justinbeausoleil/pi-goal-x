@@ -1289,15 +1289,23 @@ test("a tweak merges the proposed task list by id, preserving statuses of surviv
 			],
 		}));
 		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
-		await pending;
+		const rejected = await pending;
+		assert.match(rejected.content[0].text, /scope revision/);
+		assert.equal(firstGoal(cwd).objective, "Initial objective", "unsafe structural edit cannot partially apply its objective");
+		const preservation = runProposal(h, proposalParams("Revised objective", {
+			sisyphus: false,
+			tasks: [{ id: "keep", title: "Surviving task", verification_contract: "tests pass" }, { id: "fresh", title: "Brand new task" }],
+		}));
+		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
+		await preservation;
 		const after = firstGoal(cwd);
 		const byId = new Map(after.taskList?.tasks.map((t) => [t.id, t]) ?? []);
 		const keep = byId.get("keep");
 		assert.equal(keep?.status, "complete", "persisting step keeps its status across the tweak");
 		assert.equal(keep?.evidence, "Done it.", "evidence preserved");
 		assert.equal(keep?.completedAt, "2026-08-05T10:00:00.000Z", "completedAt preserved");
-		assert.equal(keep?.verificationContract, "contract v2", "structural fields (contract) follow the proposal");
-		assert.equal(keep?.title, "Surviving task (retitled)", "structural fields follow the proposal");
+		assert.equal(keep?.verificationContract, "tests pass", "completed contract remains unchanged until human scope revision is available");
+		assert.equal(keep?.title, "Surviving task", "completed title remains unchanged");
 		assert.equal(byId.has("drop"), false, "removed step is dropped");
 		assert.equal(byId.has("ct"), false, "removed current task is dropped");
 		assert.equal(byId.get("fresh")?.status, "pending", "new step starts pending");

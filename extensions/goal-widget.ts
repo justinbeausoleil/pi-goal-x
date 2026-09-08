@@ -1,6 +1,6 @@
 import { matchesKey } from "@earendil-works/pi-tui";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { cloneGoal, createGoal, nowIso, type GoalTask } from "./goal-record.ts";
+import { cloneGoal, createGoal, nowIso, goalWorkRevision, type GoalTask } from "./goal-record.ts";
 import { checkSubtasksComplete, findTaskInTree } from "./goal-policy.ts";
 import { DEFAULT_GOAL_KEYBINDINGS, loadGoalSettings } from "./goal-settings.ts";
 import { serializeGoalFile } from "./storage/goal-files.ts";
@@ -66,6 +66,8 @@ export async function toggleTaskViaService(core: GoalCore, ctx: ExtensionContext
 	const settings = loadGoalSettings(ctx.cwd);
 	const task = findTaskInTree(goal.taskList.tasks, taskId);
 	if (!task) return { ok: false, message: `Task "${taskId}" not found.` };
+	const expectedWorkRevision = goalWorkRevision(goal);
+	const focusToken = core.focusedOperationToken(goalId);
 	const now = nowIso();
 
 	if (task.status === "pending") {
@@ -80,7 +82,7 @@ export async function toggleTaskViaService(core: GoalCore, ctx: ExtensionContext
 		const subtaskGate = checkSubtasksComplete(task);
 		if (subtaskGate) return { ok: false, message: subtaskGate };
 		const result = core.goalService.updateTask(ctx, {
-			focusToken: core.focusedOperationToken(goalId),
+			expectedWorkRevision, focusToken,
 			taskId,
 			validate: (t) => {
 				if (t.status === "complete") return { ok: false, message: `Task "${taskId}" is already complete.` };
@@ -95,7 +97,7 @@ export async function toggleTaskViaService(core: GoalCore, ctx: ExtensionContext
 
 	if (task.status === "complete") {
 		const result = core.goalService.updateTask(ctx, {
-			focusToken: core.focusedOperationToken(goalId),
+			expectedWorkRevision, focusToken,
 			taskId,
 			validate: () => ({ ok: true }),
 			update: (t) => ({ ...t, status: "pending" as const, completedAt: undefined, evidence: undefined }),

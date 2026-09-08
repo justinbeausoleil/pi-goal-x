@@ -247,3 +247,59 @@
   Main and live Pi selection remain unchanged. Ticket 003 is now in progress;
   006 is independently eligible. Next: trace task tools/service, establish
   public incremental-plan and work-revision red tests, then implement D2.
+
+### Ticket 003 implementation checkpoint (not yet qualified)
+
+- HEAD remains 9a16d35 (pushed); the working tree contains the first D2 changes.
+  Public native-host test now builds 180 nodes in 50/50/50/30 batches, writes an
+  actual evidence artifact, completes t1 and starts t175, appends 20, moves and
+  edits the current task, rejects invalid operations atomically, and reopens
+  the same paused session with all 200 IDs and completed evidence intact.
+  Latest proof: reliability/003/public-atomic-green.log (28 requests, one write).
+- Added content work revisions without storage-format changes; accounting and
+  timestamps are excluded. Public missing/stale writes have a retained red then
+  green. Validation runs inside the existing mutation paths as well as before
+  structural confirmation. Existing numeric storage CAS remains independent.
+- Whole-record structural mutation now rejects removing/changing contracts or
+  editing completed-task requirements until 005 supplies human scope revision.
+  This applies to set_goal_tasks and tweak alike. Legacy tests that asserted
+  changed requirements could keep completion are being updated to assert the
+  new rejection plus unchanged-requirement preservation; no test was deleted.
+- Initial full suite exposed old test clients omitting the deliberately new
+  expected_work_revision input. Existing clients now explicitly read it through
+  get_goal; the actual compaction worker reads it from outbound projection.
+  All-first.log retains the pre-migration failures. Manual native compaction
+  passes after protocol migration. New revision/rejection tests call the raw
+  tools so missing/stale inputs cannot be silently supplied by a harness.
+- Failed fixture attempts are retained: JavaScript undefined-property shape
+  mismatch (normalized to its public JSON representation), an invalid-member
+  case hitting the capacity gate first (moved before the 200-node append), and
+  a tweak fixture whose initial objective also included success criteria.
+- A manual targeted command used the benchmark adapter and failed an unrelated
+  Unicode ledger-tail assertion; the same test with the native SDK passes.
+  Use the repository test runner / correct test adapter for qualification;
+  do not claim this benchmark-adapter run as a production regression or weaken
+  that assertion. All raw logs remain under ~/Data/pi-goal-x/reliability/003/.
+- Remaining 003 work: explicit sibling/root/replacement and stale-confirmation
+  proofs, complete public textual revision exposure, finish caller migration,
+  inspect UI task callers, documentation, full required gates and independent
+  fixed-base review. 003 criteria remain unchecked; later tickets unchanged.
+- Follow-up proof adds stable sibling edits, input-ordered moved siblings,
+  parent_id=null root appending, and a complete 200-root replacement preserving
+  progress/current task. Public-order-green.log passes with 32 requests and
+  one effect. A two-client public-tool confirmation test proves a concurrent
+  completion invalidates the proposal; a cancelled replacement writes nothing.
+- Caller tracing found UI evidence dialogs accepted a changed contract or a
+  paused goal. Both cases reproduced, then passed with a captured work revision
+  and fresh lifecycle validation in the existing task mutation module. The
+  original TUI completion/reopening characterization also passes.
+- Existing clients now pass revisions explicitly; the repository runner passed
+  all 992 tests before the two final UI-race cases. The proper targeted test
+  adapter passes all 108 migrated tests. Type checking exposed a test-only
+  unknown result shape and partial harness context; explicit typed extraction
+  repairs those without changing runtime checks.
+- D2 revision/schema bytes intentionally change 22 context-fixture breakdowns;
+  documented rationale in experiments/context/README.md. All semantic counts,
+  child-request measurements and the 10,000-character cap remain unchanged.
+  Sequential context gate and six-payload provider check pass. Final current
+  checks are running in reliability/003/review-0 through review-6.log.

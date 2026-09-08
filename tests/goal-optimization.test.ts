@@ -1,3 +1,4 @@
+import { readWorkRevision } from "./task-tool-client.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -18,7 +19,7 @@ async function fixture() {
  const f = focusedFixture();
  const goal = writeActiveGoalFile({cwd: f.cwd}, {...f.goal, taskList: {tasks: structuredClone(tasks), blockCompletion: true, proposedAt: "2026-09-07T00:00:00Z"}});
  const h = createHarness({cwd: f.cwd, sessionEntries: f.sessionEntries}); await startHarness(h);
- return {...f, goal, h, update: (input: unknown) => h.tools.get("update_goal_task").execute("test", input, new AbortController().signal, undefined, h.ctx)};
+ return {...f, goal, h, update: async (input: Record<string, unknown>) => h.tools.get("update_goal_task").execute("test", {expected_work_revision: await readWorkRevision(h), ...input}, new AbortController().signal, undefined, h.ctx)};
 }
 
 test("automatic context bounds audit and pending Oracle advice with lossless history retrieval", async () => {

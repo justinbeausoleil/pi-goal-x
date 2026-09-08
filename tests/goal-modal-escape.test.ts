@@ -180,6 +180,7 @@ test("Escape while a goal modal is open never pauses the goal; Escape after it c
 		const setTasks = h.tools["set_goal_tasks"];
 		assert.ok(setTasks, "set_goal_tasks tool registered");
 		const toolPromise = setTasks.execute("set-1", {
+			expected_work_revision: ((await h.tools["get_goal"]!.execute("inspect", {}, undefined, undefined, h.ctx)) as { details: GoalStateEntry }).details.work_revision,
 			tasks: [{ id: "t1", title: "Task one" }],
 		}, undefined, undefined, h.ctx);
 		await new Promise((resolve) => setTimeout(resolve, 10));

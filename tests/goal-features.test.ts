@@ -114,6 +114,28 @@ describe("F2 objective→task bootstrap", () => {
 });
 
 describe("F3 interactive overlay toggle", () => {
+	for (const change of ["contract", "pause"] as const) it(`task evidence dialog cannot complete work after a concurrent ${change} change`, async () => {
+		const cwd = fixtureCwd();
+		try {
+			const goal = makeGoal({ objective: "Evidence dialog race" });
+			goal.taskList = { tasks: [{ id: "t1", title: "Task", status: "pending", verificationContract: "Original evidence" }], blockCompletion: true, proposedAt: "2026-09-08" };
+			const written = writeActiveGoalFile({ cwd }, goal);
+			const h = coreHarness(cwd);
+			await h.core.loadState(h.ctx as never);
+			h.core.setFocusedGoalId(goal.id, h.ctx as never, "selected", { recordLedger: false });
+			h.ctx.ui.input = async () => {
+				const concurrent = structuredClone(written);
+				if (change === "contract") concurrent.taskList!.tasks[0]!.verificationContract = "Changed evidence";
+				else concurrent.status = "paused";
+				writeActiveGoalFile({ cwd }, concurrent);
+				return "Evidence for the original task";
+			};
+			const result = await toggleTaskViaService(h.core, h.ctx as never, goal.id, "t1");
+			assert.equal(result.ok, false);
+			assert.match(result.message!, change === "contract" ? /expected_work_revision/ : /active/);
+			assert.equal(parseGoalFile(path.join(cwd, written.activePath!))!.taskList!.tasks[0]!.status, "pending");
+		} finally { rmSync(cwd, { recursive: true, force: true }); }
+	});
 	it("invokes the toggle callback with goal+task on Enter over a task row", async () => {
 		const goal = makeGoal({ objective: "F3 test" });
 		goal.taskList = { tasks: [{ id: "t1", title: "T1", status: "pending" }], blockCompletion: false, proposedAt: "2026-08-05T00:00:00.000Z" };

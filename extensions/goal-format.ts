@@ -13,6 +13,7 @@ import { GOAL_PROGRESS_TOOL_NAMES } from "./goal-tool-names.ts";
 import {
 	asRecord,
 	cloneGoal,
+	goalWorkRevision,
 	type GoalEventDetails,
 	type GoalEventKind,
 	type GoalMode,
@@ -86,7 +87,7 @@ export function oneLineSummary(goal: GoalRecord | null): string {
 // ---------- entry / render helpers ----------
 
 export function goalDetails(goal: GoalRecord | null, resultDetail?: string): GoalStateEntry {
-	return { version: 3, goal: goal ? cloneGoal(goal) : null, ...(resultDetail ? { resultDetail } : {}) };
+	return { version: 3, goal: goal ? cloneGoal(goal) : null, ...(goal ? { work_revision: goalWorkRevision(goal) } : {}), ...(resultDetail ? { resultDetail } : {}) };
 }
 
 export function renderGoalResult(result: { details?: unknown; content: Array<{ type: string; text?: string }> }, options: { expanded?: boolean } | undefined, theme: Theme): Text {

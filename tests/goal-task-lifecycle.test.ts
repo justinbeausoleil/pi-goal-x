@@ -1,3 +1,4 @@
+import { readWorkRevision } from "./task-tool-client.ts";
 /**
  * Current-task lifecycle tests (plan §19.2, §19.8): update_goal_task
  * start/complete/skip focus semantics, currentTaskId persistence and
@@ -104,7 +105,7 @@ async function startSession(cwd: string, sessionEntries: unknown[]) {
 
 async function callTool(h: ReturnType<typeof createHarness>, name: string, callId: string, params: Record<string, unknown>) {
 	const tool = h.tools.get(name)!;
-	return (tool.execute as any)(callId, params, undefined, undefined, h.ctx);
+	return (tool.execute as any)(callId, {expected_work_revision: await readWorkRevision(h), ...params}, undefined, undefined, h.ctx);
 }
 
 function pendingTasks(): Array<Record<string, unknown>> {

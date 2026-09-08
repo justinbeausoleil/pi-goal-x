@@ -1,4 +1,4 @@
-import { cloneGoal, nowIso, type GoalFocusReason, type GoalRecord, type GoalTask, type GoalUsage } from "./goal-record.ts";
+import { cloneGoal, nowIso, workRevisionError, type GoalFocusReason, type GoalRecord, type GoalTask, type GoalUsage } from "./goal-record.ts";
 import { appendGoalEvent, appendGoalEvents, type GoalLedgerEvent } from "./goal-ledger.ts";
 import { findTaskInTree, updateTaskInTree } from "./goal-policy.ts";
 import {
@@ -18,6 +18,7 @@ import {
 } from "./storage/goal-files.ts";
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
+import { taskIndex } from "./goal-task-index.ts";
 
 /**
  * Session state access + runtime glue hooks that the GoalService needs.
@@ -59,6 +60,9 @@ export interface GoalServiceRef {
 export type GoalServiceContext = GoalFileContext;
 
 export interface GoalMutationSpec {
+	expectedWorkRevision?: string | null;
+	/** Validate the reconciled clone before any mutation or ledger append. */
+	validate?(goal: GoalRecord): GoalMutationFailure | undefined;
 	/** If provided, the focused goal id must equal this or the mutation is rejected. */
 	expectedGoalId?: string | null;
 	/** If provided, the token must still be current (same goal id + focus revision). */
@@ -112,6 +116,7 @@ export type GoalMutationOutcome = GoalMutationResult | GoalMutationFailure;
  * the current best-effort ledger semantics.
  */
 export interface GoalTaskUpdateSpec {
+	expectedWorkRevision?: string | null;
 	/** If provided, the token must still be current (same goal id + focus revision). */
 	focusToken?: { goalId: string; revision: number };
 	/** The task to update, loaded fresh from the disk record. */
@@ -143,6 +148,21 @@ function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string |
 	const terminal = updatedTask.status === "complete" || updatedTask.status === "skipped";
 	if (terminal && current === spec.taskId) return undefined;
 	return current;
+}
+
+/** Until human scope revision is available, every whole-record structural path preserves obligations. */
+function taskStructureError(before: GoalRecord, after: GoalRecord): string | undefined {
+	if (before.taskList?.tasks === after.taskList?.tasks) return;
+	const incoming = taskIndex(after.taskList?.tasks).byId;
+	for (const { task } of taskIndex(before.taskList?.tasks).ordered) {
+		const next = incoming.get(task.id);
+		if (task.verificationContract?.trim() && task.verificationContract.trim() !== next?.verificationContract?.trim()) {
+			return `Task "${task.id}" has a retained contract; removing or changing it requires a human scope revision through /goal-tweak.`;
+		}
+		if (next && task.status === "complete" && (task.title.trim() !== next.title.trim() || (task.verificationContract?.trim() ?? "") !== (next.verificationContract?.trim() ?? ""))) {
+			return `Cannot edit completed task "${task.id}" through an ordinary structural change; a human scope revision must reopen it and invalidate its evidence.`;
+		}
+	}
 }
 
 export class GoalService {
@@ -434,11 +454,17 @@ export class GoalService {
 				this.turn.goalId = current.id;
 				if (this.turnBase?.id !== current.id) this.turnBase = {...current, usage: {...current.usage}};
 			}
-			const base = current;
+			const base = cloneGoal(current);
+			const revisionError = workRevisionError(base, spec.expectedWorkRevision);
+			if (revisionError) return { ok: false, message: revisionError };
+			const invalid = spec.validate?.(base);
+			if (invalid) return invalid;
 			const mutated = sanitizeGoalPaths(ctx, {
-				...spec.mutate(cloneGoal(base)),
+				...spec.mutate(base),
 				revision: (current.revision ?? 0) + 1,
 			});
+			const structureError = taskStructureError(current, mutated);
+			if (structureError) return { ok: false, message: structureError };
 			if (spec.ledger) {
 				try {
 					const events = typeof spec.ledger === "function" ? spec.ledger(mutated) : spec.ledger;
@@ -475,11 +501,17 @@ export class GoalService {
 			}
 
 			// 3. mutation on a clone (after an optional authoritative objective merge).
-			const base = spec.refreshFromDisk ? mergeGoalPromptFromDisk(ctx, current) : current;
+			const base = cloneGoal(spec.refreshFromDisk ? mergeGoalPromptFromDisk(ctx, current) : current);
+			const revisionError = workRevisionError(base, spec.expectedWorkRevision);
+			if (revisionError) return { ok: false, message: revisionError };
+			const invalid = spec.validate?.(base);
+			if (invalid) return invalid;
 			const mutated = {
-				...spec.mutate(cloneGoal(base)),
+				...spec.mutate(base),
 				revision: capturedRevision + 1,
 			};
+			const structureError = taskStructureError(current, mutated);
+			if (structureError) return { ok: false, message: structureError };
 
 			// 4. authoritative file write (active or archive). A failure here throws
 			//    and prevents any memory/ledger/focus/archive commit.
@@ -542,6 +574,9 @@ export class GoalService {
 			if (!current.taskList) {
 				return { ok: false, message: "The goal has no task list." };
 			}
+			const revisionError = workRevisionError(current, spec.expectedWorkRevision);
+			if (revisionError) return { ok: false, message: revisionError };
+			if (current.status !== "active") return { ok: false, message: "Task progress requires an active goal." };
 			const task = findTaskInTree(current.taskList.tasks, spec.taskId);
 			if (!task) {
 				return { ok: false, message: `Task "${spec.taskId}" not found.` };
@@ -583,7 +618,7 @@ export class GoalService {
 	}
 
  /** Ordered all-or-nothing batch. Each validator sees earlier changes in the clone. */
- updateTasks(ctx: GoalServiceContext, specs: GoalTaskUpdateSpec[]): GoalMutationOutcome {
+ updateTasks(ctx: GoalServiceContext, specs: GoalTaskUpdateSpec[], expectedWorkRevision?: string | null): GoalMutationOutcome {
   if (!this.reconcileFocused(ctx)) return {ok: false, message: "No focused goal to mutate."};
  const current = this.ref.getFocused();
   if (!current?.taskList) return {ok: false, message: "The goal has no task list."};
@@ -598,6 +633,8 @@ export class GoalService {
    base = {...fresh, usage: current.usage};
   }
   const next = cloneGoal(base);
+  const revisionError = workRevisionError(next, expectedWorkRevision);
+  if (revisionError) return {ok: false, message: revisionError};
   const locations = new Map<string, {tasks: GoalTask[]; index: number}>();
   const indexTasks = (tasks: GoalTask[]): void => {
    for (let i = 0; i < tasks.length; i++) { const task = tasks[i]!; locations.set(task.id, {tasks, index: i}); if (task.subtasks) indexTasks(task.subtasks); }
@@ -677,6 +714,9 @@ export class GoalService {
 				return { ok: false, message: `Goal ${current.id} was modified by another process (revision ${capturedRevision} -> ${diskRevision}); current revision is ${diskRevision}. The task was not updated.` };
 			}
 			const base = mergeGoalPromptFromDisk(ctx, current);
+			if (base.status !== "active") return { ok: false, message: "Task progress requires an active goal." };
+			const revisionError = workRevisionError(base, spec.expectedWorkRevision);
+			if (revisionError) return { ok: false, message: revisionError };
 			if (!base.taskList) {
 				return { ok: false, message: "The goal has no task list." };
 			}

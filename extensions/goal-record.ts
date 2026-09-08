@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type GoalStatus = "active" | "paused" | "blocked" | "budget_limited" | "complete";
 export type StopReason = "user" | "agent";
 export type GoalEventKind = "checkpoint" | "stale";
@@ -71,6 +73,7 @@ export interface GoalRecord {
 export interface GoalStateEntry {
 	version: 3;
 	goal: GoalRecord | null;
+	work_revision?: string;
 	/** E7: expandable tool-result detail line (e.g. full pause reason). */
 	resultDetail?: string;
 }
@@ -186,6 +189,27 @@ export function cloneGoal(goal: GoalRecord): GoalRecord {
 			? { ...goal.taskList, tasks: goal.taskList.tasks.map(cloneGoalTask) }
 			: undefined,
 	};
+}
+
+/** Content identity for work. Accounting and wall-clock fields never invalidate it. */
+export function goalWorkRevision(goal: GoalRecord): string {
+	const tasks = (list: GoalTask[]): unknown[] => list.map(task => [
+		task.id, task.title, task.verificationContract ?? "", task.status,
+		task.evidence ?? "", task.skipReason ?? "", task.lightweightSubtasks === true,
+		tasks(task.subtasks ?? []),
+	]);
+	return createHash("sha256").update(JSON.stringify([
+		goal.id, goal.objective, goal.verificationContract ?? "",
+		goal.taskList ? [goal.taskList.blockCompletion, tasks(goal.taskList.tasks)] : null,
+		goal.currentTaskId ?? null,
+	])).digest("hex");
+}
+
+/** undefined skips the check for non-task callers; null represents a required missing value. */
+export function workRevisionError(goal: GoalRecord, expected: string | null | undefined): string | undefined {
+	if (expected === undefined) return;
+	const current = goalWorkRevision(goal);
+	if (expected !== current) return `Missing or stale expected_work_revision; current work_revision: ${current}. Call get_goal and retry against the current work.`;
 }
 
 export function goalFocusDetails(focusedGoalId: string | null, reason: GoalFocusReason): GoalFocusEntry {

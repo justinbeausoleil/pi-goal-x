@@ -53,3 +53,12 @@ counts and child-request measurements remain unchanged. The gate additionally
 checks the aggregate 10,000-character limit. Real-host tests separately exercise
 oversized public plans and pause fields, three native compactions per path,
 and Oracle/auditor child responses. No limit or semantic assertion is relaxed.
+
+## Large-plan mutation baseline (ticket 003)
+
+Plan D2 deliberately adds work-revision text to executor projections and task
+results, exposes it in inspection metadata/text, and extends the existing task
+schemas/guidelines for upsert, 200 nodes, and stale-write rejection. The 22
+affected fixture breakdowns reflect those bytes; all semantic counts and
+child-request measurements remain unchanged. The aggregate automatic-text cap
+stays 10,000 characters. No ceiling or semantic assertion is relaxed.

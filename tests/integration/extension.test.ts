@@ -1,3 +1,4 @@
+import { readWorkRevision } from "../task-tool-client.ts";
 /**
  * Handler-level integration suite (Stage 6 of the hardening plan): drives the
  * ACTUAL registered five tools and the GoalService through a mock pi, with an
@@ -340,7 +341,7 @@ describe("five-tool handler integration", () => {
 			assert.ok(result.terminate === true, "structural change terminates the turn");
 			await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go2", systemPromptOptions: {} }, h.ctx);
 			const updateTask = h.tools.get("update_goal_task")!;
-			const upd = await (updateTask.execute as any)("u-5", { task_id: "t1", status: "complete", evidence: "verified" },
+			const upd = await (updateTask.execute as any)("u-5", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence: "verified" },
 				new AbortController().signal, undefined, h.ctx);
 			const text = upd.content?.[0]?.text ?? "";
 			assert.ok(text.includes("t1 complete"), `task update result: ${text}`);
