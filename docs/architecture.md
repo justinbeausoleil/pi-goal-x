@@ -81,7 +81,9 @@ the check does not perform semantic analysis of arbitrary shell programs.
 Pi owns immediate provider retries and overflow recovery. Goal-level backoff
 starts only after `agent_settled`; success resets its ladder, and user controls
 cancel pending recovery. `session_compact_failed` also clears pending automatic
-continuation and recovery, including an earlier successful-work handoff. A failed
+continuation and recovery owned by that compaction's original focus generation,
+including an earlier successful-work handoff. A later user resume/replacement
+keeps its newly authorized checkpoint. A failed
 or cancelled summary cannot authorize the next goal request. The goal stays open
 for explicit user action. Reopening an eligible active session may issue its own
 fresh checkpoint, independently of the cancelled old backoff.

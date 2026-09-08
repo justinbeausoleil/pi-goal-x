@@ -1749,3 +1749,20 @@
   Type/lint pass. Expanded fresh-session, stale host-message, successful retry/
   compaction and no-progress regressions are running; final qualification and
   independent reviews remain pending. No acceptance boxes are checked yet.
+- Expanded native regression log passes28 checks, and provider-helpers.log
+  passes29. Frozen d29cb5a passes type/lint,953 discovery/selfchecks,53 unchanged
+  B2/B7 timing limits, historical NAF, ranking5 and dry pack. Its full run is
+  still pending. Standards independently clears the candidate with3 native checks.
+- Spec passes8 supplied native cases but reproduces an old cancelled summary
+  erasing a new public pause/resume checkpoint. Register same-goal and replacement
+  cases. Both miss resumed-proof.txt at frozen d29cb5a
+  (compaction-successor-frozen-red.log); the runtime is loaded through the same
+  PI_GOAL_TEST_EXTENSION seam already used by other maintained native workers.
+  Capture the existing focus-operation token at session_before_compact; failure
+  cleanup applies only while that original generation is current. Success and
+  shutdown discard the token. No new generation/counter scheme is introduced.
+- Fixture corrections are retained: replacement does not itself abort Pi's
+  independent summary, so the test explicitly calls public abortCompaction after
+  replacement. Replacement preserves the old unfocused goal's active status;
+  only the new goal's deliberate pause is asserted. Logs ending registered-red,
+  successor-green and corrected-green retain those intermediate failures.

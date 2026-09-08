@@ -100,6 +100,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	let userTriggerPending = false;
 	let stopListeningForAbort: (() => void) | undefined;
 	let runningFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
+	let compactingFocus: ReturnType<GoalCore["focusedOperationToken"]> | null = null;
 	let runOriginBound = false;
 	const accountedResponses = new WeakSet<object>();
 	const runIsCurrent = () => runningFocus === null || core.isFocusedOperationCurrent(runningFocus);
@@ -412,16 +413,22 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("session_before_compact", async (_event, ctx) => {
+		compactingFocus = core.state.goal ? core.focusedOperationToken(core.state.goal.id) : null;
 		core.accountProgress(ctx);
 	});
 
 	pi.on("session_compact_failed", () => {
+		const owner = compactingFocus;
+		compactingFocus = null;
+		// An old summary must not cancel a later user-authorized resume or focus.
+		if (!owner || !core.isFocusedOperationCurrent(owner)) return;
 		continuationAfterSettleFor = null;
 		networkErrorRecoveryAfterSettleFor = null;
 		core.clearContinuationState();
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
+		compactingFocus = null;
 		core.goalService.flushTurn(ctx); // P1-3: persist any buffered transaction before reload
 		if (core.state.goal) core.persist(ctx);
 		core.beginAccounting();
@@ -670,6 +677,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		compactingFocus = null;
 		core.invalidateFocusedOperations();
 		core.auditMessages.clear();
 		continuationAfterSettleFor = null;

@@ -16,6 +16,7 @@ import {goalLedgerPath} from "../extensions/goal-ledger.ts";
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const recovery = boundary === "recovery";
 const compactionFailure = recovery && control.startsWith("compaction-");
+const compactionSuccessor = process.argv.find(arg => arg.startsWith("--compaction-successor="))?.split("=")[1];
 const compactionOutcomes = [];
 const recoveryTimers = [];
 const originalTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout;
@@ -160,7 +161,7 @@ async function bind() {
 }
 async function create({sessionManager, sessionStartEvent}) {
   const loader = new DefaultResourceLoader({cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
-    systemPrompt: "Perform only the explicitly authorized fixture work.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
+    systemPrompt: "Perform only the explicitly authorized fixture work.", additionalExtensionPaths: [process.env.PI_GOAL_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
     extensionFactories: [pi => {
       pi.on("agent_start", () => { billedRunOwner = undefined; });
       pi.on("tool_result", event => {
@@ -215,7 +216,16 @@ async function create({sessionManager, sessionStartEvent}) {
         content: [{type: "text", text: "Earlier fixture discussion occurred. Goal and Oracle details were omitted."}],
         usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: model.cost}, stopReason: "stop", timestamp: Date.now()};
       const stream = new AssistantMessageEventStream();
-      if (compactionFailure) {
+      if (compactionFailure && compactionSuccessor) {
+        void (async () => {
+          if (compactionSuccessor === "replace") await session.prompt("/goal-direct Write resumed-proof.txt and pause the new goal.");
+          else { await session.prompt("/goal-pause"); await session.prompt("/goal-resume"); }
+          settings.setCompactionEnabled(false);
+          session.abortCompaction();
+          assert(options.signal.aborted);
+          stream.push({type: "error", reason: "aborted", error: {...message, stopReason: "aborted", errorMessage: "Old summary cancelled after new user authorization"}});
+        })().catch(error => { failure = error; stream.push({type: "error", reason: "error", error: {...message, stopReason: "error", errorMessage: String(error)}}); });
+      } else if (compactionFailure) {
         if (control.endsWith("cancelled")) { session.abortCompaction(); assert(options.signal.aborted); }
         stream.push({type: "error", reason: control.endsWith("cancelled") ? "aborted" : "error", error: {...message, stopReason: control.endsWith("cancelled") ? "aborted" : "error", errorMessage: "Synthetic compaction failure"}});
       } else stream.push({type: "done", reason: "stop", message});
@@ -343,7 +353,7 @@ try {
   if (compactionFailure) {
     responses = control.includes("overflow")
       ? [[{failure: {stopReason: "error", errorMessage: "maximum context length exceeded"}}], [write("forbidden.txt"), pause]]
-      : [[write("before-compaction.txt")], [], [write("forbidden.txt"), pause]];
+      : [[write("before-compaction.txt")], [], [write(compactionSuccessor ? "resumed-proof.txt" : "forbidden.txt"), pause]];
     await delay(100); await settled(); await delay(100);
     assert(summaries > 0, "actual native compaction requested a summary");
     assert.equal(compactionOutcomes.length, 1);
@@ -351,9 +361,11 @@ try {
     assert.equal(compactionOutcomes[0].willRetry, false);
     assert.equal(Boolean(compactionOutcomes[0].aborted), control.endsWith("cancelled"));
     assert.equal(pendingRecovery().length, 0, "compaction failure is not a provider retry");
-    assert.equal(requests.length - before, control.includes("overflow") ? 1 : 2, "failed/cancelled compaction cannot authorize another goal request");
+    if (compactionSuccessor) assert.equal(readFileSync(join(cwd, "resumed-proof.txt"), "utf8"), "resumed-proof.txt", "new user authorization survives an old summary failure");
+    assert.equal(requests.length - before, compactionSuccessor ? 4 : control.includes("overflow") ? 1 : 2, "only explicit user authorization permits a successor checkpoint after failure");
     assert.equal(existsSync(join(cwd, "forbidden.txt")), false);
-    assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "active", "compaction failure yields without claiming completion");
+    assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, compactionSuccessor === "pause-resume" ? "paused" : "active", "compaction failure preserves the user's lifecycle decision");
+    if (compactionSuccessor) assert.equal(currentGoal().status, "paused", "the authorized successor reaches its deliberate stop");
     assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).taskList.tasks[0].status, "pending");
     settings.setCompactionEnabled(false);
     responses = [];
