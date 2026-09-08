@@ -14,7 +14,7 @@ type LineEntry =
 	| { type: "separator" }
 	| { type: "goal-header"; icon: string; title: string; status: string }
 	| { type: "task-summary"; text: string }
-	| { type: "task"; goalId: string; taskId: string; status: "pending" | "complete" | "skipped"; prefix: string; title: string }
+	| { type: "task"; goalId: string; taskId: string; status: "pending" | "complete" | "skipped"; prefix: string; text: string }
 	| { type: "empty-message"; text: string };
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ type LineEntry =
 /**
  * Show a scrollable modal overlay displaying the current goal's task list.
  * Press 'a' to toggle between the current goal and all open goals.
- * Triggered by Ctrl+Shift+T. Dismisses on Escape.
+ * Retained component; the unified dashboard owns Ctrl+Shift+T. Dismisses on Escape.
  */
 export async function showTaskListOverlay(
 	ctx: ExtensionContext,
@@ -159,8 +159,8 @@ export async function showTaskListOverlay(
 
 					case "task": {
 						const prefixWidth = visibleWidth(entry.prefix);
-						const available = innerWidth - prefixWidth;
-						const wrappedTitle = wrapTextWithAnsi(entry.title, Math.max(1, available));
+						const available = innerWidth - prefixWidth - 1;
+						const wrappedTitle = wrapTextWithAnsi(entry.text, Math.max(1, available));
 						const lines: string[] = [];
 						wrappedTitle.forEach((segment, i) => {
 							if (i === 0) {
@@ -217,7 +217,7 @@ export async function showTaskListOverlay(
 					// ── Render all entries into flat text lines ────────────
 					const renderedLines: string[] = [];
 					for (const entry of entries) {
-						const wrapped = renderEntry(entry, innerWidth);
+						const wrapped = renderEntry(entry, innerWidth - p.length);
 						renderedLines.push(...wrapped);
 					}
 					renderedLineCount = renderedLines.length;
@@ -399,7 +399,8 @@ function collectTaskEntries(
 
 	const indent = "   " + "  ".repeat(depth - 1);
 	const prefix = `${indent} ${branch} ${statusIcon}`;
-	entries.push({ type: "task", goalId, taskId: task.id, status: task.status, prefix, title: task.title });
+	const text = [task.title, task.verificationContract && `Contract: ${task.verificationContract}`, task.evidence && `Evidence: ${task.evidence}`, task.skipReason && `Skip reason: ${task.skipReason}`].filter(Boolean).join("\n");
+	entries.push({ type: "task", goalId, taskId: task.id, status: task.status, prefix, text });
 
 	if (task.subtasks && task.subtasks.length > 0) {
 		for (let i = 0; i < task.subtasks.length; i++) {

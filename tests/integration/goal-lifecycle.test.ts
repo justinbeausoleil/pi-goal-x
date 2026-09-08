@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
-for (const args of [[], ["--concurrent-accounting"]]) test(`S1/S2: public 180+20-node task plan survives rejected writes and session reopen ${args.join(" ")}`, { timeout: 25000 }, async () => {
+for (const args of [[], ["--concurrent-accounting"], ["--details"]]) test(`S1/S2: public 180+20-node task plan survives rejected writes and session reopen ${args.join(" ")}`, { timeout: 25000 }, async () => {
 	const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-task-plan-worker.mjs", import.meta.url)), ...args], {
 		timeout: 22000, env: { ...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: "" },
 	});
@@ -22,7 +22,7 @@ test(`S1: actual Pi ${mode} startup and second checkpoint`, { timeout: 15000 }, 
 });
 }
 
-for (const args of [["manual"], ["threshold"], ["overflow"], ["manual", "--long"], ["manual", "--long", "--advice-review"], ["manual", "--stall"], ...["blocked", "budget_limited", "unfocused", "complete"].map(state => ["manual", `--stopped=${state}`]), ...["blocked", "budget_limited"].map(state => ["manual", "--audit-only", `--stopped=${state}`])]) {
+for (const args of [["manual"], ["threshold"], ["overflow"], ["manual", "--long"], ["manual", "--long", "--advice-review"], ["manual", "--stall"], ...["manual", "threshold", "overflow"].map(mode => [mode, "--large", "--long", "--advice-review"]), ...["blocked", "budget_limited", "unfocused", "complete"].map(state => ["manual", `--stopped=${state}`]), ...["blocked", "budget_limited"].map(state => ["manual", "--audit-only", `--stopped=${state}`])]) {
 	test(`S1: three real ${args.join(" ")} compactions retain public task progress`, { timeout: 25000 }, async () => {
 		const compactionWorker = fileURLToPath(new URL("../goal-compaction-worker.mjs", import.meta.url));
 		const { stdout } = await run(process.execPath, ["--experimental-strip-types", compactionWorker, ...args], {

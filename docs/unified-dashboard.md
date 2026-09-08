@@ -222,7 +222,7 @@ auditor's findings, and returns to the normal dashboard so work can continue.
 | --- | --- |
 | `Ctrl+Shift+T` | Toggle the dashboard between compact and expanded |
 | `Ctrl+Shift+A` | Toggle the focused goal's independent auditor on/off (persisted per-goal; inert with no goal, a goal modal open, or a complete goal) |
-| `↑` / `↓`, `PgUp` / `PgDn`, `Home` / `End` | Scroll the expanded task tree (see [Scrolling the task list](#scrolling-the-task-list)) |
+| `↑` / `↓`, `PgUp` / `PgDn`, `Home` / `End` | Scroll the expanded dashboard, including long current-task details, within the terminal's available height |
 | `Ctrl+Shift+↑` / `Ctrl+Shift+↓`, `Ctrl+Shift+PgUp` / `Ctrl+Shift+PgDn`, `Ctrl+Shift+Home` / `Ctrl+Shift+End` | Scroll the compact task list |
 | `Esc` | Collapse the expanded dashboard; otherwise pause the goal |
 | `Esc` (during audit) | Stop the audit and choose to continue working or complete without audit |

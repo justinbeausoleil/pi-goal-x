@@ -19,15 +19,19 @@ const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retr
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const errors = [], results = [];
 const concurrentAccounting = process.argv.includes("--concurrent-accounting");
+const details = process.argv.includes("--details");
+const longField = details ? " début 🧭 é 漢字\n".repeat(500) + "end-of-full-field" : "";
+const taskEvidence = "evidence.txt contains independent proof" + longField;
+const objective = "Preserve 200 public tasks, their structure and completion evidence through reopen." + longField;
 let clock = Date.now(), accountingUsage, history = "";
 if (concurrentAccounting) Date.now = () => clock;
 let session, failure, deadline, requests = 0, completedTask, lastGoal, firstRevision, resolveFinished;
 const finished = new Promise(resolve => { resolveFinished = resolve; });
-const tasks = (start, count) => Array.from({ length: count }, (_, i) => ({ id: `t${start + i}`, title: `Task ${start + i}`, verification_contract: `Preserve evidence for task ${start + i}.` }));
+const tasks = (start, count) => Array.from({ length: count }, (_, i) => ({ id: `t${start + i}`, title: `Task ${start + i}`, verification_contract: `Preserve evidence for task ${start + i}.${start + i === 142 ? longField : ""}` }));
 const steps = [
   ...[[1, 50], [51, 50], [101, 50], [151, 30]].map(([start, count]) => ({ name: "set_goal_tasks", args: { mode: "upsert", tasks: tasks(start, count), block_completion: true }, count: start + count - 1 })),
   { name: "write", args: { path: "evidence.txt", content: "independent proof" } },
-  { name: "update_goal_task", args: { updates: [{ task_id: "t1", status: "complete", evidence: "evidence.txt contains independent proof" }, { task_id: "t175", status: "start" }] }, completed: true },
+  { name: "update_goal_task", args: { updates: [{ task_id: "t1", status: "complete", evidence: taskEvidence }, { task_id: "t175", status: "start" }] }, completed: true },
   { name: "set_goal_tasks", args: { mode: "upsert", tasks: [{ id: "t2", title: "Atomic edit" }, { id: "new" }] }, reject: /non-empty title/ },
   { name: "set_goal_tasks", args: { mode: "upsert", tasks: tasks(181, 20) }, count: 200 },
   { name: "set_goal_tasks", args: { mode: "upsert", tasks: [{ id: "t175", title: "Current task revised", parent_id: "t170" }] }, count: 200, moved: true },
@@ -65,10 +69,22 @@ const steps = [
     assert.equal(goal.currentTaskId, "t175");
   } },
   { name: "get_goal", args: { verbose: true }, final: true },
+  ...(details ? [
+    { name: "get_goal", args: { section: "objective" }, detail: true },
+    { name: "get_goal", args: { section: "tasks" }, detail: true },
+    { name: "get_goal", args: { section: "tasks", task_id: "t142" }, detail: true },
+    { name: "get_goal", args: { section: "tasks", cursor: "not-a-valid-cursor" }, rejectPage: true },
+    { name: "get_goal", args: { section: "tasks", task_id: "t142" }, cursorFrom: "t142", malformedCursor: true, rejectPage: true },
+    { name: "get_goal", args: { section: "tasks", task_id: "t143" }, cursorFrom: "t142", rejectPage: true },
+    { name: "get_goal", args: { section: "history" }, cursorFrom: "tasks", rejectPage: true },
+    { name: "set_goal_tasks", args: { mode: "upsert", tasks: [{ id: "t142", title: "Changed selected content" }] } },
+    { name: "get_goal", args: { section: "tasks", task_id: "t142" }, cursorFrom: "t142", rejectPage: true },
+  ] : []),
   ...(concurrentAccounting ? [{ name: "get_goal", args: { section: "history" } }] : []),
   { name: "update_goal", args: { status: "paused", reason: "Public plan is ready for reopening." } },
 ];
 let inFlight;
+const detailContent = new Map(), detailCursors = new Map(), contentRevisions = new Map();
 async function accountOtherSession() {
   const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPrompt: "Report briefly.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))] });
   await loader.reload({ resolveProjectTrust: async () => true });
@@ -95,12 +111,46 @@ async function record(event) {
       assert.equal(typeof event.details.work_revision, "string", "public results must expose work_revision");
       const goal = event.details.goal;
       firstRevision ??= event.details.work_revision;
+      if (step.rejectPage) {
+        assert.equal(event.details.page, undefined);
+        assert.match(event.content.map(c => c.text ?? "").join(""), /Invalid or stale cursor.*Restart/s);
+        return;
+      }
+      if (step.detail) {
+        const page = event.details.page, key = step.args.task_id ?? step.args.section;
+        assert.equal(page.goalId, goal.id, "page identifies its goal");
+        assert.equal(page.section, step.args.section);
+        assert.equal(page.taskId, step.args.task_id);
+        assert.match(page.contentRevision, /^[a-f0-9]{64}$/);
+        assert.equal(page.contentRevision, contentRevisions.get(key) ?? page.contentRevision, "usage between reads does not change content revision");
+        contentRevisions.set(key, page.contentRevision);
+        assert.ok(page.content.length <= 4000);
+        assert.equal(Buffer.from(page.content).toString("utf8"), page.content, "pages never split surrogate pairs");
+        const text = (detailContent.get(key) ?? "") + page.content;
+        detailContent.set(key, text);
+        if (page.nextCursor) {
+          if (!detailCursors.has(key)) detailCursors.set(key, page.nextCursor);
+          steps.unshift({ ...step, args: { ...step.args, cursor: page.nextCursor } });
+        } else {
+          assert.equal(text.length, page.totalChars, "no overlap or gaps");
+          if (key === "objective") assert.equal(text, objective);
+          else {
+            const rows = text.split("\n").map(line => JSON.parse(line));
+            const expected = key === "tasks" ? tasks(1, 200) : tasks(142, 1);
+            assert.deepEqual(rows.map(row => row.id), expected.map(task => task.id));
+            for (const [i, row] of rows.entries()) {
+              assert.equal(row.verificationContract, expected[i].verification_contract);
+              if (row.id === "t1") assert.equal(row.evidence, taskEvidence);
+            }
+          }
+        }
+      }
       if (accountingUsage) {
         assert.equal(goal.usage.tokensUsed, accountingUsage.tokensUsed + 121, "both responses' 110 + 11 tokens are retained exactly once");
         assert.equal(goal.usage.activeSeconds, 8, "four main-session seconds plus two seconds in each concurrent response are retained");
         accountingUsage = undefined;
       }
-      if (step.args.section === "history") {
+      if (step.args.section === "history" && !step.rejectPage) {
         history += event.details.page.content;
         if (event.details.page.nextCursor) steps.unshift({ name: "get_goal", args: { section: "history", cursor: event.details.page.nextCursor } });
         else {
@@ -119,7 +169,7 @@ async function record(event) {
       if (step.completed) {
         completedTask = JSON.parse(JSON.stringify(goal.taskList.tasks[0]));
         assert.equal(completedTask.status, "complete");
-        assert.equal(completedTask.evidence, "evidence.txt contains independent proof");
+        assert.equal(completedTask.evidence, taskEvidence);
         assert.equal(goal.currentTaskId, "t175");
       }
       if (completedTask) assert.deepEqual(JSON.parse(JSON.stringify(goal.taskList.tasks[0])), completedTask, "append/edit preserves completion evidence and timestamp");
@@ -172,6 +222,8 @@ async function open(manager) {
       if (["set_goal_tasks", "update_goal_task"].includes(step.name) && revision) args.expected_work_revision = revision;
       if (step.staleRevision) args.expected_work_revision = firstRevision;
       if (step.withoutRevision) delete args.expected_work_revision;
+      if (step.cursorFrom) args.cursor = detailCursors.get(step.cursorFrom);
+      if (step.malformedCursor) args.cursor = `!${args.cursor}`;
       content = [{ type: "toolCall", id: `call-${requests}`, name: step.name, arguments: args }]; stopReason = "toolUse";
     }
     const value = { role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content, usage: { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason, timestamp: Date.now() };
@@ -182,7 +234,7 @@ try {
   const manager = SessionManager.create(cwd, join(work, "sessions"));
   deadline = setTimeout(() => { failure ??= new Error("public plan fixture timed out"); void session?.abort(); resolveFinished(); }, 20000);
   await open(manager);
-  await session.prompt("/goal-direct Preserve 200 public tasks, their structure and completion evidence through reopen.");
+  await session.prompt(`/goal-direct ${objective}`);
   await finished;
   if (failure) throw failure;
   assert.equal(steps.length, 0);
@@ -200,6 +252,13 @@ try {
   assert.deepEqual(JSON.parse(JSON.stringify(after.goal.taskList)), JSON.parse(JSON.stringify(before.goal.taskList)));
   assert.equal(after.goal.currentTaskId, "t175");
   assert.deepEqual(flatten(after.goal.taskList.tasks).map(t => t.id).sort(), tasks(1, 200).map(t => t.id).sort());
+  if (details) {
+    steps.push({ name: "create_goal", args: { objective: "A separate goal for cursor ownership checking." } }, { name: "get_goal", args: { section: "tasks" }, cursorFrom: "tasks", rejectPage: true });
+    await session.prompt("Create the separate fixture goal and verify the first goal's cursor cannot read it.");
+    await session.prompt("Inspect the second goal with the first goal's cursor.");
+    if (failure) throw failure;
+    assert.equal(steps.length, 0);
+  }
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: true, nodes: 200, requests, effects: results.filter(r => r.toolName === "write").length, reopened: true }));
 } finally {

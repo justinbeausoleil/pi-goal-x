@@ -18,6 +18,12 @@ All notable changes to pi-goal-x are documented here.
   task requirements; the reviewed human scope-revision workflow is still
   pending implementation. Structural cancellation preserves the current plan.
 - UI evidence dialogs reject results after concurrent work changes or pauses.
+- Detail pages expose goal/section/task identity and a content revision. Full
+  Unicode requirements and evidence are retrieved in 4,000-character pages;
+  malformed or stale cursors require restarting the selected section.
+- Task evidence is retained in full. Task and draft confirmations can scroll
+  complete 200-node proposals; the bounded expanded dashboard can scroll all
+  rows and long current-task details while keeping its dock height stable.
 
 These changes are under implementation and qualification. They are not a
 published package or a live-install recommendation.

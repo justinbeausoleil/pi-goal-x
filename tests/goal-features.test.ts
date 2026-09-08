@@ -162,13 +162,16 @@ describe("F3 interactive overlay toggle", () => {
 			// focus the goal + set the in-memory task list
 			h.core.setFocusedGoalId(goal.id, h.ctx as never, "selected", { recordLedger: false });
 			const goalWithTasks = h.core.state.goal!;
-			goalWithTasks.taskList = { tasks: [{ id: "t1", title: "T1", status: "pending" }], blockCompletion: false, proposedAt: "2026-08-05T00:00:00.000Z" };
+			goalWithTasks.taskList = { tasks: [{ id: "t1", title: "T1", status: "pending", verificationContract: "Preserve the complete evidence" }], blockCompletion: false, proposedAt: "2026-08-05T00:00:00.000Z" };
 			h.core.updateFocusedGoal(goalWithTasks, h.ctx as never, true);
+			const evidence = "verified 🧭\n".repeat(500).trim();
+			h.ctx.ui.input = async () => evidence;
 
 			let res = await toggleTaskViaService(h.core, h.ctx as never, goal.id, "t1");
 			assert.equal(res.ok, true);
 			const afterComplete = h.core.state.goal!;
 			assert.equal(afterComplete.taskList!.tasks[0]!.status, "complete");
+			assert.equal(afterComplete.taskList!.tasks[0]!.evidence, evidence);
 
 			res = await toggleTaskViaService(h.core, h.ctx as never, goal.id, "t1");
 			assert.equal(res.ok, true);

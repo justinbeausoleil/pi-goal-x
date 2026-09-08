@@ -53,6 +53,19 @@ function fiveTasks(): GoalTask[] {
 	];
 }
 
+test("verbose status preserves all 200 tasks and long requirements/evidence", () => {
+	const full = "Requirement 🧭 é 漢字\n".repeat(500).trim();
+	const tasks = Array.from({ length: 200 }, (_, i) => task(`t${i + 1}`, `node-${i + 1}-end`, { verificationContract: `Contract ${i + 1}: ${i === 141 ? full : "verify"}`, ...(i === 0 ? { status: "complete" as const, evidence: full } : {}) }));
+	const g = withTasks(tasks, { objective: full, verificationContract: full, currentTaskId: "t142" });
+	const text = buildGoalStatusText({ goal: g, focused: true, otherOpenGoals: 0, verbose: true });
+	assert.ok(text.includes(`Objective:\n${full}`));
+	for (const task of tasks) {
+		assert.ok(text.includes(task.title));
+		assert.ok(text.includes(task.verificationContract!));
+	}
+	assert.ok(text.includes(`evidence: ${full}`));
+});
+
 function events(): GoalLedgerEvent[] {
 	return [
 		{ type: "goal_created", goalId: "g1", objective: "x", sisyphus: false, autoContinue: true, at: "2026-01-01T09:00:00.000Z" },

@@ -9,16 +9,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 2073,
-        "extensionAttributableChars": 8135,
+        "extensionAttributableChars": 8180,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1656,
         "checkpointChars": 70,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 2471,
-        "totalSerializedChars": 13494,
-        "estimatedTokens": 3374
+        "totalSerializedChars": 13539,
+        "estimatedTokens": 3385
       },
       "semantic": {
         "objective": 1,
@@ -45,16 +45,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 1928,
-        "extensionAttributableChars": 7990,
+        "extensionAttributableChars": 8035,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1511,
         "checkpointChars": 70,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 2326,
-        "totalSerializedChars": 13349,
-        "estimatedTokens": 3338
+        "totalSerializedChars": 13394,
+        "estimatedTokens": 3349
       },
       "semantic": {
         "objective": 1,
@@ -225,16 +225,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 2318,
-        "extensionAttributableChars": 8380,
+        "extensionAttributableChars": 8425,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1878,
         "checkpointChars": 77,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 2716,
-        "totalSerializedChars": 13739,
-        "estimatedTokens": 3435
+        "totalSerializedChars": 13784,
+        "estimatedTokens": 3446
       },
       "semantic": {
         "objective": 1,
@@ -261,16 +261,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 3786,
-        "extensionAttributableChars": 9848,
+        "extensionAttributableChars": 9893,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1661,
         "checkpointChars": 70,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 4186,
-        "totalSerializedChars": 15209,
-        "estimatedTokens": 3803
+        "totalSerializedChars": 15254,
+        "estimatedTokens": 3814
       },
       "semantic": {
         "objective": 3,
@@ -369,16 +369,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 2095,
-        "extensionAttributableChars": 8157,
+        "extensionAttributableChars": 8202,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1663,
         "checkpointChars": 75,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 2493,
-        "totalSerializedChars": 13516,
-        "estimatedTokens": 3379
+        "totalSerializedChars": 13561,
+        "estimatedTokens": 3391
       },
       "semantic": {
         "objective": 1,
@@ -477,16 +477,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 2015,
-        "extensionAttributableChars": 8077,
+        "extensionAttributableChars": 8122,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1586,
         "checkpointChars": 74,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 2413,
-        "totalSerializedChars": 13436,
-        "estimatedTokens": 3359
+        "totalSerializedChars": 13481,
+        "estimatedTokens": 3371
       },
       "semantic": {
         "objective": 1,
@@ -585,16 +585,16 @@
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 1766,
-        "extensionAttributableChars": 7828,
+        "extensionAttributableChars": 7873,
         "baseSystemChars": 3922,
         "extensionSystemChars": 0,
         "goalStateChars": 1624,
         "checkpointChars": 0,
         "historicalCheckpointChars": 0,
-        "toolSchemaChars": 4543,
+        "toolSchemaChars": 4588,
         "messageChars": 2035,
-        "totalSerializedChars": 13058,
-        "estimatedTokens": 3265
+        "totalSerializedChars": 13103,
+        "estimatedTokens": 3276
       },
       "semantic": {
         "objective": 1,
@@ -868,10 +868,10 @@
     }
   ],
   "totals": {
-    "totalSerializedChars": 262563,
-    "estimatedTokens": 65651,
+    "totalSerializedChars": 262878,
+    "estimatedTokens": 65730,
     "childRequestChars": 15230,
-    "combinedSerializedChars": 277793,
-    "extensionAttributableChars": 150424
+    "combinedSerializedChars": 278108,
+    "extensionAttributableChars": 150739
   }
 }

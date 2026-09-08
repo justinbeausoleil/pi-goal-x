@@ -508,7 +508,7 @@ export function renderExpandedDashboard(
 	}
 
 	const toggleShortcut = formatGoalKeybinding(opts.keybindings?.toggleExpand ?? DEFAULT_GOAL_KEYBINDINGS.dashboard.toggleExpand);
-	lines.push(boxFooter(theme, safeWidth, `Esc/${toggleShortcut}: collapse`));
+	lines.push(boxFooter(theme, safeWidth, `Esc/${toggleShortcut}: collapse · Full: /goal-status verbose`));
 	return lines;
 }
 

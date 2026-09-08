@@ -6,7 +6,7 @@ import type { GoalLedgerEvent } from "./goal-ledger.ts";
 export const GOAL_DETAIL_PAGE_CHARS = 4000;
 export type GoalDetailSection = "objective" | "tasks" | "history";
 export interface GoalDetailQuery { section: GoalDetailSection; task_id?: string; cursor?: string }
-export type GoalDetailPage = {ok: true; text: string; content: string; nextCursor?: string; totalChars: number} | {ok: false; text: string};
+export type GoalDetailPage = {ok: true; text: string; goalId: string; section: GoalDetailSection; taskId?: string; contentRevision: string; content: string; nextCursor?: string; totalChars: number} | {ok: false; text: string};
 
 interface DetailSource { source: string; key: string }
 const detailCache: Array<{inputs: readonly unknown[]; result: DetailSource}> = [];
@@ -51,7 +51,9 @@ export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events:
  if (query.cursor) {
   try {
    if (query.cursor.length > 256) throw new Error();
-   const parsed = JSON.parse(Buffer.from(query.cursor, "base64url").toString("utf8"));
+   const decoded = Buffer.from(query.cursor, "base64url");
+   if (decoded.toString("base64url") !== query.cursor) throw new Error();
+   const parsed = JSON.parse(decoded.toString("utf8"));
    if (parsed.v !== 1 || parsed.key !== key || !Number.isSafeInteger(parsed.offset) || parsed.offset < 0 || parsed.offset > source.length) throw new Error();
    offset = parsed.offset;
   } catch { return {ok: false, text: "Invalid or stale cursor: goal details changed or the section/task differs. Restart this section without cursor."}; }
@@ -60,6 +62,6 @@ export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events:
  if (end < source.length && /[\uD800-\uDBFF]/.test(source[end - 1]!)) end--;
  const content = source.slice(offset, end);
  const nextCursor = end < source.length ? Buffer.from(JSON.stringify({v: 1, key, offset: end})).toString("base64url") : undefined;
- const text = `${query.section} for ${goal.id} (${offset}–${end}/${source.length} chars)\n${content}${nextCursor ? `\nMore content: repeat this section/task with cursor="${nextCursor}".` : "\nEnd of section."}`;
- return {ok: true, text, content, nextCursor, totalChars: source.length};
+ const text = `${query.section}${query.task_id ? ` task=${query.task_id}` : ""} for ${goal.id} (${offset}–${end}/${source.length} chars)\ncontent_revision: ${key}\n${content}${nextCursor ? `\nMore content: repeat this section/task with cursor="${nextCursor}".` : "\nEnd of section."}`;
+ return {ok: true, text, goalId: goal.id, section: query.section, taskId: query.task_id, contentRevision: key, content, nextCursor, totalChars: source.length};
 }

@@ -581,6 +581,24 @@ const TAB_KEY = "\t";
 const ENTER_KEY = "\r";
 const ESC_KEY = "\x1b";
 
+test("draft confirmation can page through all 200 tasks and long requirements", () => {
+	const tokens = Array.from({ length: 600 }, (_, i) => `requirement-${i}-🧭`);
+	const tasks: GoalTask[] = Array.from({ length: 200 }, (_, i) => ({ id: `t${i + 1}`, title: `node-${i + 1}-end`, status: "pending", ...(i === 141 ? { verificationContract: tokens.join(" ") } : {}) }));
+	const component = openQuestionnaireComponent({ rows: 24, baseFrameLines: 19, questions: [{ id: "confirm", question: "Confirm Goal Draft", context: buildProposalConfirmationContext(tasks, true), options: PROPOSAL_CONFIRM_OPTIONS, allowCustom: false }] });
+	component.render(100);
+	component.handleInput!(PAGE_UP);
+	let seen = "";
+	for (let page = 0; page < 100; page++) {
+		const lines = component.render(100);
+		assert.ok(lines.length <= 10);
+		seen += lines.join("\n") + "\n";
+		component.handleInput!(PAGE_DOWN);
+	}
+	for (let i = 1; i <= 200; i++) assert.ok(seen.includes(`node-${i}-end`), `node ${i} is reachable`);
+	for (const token of tokens) assert.ok(seen.includes(token), `${token} is reachable`);
+	assert.ok(seen.includes("Objective: Fix the pi-goal-x bug"));
+});
+
 /** Open a questionnaire against an ANSI-emitting theme with real TUI dims. */
 function openQuestionnaireComponent(
 	args: {

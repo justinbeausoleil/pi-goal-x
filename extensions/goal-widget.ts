@@ -77,7 +77,7 @@ export async function toggleTaskViaService(core: GoalCore, ctx: ExtensionContext
 			if (input === undefined || !input.trim()) {
 				return { ok: false, message: `Task "${taskId}" has a verification contract; provide evidence to complete it.` };
 			}
-			evidence = input.trim().slice(0, 200);
+			evidence = input.trim();
 		}
 		const subtaskGate = checkSubtasksComplete(task);
 		if (subtaskGate) return { ok: false, message: subtaskGate };

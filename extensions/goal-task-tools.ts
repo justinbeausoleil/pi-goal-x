@@ -16,7 +16,7 @@ import { goalDetails, renderGoalResult } from "./goal-format.ts";
 import { statusLabel, truncateText } from "./goal-core.ts";
 import { loadGoalSettings } from "./goal-settings.ts";
 import { buildTaskSummary, checkSubtasksComplete, findSubtaskDepthViolation, findTaskInTree, skipAllSubtasks } from "./goal-policy.ts";
-import { showTaskConfirmation, type TaskConfirmationResult } from "./goal-task-confirmation.ts";
+import { renderConfirmationTasks, showTaskConfirmation, type TaskConfirmationResult } from "./goal-task-confirmation.ts";
 import {
 	SET_GOAL_TASKS_TOOL_NAME,
 	UPDATE_GOAL_TASK_TOOL_NAME,
@@ -237,7 +237,7 @@ export interface TaskProgressInput {
 function progressSpec(input: TaskProgressInput, core: import("./goal-state.ts").GoalCore, ctx: ExtensionContext): GoalTaskUpdateSpec {
  const settings = loadGoalSettings(ctx.cwd);
  const now = nowIso();
- const evidence = input.evidence?.trim().slice(0, 200) || undefined;
+ const evidence = input.evidence?.trim() || undefined;
  const reason = input.reason?.trim();
  return {
   taskId: input.task_id, focusToken: core.focusedOperationToken(core.state.goal!.id),
@@ -338,20 +338,7 @@ pi.registerTool(defineTool({
 		// Render the proposed STRUCTURAL tree for the confirmation dialog.
 		// Progress merge happens inside GoalService.apply against the
 		// disk-refreshed clone.
-		function renderTaskLines(tasks: GoalTask[], indent = 0): string[] {
-			const prefix = "  ".repeat(indent);
-			const lines: string[] = [];
-			for (const t of tasks) {
-				const marker = t.status === "complete" ? "[x]" : t.status === "skipped" ? "[~]" : "[ ]";
-				const lw = t.lightweightSubtasks ? " (lightweight)" : "";
-				lines.push(`${prefix}${marker} ${t.id}: ${t.title}${lw}`);
-				if (t.subtasks && t.subtasks.length > 0) {
-					lines.push(...renderTaskLines(t.subtasks, indent + 1));
-				}
-			}
-			return lines;
-		}
-		const taskLines = renderTaskLines(converted.tasks);
+		const taskLines = renderConfirmationTasks(converted.tasks, 0);
 		const gateLabel = blockCompletion ? " (blockCompletion enabled)" : "";
 		const proposalText = [`Proposed task list${gateLabel}:`, "", ...taskLines].join("\n");
 		const taskListFocus = core.focusedOperationToken(core.state.goal.id);
@@ -440,7 +427,7 @@ pi.registerTool(defineTool({
 		task_id: Type.Optional(Type.String({ description: "Single-task form; omit with updates." })),
 		status: Type.Optional(StringEnum(["start", "complete", "skipped", "pending"] as const)),
  updates: Type.Optional(Type.Array(Type.Object({task_id: Type.String(), status: StringEnum(["start", "complete", "skipped", "pending"] as const), evidence: Type.Optional(Type.String()), reason: Type.Optional(Type.String())}, {additionalProperties: false}), {minItems: 1, maxItems: 100, description: "Ordered atomic batch; omit all single-task fields."})),
-		evidence: Type.Optional(Type.String({ description: "Completion evidence; max 200 chars." })),
+		evidence: Type.Optional(Type.String({ description: "Completion evidence; retained in full and available through get_goal task pages." })),
 		reason: Type.Optional(Type.String({ description: "Required for skipped." })),
 	}, { additionalProperties: false }),
 	executionMode: "sequential",
@@ -523,7 +510,7 @@ pi.registerTool(defineTool({
 		}
 
 		if (params.status === "complete") {
-			const evidence = params.evidence?.trim().slice(0, 200) || undefined;
+			const evidence = params.evidence?.trim() || undefined;
 			const result = core.goalService.updateTask(ctx, {
 				expectedWorkRevision: rawParams.expected_work_revision ?? null,
 				focusToken: taskFocus,

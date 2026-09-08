@@ -877,6 +877,21 @@ test("a new completion re-anchors the viewport to the latest completed task", ()
 	assert.match(text, /Task number 9/, "the newest completion is visible at the bottom of the window");
 });
 
+test("bounded expanded viewport keeps the latest completion visible after manual navigation", () => {
+	let current = manyTasksGoal();
+	let expanded = false;
+	const component = new GoalWidgetComponent({ tui: createMockTUI({ terminalRows: 24 }).tui, theme, getGoal: () => current, getOpenGoalCount: () => 1, getSettings: () => ({}), getExpanded: () => expanded });
+	component.render(80);
+	expanded = true;
+	assert.match(component.render(80).join("\n"), /Task number 20/);
+	component.handleNavigationKey("home");
+	assert.match(component.render(80).join("\n"), /Task number 1/);
+	const tasks = current.taskList!.tasks.map(t => ({ ...t }));
+	tasks[24] = { ...tasks[24]!, status: "complete", completedAt: "2026-09-08T12:00:00Z" };
+	current = { ...current, taskList: { ...current.taskList!, tasks } };
+	assert.match(component.render(80).join("\n"), /Task number 25/);
+});
+
 // ── terminal-height bound (spec 2026-08-10-widget-height-bound-scrollback-fix) ──
 
 import { boundWidgetRenderLines, WIDGET_HEIGHT_RESERVE } from "../extensions/widgets/goal-widget.ts";
@@ -951,6 +966,29 @@ test("GoalWidgetComponent caps the expanded dashboard at equal terminal height",
 	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE);
 	assert.ok(lines.length <= cap, `rendered ${lines.length} lines, cap ${cap}`);
 	assert.match(lines[0]!, /^╭─ pi-goal-x/, "header preserved");
+});
+
+for (const count of [1, 200]) test(`expanded dashboard scrolls all ${count} tasks and growing contracts in a short terminal`, () => {
+	const tasks: GoalTask[] = Array.from({ length: count }, (_, i) => ({ id: `t${i + 1}`, title: `node-${i + 1}-end`, status: "pending" as const }));
+	const tokens = Array.from({ length: 600 }, (_, i) => `proof-${i}-🧭`);
+	const selected = Math.min(141, count - 1);
+	const component = new GoalWidgetComponent({
+		tui: createMockTUI({ terminalRows: 24 }).tui, theme,
+		getGoal: () => goal({ taskList: { tasks, blockCompletion: true, proposedAt: "2026-09-08" }, currentTaskId: tasks[selected]!.id }),
+		getOpenGoalCount: () => 1, getSettings: () => ({}), getExpanded: () => true,
+	});
+	let seen = "";
+	const height = component.render(80).length;
+	tasks[selected] = { ...tasks[selected]!, verificationContract: tokens.join(" ") };
+	for (let page = 0; page < 100; page++) {
+		const lines = component.render(80);
+		assert.equal(lines.length, height, "scrolling keeps the dock height stable");
+		assert.ok(lines.length <= 24 - WIDGET_HEIGHT_RESERVE);
+		seen += lines.join("\n") + "\n";
+		component.handleNavigationKey("pageDown");
+	}
+	for (let i = 1; i <= count; i++) assert.ok(seen.includes(`node-${i}-end`), `node ${i} is reachable`);
+	for (const token of tokens) assert.ok(seen.includes(token), `${token} is reachable`);
 });
 
 test("GoalWidgetComponent leaves the expanded dashboard unchanged when it fits", () => {

@@ -305,11 +305,12 @@ test("update_goal_task(complete) marks a task complete with evidence and ledger"
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 		const tool = h.tools.get("update_goal_task")!;
-		const result = await (tool.execute as any)("upd-1", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence: "verified" }, undefined, undefined, h.ctx);
+		const evidence = "verified 🧭\n".repeat(500).trim();
+		const result = await (tool.execute as any)("upd-1", { expected_work_revision: await readWorkRevision(h), task_id: "t1", status: "complete", evidence }, undefined, undefined, h.ctx);
 		assert.equal(result.terminate, undefined, "task update does not terminate the turn");
 		const goal = activeGoal(f.cwd);
 		assert.equal(goal?.taskList?.tasks[0]?.status, "complete");
-		assert.equal(goal?.taskList?.tasks[0]?.evidence, "verified");
+		assert.equal(goal?.taskList?.tasks[0]?.evidence, evidence);
 		assert.ok(ledgerEvents(f.cwd).some((e) => e.type === "task_complete"), "task_complete ledger event");
 	} finally {
 		f.cleanup();

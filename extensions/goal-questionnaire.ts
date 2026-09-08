@@ -423,6 +423,7 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 		let optionsStartIndex = -1;
 		// §options-scroll viewport state (select-mode + submit tabs only).
 		let scrollTop = 0;
+		let reviewingContext = false;
 		let needsFollow = false;
 		let optionRanges: Array<[number, number]> = [];
 		let questionBlockEnd = -1;
@@ -477,6 +478,7 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 			const draft = drafts.get(q.id);
 			// §options-scroll: start each question tab from the top.
 			scrollTop = 0;
+			reviewingContext = false;
 			needsFollow = false;
 			if (q.options.length === 0) {
 				inputMode = true;
@@ -679,25 +681,29 @@ function advanceAfterAnswer() {
 			// Handled before the submit-tab early return so the summary scrolls
 			// too. ↑/↓ still select and auto-follow into view on the next render.
 			if (matchesKey(data, Key.pageUp)) {
-				scrollTop -= Math.max(1, (maxDialogLines ?? 10) - 1);
+				scrollTop -= Math.max(1, (maxDialogLines ?? 10) - 2);
+				reviewingContext = true;
 				needsFollow = false;
 				refresh();
 				return;
 			}
 			if (matchesKey(data, Key.pageDown)) {
-				scrollTop += Math.max(1, (maxDialogLines ?? 10) - 1);
+				scrollTop += Math.max(1, (maxDialogLines ?? 10) - 2);
+				reviewingContext = true;
 				needsFollow = false;
 				refresh();
 				return;
 			}
 			if (matchesKey(data, Key.ctrl("up"))) {
 				scrollTop -= 1;
+				reviewingContext = true;
 				needsFollow = false;
 				refresh();
 				return;
 			}
 			if (matchesKey(data, Key.ctrl("down"))) {
 				scrollTop += 1;
+				reviewingContext = true;
 				needsFollow = false;
 				refresh();
 				return;
@@ -943,7 +949,7 @@ function advanceAfterAnswer() {
 			lines.push("");
 			if (!inputMode) {
 				const auditorHint = auditorToggleInit ? " • a toggle auditor" : "";
-				add(theme.fg("dim", isMulti ? " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel" + auditorHint : " ↑↓ navigate • Enter select • Esc cancel" + auditorHint));
+				add(theme.fg("dim", isMulti ? " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel" + auditorHint : " ↑↓ navigate • Enter select • Esc cancel" + (q?.id === "confirm" ? " • PgUp/PgDn review" : "") + auditorHint));
 			}
 			add(theme.fg("accent", "─".repeat(safeWidth)));
 			// Safety net: ensure no returned line exceeds the terminal width
@@ -966,7 +972,12 @@ function advanceAfterAnswer() {
 				const proposalSegments = !inputMode && currentTab !== questions.length && !!q && q.context
 					? findProposalPresentationSegments(lines, optionsStartIndex)
 					: null;
-				if (proposalSegments) {
+				if (reviewingContext && (proposalSegments || q?.id === "confirm") && !inputMode) {
+					const scrollState = { scrollTop, needsFollow, optionRanges, followIndex: optionIndex };
+					lines = fitDialogLines(lines, maxDialogLines, protectedCount, null, scrollState, s => theme.fg("dim", s));
+					scrollTop = scrollState.scrollTop;
+					needsFollow = scrollState.needsFollow;
+				} else if (proposalSegments) {
 					// Proposal confirmations keep their segment protection (tasks +
 					// auditor + options within the bound; the objective-box middle
 					// stays in the scrollback presentation).

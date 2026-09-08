@@ -62,3 +62,11 @@ schemas/guidelines for upsert, 200 nodes, and stale-write rejection. The 22
 affected fixture breakdowns reflect those bytes; all semantic counts and
 child-request measurements remain unchanged. The aggregate automatic-text cap
 stays 10,000 characters. No ceiling or semantic assertion is relaxed.
+
+## Large-plan detail baseline (ticket 004)
+
+Plan D2 requires full retained evidence and paged retrieval. The task evidence
+schema description now points to lossless task pages instead of claiming a
+200-character storage limit. This adds 45 schema characters to seven fixtures;
+all semantic counts, automatic-context text and child-request measurements
+remain unchanged. No content/page/automatic-context ceiling is raised.

@@ -1,7 +1,9 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import { stripVTControlCharacters } from "node:util";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { truncateToWidth } from "./text-cache.ts";
+import { fitDialogLines, type DialogScrollState } from "../goal-questionnaire.ts";
 import {
 	displayObjectiveTitle,
 	formatDuration,
@@ -352,6 +354,9 @@ export class GoalWidgetComponent implements Component {
 	// bookkeeping (a new completion re-anchors to the latest completed task).
 	private compactScrollOffset = 0;
 	private expandedScrollOffset = 0;
+	private expandedViewport: DialogScrollState = { scrollTop: 0, needsFollow: false, optionRanges: [], followIndex: 0 };
+	private expandedViewportRows: number | undefined;
+	private expandedViewportLength = 0;
 	private lastRenderWidth = 100;
 	private lastSeenGoalId: string | undefined;
 	private lastSeenLatestCompletedAt: string | undefined;
@@ -459,14 +464,22 @@ export class GoalWidgetComponent implements Component {
 		// the first render of each regime and stays constant (fits and capped),
 		// so the dock height / buffer line count stop changing and the
 		// terminal stops jumping to the bottom.
-		const natural = this.renderNatural(width);
+		const scrollExpanded = !!terminalRows && this.getExpanded() && !this.getAuditorProgress() && !this.getAuditResult();
+		const natural = this.renderNatural(width, scrollExpanded);
 		const regime = this.stableHeightRegime();
 		// Reserve adapted to the actual dock chrome (status + editor + footer +
 		// pending): the widget's block plus the chrome must never exceed the
 		// terminal, or the chat's appended lines and the status line land above
 		// pi-tui's viewport top and every agent write wipes the scrollback.
 		const reserve = this.measureDockReserve(width) ?? WIDGET_HEIGHT_RESERVE;
-		return applyStableHeightBound(natural, terminalRows, this.stableHeightState, regime, reserve);
+		const bounded = applyStableHeightBound(natural, terminalRows, this.stableHeightState, regime, reserve);
+		this.expandedViewportRows = scrollExpanded ? bounded.length : undefined;
+		this.expandedViewportLength = natural.length;
+		if (this.expandedViewportRows !== undefined) {
+			const viewport = fitDialogLines(natural, this.expandedViewportRows, 0, null, this.expandedViewport, s => this.theme.fg("dim", s));
+			return applyStableHeightBound(viewport, terminalRows, this.stableHeightState, regime, reserve);
+		}
+		return bounded;
 	}
 
 	/**
@@ -533,7 +546,7 @@ export class GoalWidgetComponent implements Component {
 	}
 
 	/** The current widget branch rendered unbounded (no terminal-height bound). */
-	private renderNatural(width: number): string[] {
+	private renderNatural(width: number, fullExpanded = false): string[] {
 		const settings = this.getSettings();
 		const safeWidth = Math.max(1, width);
 		// §15.4: a finished audit shows its result card until cleared.
@@ -549,7 +562,7 @@ export class GoalWidgetComponent implements Component {
 			ledgerEvents: this.getLedgerEvents(),
 			tasksDisabled: settings.disableTasks === true,
 		}) : null;
-		this.maybeReanchor(model);
+		const reanchored = this.maybeReanchor(model);
 		const lines = renderGoalWidgetLines(this.getGoal(), this.theme, safeWidth, {
 			openGoalCount: this.getOpenGoalCount(),
 			auditorProgress: this.getAuditorProgress(),
@@ -560,12 +573,18 @@ export class GoalWidgetComponent implements Component {
 			debug: this.getDebugMode(),
 			model,
 			compactScrollOffset: this.compactScrollOffset,
-			expandedScrollOffset: this.expandedScrollOffset,
-			expandedTaskRows: expandedTaskViewportRows(this.lastRenderWidth),
+			expandedScrollOffset: fullExpanded ? 0 : this.expandedScrollOffset,
+			expandedTaskRows: fullExpanded ? model?.taskTree.length : expandedTaskViewportRows(this.lastRenderWidth),
 			keybindings: settings.keybindings?.dashboard,
 		});
 		if (this.getDebugMode()) {
 			lines.push(...this.renderDebugPanel(width));
+		}
+		if (fullExpanded && (reanchored || this.expandedViewport.needsFollow)) {
+			const latest = latestCompletedNodeIndex(model?.taskTree ?? []);
+			const header = lines.findIndex(line => stripVTControlCharacters(line).startsWith("├─ Tasks "));
+			this.expandedViewport.optionRanges = latest >= 0 && header >= 0 ? [[header + 1 + latest, header + 1 + latest]] : [];
+			this.expandedViewport.needsFollow = this.expandedViewport.optionRanges.length > 0;
 		}
 		return clampLinesToWidth(lines, width);
 	}
@@ -597,21 +616,24 @@ export class GoalWidgetComponent implements Component {
 	 * so the most recently completed work stays visible. Between such events
 	 * the user's manual scroll position is preserved.
 	 */
-	private maybeReanchor(model: GoalDashboardModel | null): void {
+	private maybeReanchor(model: GoalDashboardModel | null): boolean {
 		const latestAt = latestCompletedNodeIndex(model?.taskTree ?? []) >= 0
 			? model!.taskTree[latestCompletedNodeIndex(model!.taskTree)]!.completedAt
 			: undefined;
-		if (model?.goalId === this.lastSeenGoalId && latestAt === this.lastSeenLatestCompletedAt) return;
+		if (model?.goalId === this.lastSeenGoalId && latestAt === this.lastSeenLatestCompletedAt) return false;
 		this.lastSeenGoalId = model?.goalId;
 		this.lastSeenLatestCompletedAt = latestAt;
+		this.expandedViewport.scrollTop = 0;
+		this.expandedViewport.needsFollow = true;
 		if (!model || model.taskTree.length === 0) {
 			this.compactScrollOffset = 0;
 			this.expandedScrollOffset = 0;
-			return;
+			return true;
 		}
 		const topLevel = model.taskTree.filter((n) => n.depth === 0);
 		this.compactScrollOffset = anchoredScrollOffset(topLevel, compactTaskViewportRows(this.lastRenderWidth));
 		this.expandedScrollOffset = anchoredScrollOffset(model.taskTree, expandedTaskViewportRows(this.lastRenderWidth));
+		return true;
 	}
 
 	/**
@@ -656,6 +678,15 @@ export class GoalWidgetComponent implements Component {
 	 */
 	handleNavigationKey(key: "up" | "down" | "pageUp" | "pageDown" | "home" | "end"): boolean {
 		if (!this.getExpanded()) return false;
+		if (this.expandedViewportRows !== undefined) {
+			const rows = this.expandedViewportRows;
+			const max = Math.max(0, this.expandedViewportLength - Math.max(0, rows - 1) - 1);
+			if (!max) return false;
+			const step = key === "up" || key === "down" ? 1 : Math.max(1, rows - 2);
+			this.expandedViewport.scrollTop = key === "home" ? 0 : key === "end" ? max : Math.max(0, Math.min(max, this.expandedViewport.scrollTop + (key === "up" || key === "pageUp" ? -step : step)));
+			this.tui.requestRender();
+			return true;
+		}
 		const settings = this.getSettings();
 		const goal = this.getGoal();
 		const model = goal ? deriveGoalDashboardModel(goal as GoalRecord | null, {

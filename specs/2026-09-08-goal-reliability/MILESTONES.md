@@ -347,3 +347,64 @@
   frontier; 006 remains independently eligible. Next: exercise public page
   reconstruction and existing confirmation/dashboard/task-overlay navigation,
   then extend actual native compaction proof to 200 nodes with t142 selected.
+
+### Ticket 004 implementation checkpoint (not yet qualified)
+
+- HEAD 7e39724 is pushed and cleanly closes 003; current edits implement the
+  first 004 retrieval/presentation slices. Ticket 004 criteria remain unchecked.
+- Native public --details proof builds/reopens 200 tasks, reconstructs objective,
+  all task rows and individual t142 across 4,000-character Unicode pages, and
+  checks unchanged content revisions across accounting writes. It rejects
+  malformed/noncanonical, wrong-section, wrong-task, changed-content and
+  wrong-goal cursors through public operations. Final proof: 57 requests,
+  one real work effect; reliability/004/public-pages-final.log under Data.
+- The first red exposed silent 200-character evidence truncation, before it
+  reached missing page metadata. Batch, single-task and UI evidence inputs now
+  retain the complete trimmed text. Page metadata/text exposes goal, section,
+  selected task and content revision. A separate red proved Buffer's permissive
+  base64 decoder accepted punctuation; emitted cursors now require canonical
+  base64url. All failed attempts remain in the evidence directory, including
+  a fixture that needed a second prompt after create_goal terminated its turn.
+- Task confirmation previously hid node 17 onward and truncated contracts.
+  Its red/green now reaches 200 nodes and 600 Unicode contract tokens through
+  the existing questionnaire viewport; set_goal_tasks reuses the existing
+  structural renderer so contracts are present in the proposal.
+- The expanded dashboard's task viewport plus terminal head-slice hid node 13
+  and long current-task requirements. In a bounded terminal, existing navigation
+  now scrolls the complete rendered dashboard through the same viewport while
+  preserving the latched dock height. 78 widget checks pass, including growth
+  from a short contract and 200-node/off-preview navigation. Unbounded/compact
+  rendering retains its existing task viewport. Recent-completion reanchoring
+  has been carried into the bounded full-content viewport; a focused extra
+  characterization should verify it before qualification.
+- All three native --large --long --advice-review compaction cases pass:
+  200 tasks built in four public upserts; t142/t143/t144 survive three successive
+  manual/threshold/overflow compactions, respectively, then a paused manual
+  compaction. Three completed evidence artifacts remain intact. Threshold
+  compacts inside one run; no duplicate overflow continuation. Aggregate
+  automatic text stays <=10,000 characters even with long objective/contracts,
+  pending Oracle advice and auditor rejection. Logs: compaction-*-first.log.
+- Existing task/feature checks: 37 passed after long-evidence characterization;
+  task confirmation/legacy overlay checks: 15 passed; type check passed before
+  the last dashboard edits. Remaining: full requirements through existing
+  status/overlay/proposal views; native TUI/confirmation reachability review;
+  final type/lint/full/discovery and payload/benchmark gates; architecture and
+  release notes; fixed-base independent reviews from 7e39724. No 004 completion,
+  installed package, real-Qwen or adoption result is claimed.
+- Further view checks reproduce absent overlay contracts and inaccessible
+  draft-proposal nodes beyond the first two. The retained overlay now wraps
+  full requirements/evidence with correct padding width (16 checks pass).
+  Draft confirmation retains its initial small-proposal/options frame and
+  enters the full viewport on advertised page keys (37 questionnaire checks
+  pass). No removed shortcut was restored. The existing verbose status path
+  preserves all 200 full titles/contracts and long Unicode evidence.
+- The first full 004 suite passed 1010/1010 across 76 files; check/lint and
+  discovery also passed. A follow-up compact-to-expanded test reproduced a
+  lost recent-completion anchor in the new viewport. The pending anchor is now
+  retained across that transition; anchor-red/green.log records the repair.
+  The new code still needs final qualification after independent review.
+- Combined native --details --concurrent-accounting proof passes (62 requests,
+  one work effect), including full public history pages. Seven context fixture
+  breakdowns drift only by the evidence schema description's 45 new characters;
+  all automatic-text and semantic/child measurements are unchanged. Rationale
+  is in experiments/context/README.md; final gate/provider checks are pending.

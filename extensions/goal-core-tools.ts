@@ -82,7 +82,8 @@ pi.registerTool(defineTool({
    if (!["objective", "tasks", "history"].includes(params.section)) return {content: [{type: "text", text: "Unknown goal section."}], details: goalDetails(view)};
    const history = params.section === "history" ? readGoalLedger(ctx) : undefined;
    const page = goalDetailPage(view, {section: params.section, task_id: params.task_id, cursor: params.cursor}, history?.events, history?.revision);
-   return {content: [{type: "text", text: page.text}], details: {...goalDetails(view), ...(page.ok ? {page: {content: page.content, nextCursor: page.nextCursor, totalChars: page.totalChars}} : {})}};
+   const {ok, text, ...detail} = page;
+   return {content: [{type: "text", text}], details: {...goalDetails(view), ...(ok ? {page: detail} : {})}};
   }
   if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
 		if (verbose && !params.section) {

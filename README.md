@@ -88,6 +88,8 @@ If the auditor approves, the goal is archived as complete. If it identifies unme
 
 The dashboard above the editor shows the goal's status, task progress, current task, elapsed time, and token usage. Press `Ctrl+Shift+T` to expand it for the full task tree, completion requirements, evidence, and recent activity. Audit progress and results appear there too.
 
+Use arrows, Page Up/Down, Home and End to scroll the expanded view. `/goal-status verbose` shows every task's full title, contract and evidence. Task and draft confirmations also support Page Up/Down to review long proposals before deciding.
+
 A project can have several open goals, with one focused goal per session. Switch with `/goal-focus`, pause with `/goal-pause`, or use `/goal-tweak` to discuss changes to the current goal. Pressing `Esc` during active work also pauses the goal; in the expanded dashboard, it collapses the view.
 
 ## Commands

@@ -1,5 +1,6 @@
 import { matchesKey } from "@earendil-works/pi-tui";
-import { truncateToWidth } from "./widgets/text-cache.ts";
+import { truncateToWidth, wrapTextWithAnsi } from "./widgets/text-cache.ts";
+import { fitDialogLines, type DialogScrollState } from "./goal-questionnaire.ts";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import type { GoalTask } from "./goal-record.ts";
@@ -56,12 +57,14 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 
 			// Default: "Confirm task list" (matches the pre-existing default).
 			let selectedIndex = 0;
+			const scroll: DialogScrollState = { scrollTop: 0, needsFollow: false, optionRanges: [], followIndex: 0 };
+			let maxDialogLines = 24;
 
 			const OPTIONS: Array<{ label: string; value: TaskConfirmationResult["decision"]; description: string }> = [
 				{
 					label: "Confirm task list",
 					value: "confirm",
-					description: "Replace the current task list with this structure.",
+					description: "Apply this task structure.",
 				},
 				{
 					label: "Keep current tasks",
@@ -71,7 +74,6 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 			];
 
 			const BODY_LINES = proposalText.split("\n");
-			const MAX_BODY = 16;
 
 			const accent = (s: string) => theme.fg("accent", s);
 			const dim = (s: string) => theme.fg("dim", s);
@@ -104,18 +106,13 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 					lines.push(accent(`├${horizLine}┤`));
 
 					// ── Body: the proposed task tree ─────────────────────────
-					const body = BODY_LINES.slice(0, MAX_BODY);
-					for (const raw of body) {
-						const trimmed = raw;
-						lines.push(line(p + truncateToWidth(muted(trimmed || " "), innerWidth - p.length, "…")));
-					}
-					if (BODY_LINES.length > MAX_BODY) {
-						lines.push(line(p + dim(`+${BODY_LINES.length - MAX_BODY} more lines`)));
-					}
+					for (const raw of BODY_LINES) for (const segment of wrapTextWithAnsi(raw || " ", Math.max(1, innerWidth - p.length))) lines.push(line(p + muted(segment)));
 					lines.push(accent(`├${horizLine}┤`));
 
 					// ── Options ─────────────────────────────────────────────
+					scroll.optionRanges = [];
 					OPTIONS.forEach((opt, i) => {
+						const start = lines.length;
 						const isSelected = i === selectedIndex;
 						const marker = isSelected ? "▸ " : "  ";
 						const label = isSelected ? theme.fg("accent", opt.label) : opt.label;
@@ -123,24 +120,37 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 						if (isSelected) {
 							lines.push(line(p + " ".repeat(4) + truncateToWidth(dim(opt.description), innerWidth - 10, "…")));
 						}
+						scroll.optionRanges.push([start, lines.length - 1]);
 					});
 
 					// ── Footer ───────────────────────────────────────────────
 					lines.push(accent(`├${horizLine}┤`));
 					lines.push(line(p + dim("Enter to select  ·  ↑↓ to navigate  ·  Esc = keep current tasks")));
+					lines.push(line(p + dim("PgUp/PgDn/Home/End: review full proposal")));
 					lines.push(accent(`└${horizLine}┘`));
 
-					return lines;
+					const rows = (tui as unknown as { terminal?: { rows?: number } }).terminal?.rows ?? 40;
+					maxDialogLines = Math.max(4, Math.floor(rows * 0.6));
+					scroll.followIndex = selectedIndex;
+					return fitDialogLines(lines, maxDialogLines, 3, null, scroll, dim);
 				},
 
 				handleInput(data: string): void {
+					if (matchesKey(data, "pageUp") || matchesKey(data, "pageDown") || matchesKey(data, "home") || matchesKey(data, "end")) {
+						scroll.scrollTop = matchesKey(data, "home") ? 0 : matchesKey(data, "end") ? Number.MAX_SAFE_INTEGER : scroll.scrollTop + (matchesKey(data, "pageUp") ? -1 : 1) * Math.max(1, maxDialogLines - 2);
+						scroll.needsFollow = false;
+						tui.requestRender();
+						return;
+					}
 					if (matchesKey(data, "up")) {
 						selectedIndex = (selectedIndex - 1 + OPTIONS.length) % OPTIONS.length;
+						scroll.needsFollow = true;
 						tui.requestRender();
 						return;
 					}
 					if (matchesKey(data, "down")) {
 						selectedIndex = (selectedIndex + 1) % OPTIONS.length;
+						scroll.needsFollow = true;
 						tui.requestRender();
 						return;
 					}

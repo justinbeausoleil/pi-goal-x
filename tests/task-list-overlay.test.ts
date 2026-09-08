@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import type { Component } from "@earendil-works/pi-tui";
 import { createMockExtensionContext, invokeCustomFactory, renderComponent } from "./tui-test-utils.ts";
 import { showTaskListOverlay } from "../extensions/widgets/task-list-overlay.ts";
+import { renderConfirmationTasks, showTaskConfirmation } from "../extensions/goal-task-confirmation.ts";
 import type { GoalRecord } from "../extensions/goal-record.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -66,6 +67,34 @@ function makeGoalWithMixedTasks(id: string, objective: string): GoalRecord {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
+
+for (const view of ["confirmation", "overlay"]) test(`task ${view} exposes all 200 nodes and every long contract segment`, () => {
+	const previous = process.env.PI_GOAL_AUTO_CONFIRM;
+	process.env.PI_GOAL_AUTO_CONFIRM = "0";
+	try {
+		const ctx = createMockExtensionContext();
+		const goal = makeGoalWithTasks("review", "Review every requirement", Array.from({ length: 200 }, (_, i) => `node-${i + 1}-end`));
+		const tokens = Array.from({ length: 600 }, (_, i) => `proof-${i}-🧭`);
+		goal.taskList!.tasks[141]!.verificationContract = tokens.join(" ");
+		if (view === "confirmation") void showTaskConfirmation(ctx, renderConfirmationTasks(goal.taskList!.tasks, 0).join("\n"));
+		else void showTaskListOverlay(ctx, new Map([[goal.id, goal]]), goal.id);
+		const { component } = invokeCustomFactory(ctx._customCalls, 0);
+		let seen = "";
+		for (let page = 0; page < 100; page++) {
+			seen += renderComponent(component, 80).join("\n") + "\n";
+			component.handleInput?.("\x1b[6~");
+		}
+		for (let i = 1; i <= 200; i++) assert.ok(seen.includes(`node-${i}-end`), `node ${i} is reachable`);
+		for (const token of tokens) assert.ok(seen.includes(token), `${token} is reachable`);
+		component.handleInput?.("\x1b[H");
+		assert.match(renderComponent(component, 80).join("\n"), /node-1-end/);
+		component.handleInput?.("\x1b[F");
+		assert.match(renderComponent(component, 80).join("\n"), /node-200-end/);
+	} finally {
+		if (previous === undefined) delete process.env.PI_GOAL_AUTO_CONFIRM;
+		else process.env.PI_GOAL_AUTO_CONFIRM = previous;
+	}
+});
 
 test("defaults to current goal only", async () => {
 	const ctx = createMockExtensionContext();

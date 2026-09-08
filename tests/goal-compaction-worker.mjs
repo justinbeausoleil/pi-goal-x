@@ -12,6 +12,8 @@ const mode = process.argv[2] ?? "manual";
 const baseline = process.argv.includes("--baseline");
 const stopState = process.argv.find(a => a.startsWith("--stopped="))?.split("=")[1] ?? "paused";
 const long = process.argv.includes("--long");
+const large = process.argv.includes("--large");
+const taskCount = large ? 200 : 50, firstCurrent = large ? 142 : 40, parentId = `t${firstCurrent - 1}`;
 const adviceReview = process.argv.includes("--advice-review");
 const review = adviceReview || process.argv.includes("--audit-only");
 const stall = process.argv.includes("--stall");
@@ -54,16 +56,17 @@ const pauseReason = `pause-reason-sentinel ${"preserved reason ".repeat(2000)}`;
 const pauseAction = `pause-action-sentinel ${"preserved action ".repeat(2000)}`;
 let resolveFinished;
 const finished = new Promise(resolve => { resolveFinished = resolve; });
-const steps = [{ name: "set_goal_tasks", args: {
-	tasks: Array.from({ length: 50 }, (_, i) => ({ id: `t${i + 1}`, ...(i >= 39 && i <= 41 ? { parent_id: "t39" } : {}), title: `Fixture task ${i + 1}${long ? " title data".repeat(2000) : ""}`, verification_contract: `Evidence for task ${i + 1} must match its artifact.${long ? " contract data".repeat(2000) : ""}` })), block_completion: stopState !== "complete" && !review,
-} }];
+const steps = Array.from({ length: taskCount / 50 }, (_, batch) => ({ name: "set_goal_tasks", args: {
+	...(large ? { mode: "upsert" } : {}),
+	tasks: Array.from({ length: 50 }, (_, index) => { const id = batch * 50 + index + 1; return { id: `t${id}`, ...(id >= firstCurrent && id <= firstCurrent + 2 ? { parent_id: parentId } : {}), title: `Fixture task ${id}${long ? " title data".repeat(2000) : ""}`, verification_contract: `Evidence for task ${id} must match its artifact.${long ? " contract data".repeat(2000) : ""}` }; }), block_completion: stopState !== "complete" && !review,
+} }));
 const objective = `Preserve the public fixture plan and its completed evidence through three compactions.${long ? " objective data".repeat(2000) : ""}\nVerification contract: unique-goal-contract-sentinel ${long ? "verification data ".repeat(2000) : "Preserve all completed evidence."}`;
 if (stopState === "budget_limited") steps.unshift({ name: "create_goal", args: { objective, token_budget: 100000 } });
 for (let cycle = 0; cycle < 3; cycle++) {
 	steps.push(
 		{ name: "write", args: { path: `evidence-${cycle}.txt`, content: `proof-${cycle}` } },
 		{ name: "update_goal_task", args: { task_id: `t${cycle + 1}`, status: "complete", evidence: `evidence-${cycle}.txt contains proof-${cycle}` } },
-		{ name: "update_goal_task", args: { task_id: `t${40 + cycle}`, status: "start" } },
+		{ name: "update_goal_task", args: { task_id: `t${firstCurrent + cycle}`, status: "start" } },
 		{ name: "fixture_padding", args: {} },
 		...(adviceReview && cycle === 0 ? [{ name: "update_goal", args: { status: "blocked", reason: "The same fixture blocker recurred over three turns." } }] : []),
 		...(review && cycle === 0 ? [{ name: "update_goal", args: { status: "complete" } }] : []),
@@ -140,9 +143,9 @@ try {
 				if (stopState !== "complete") assert(automatic.join("").includes(`PI GOAL ${stopState.toUpperCase().replace("_", " ")}`));
 				if (!["complete", "unfocused"].includes(stopState)) {
 					assert.match(automatic.join(""), /unique-goal-contract-sentinel/);
-					assert.match(automatic.join(""), /Current: t42/);
-					assert.match(automatic.join(""), /Ancestors: t39/);
-					assert.match(automatic.join(""), /3\/50 tasks complete/);
+					assert(automatic.join("").includes(`Current: t${firstCurrent + 2}`));
+					assert(automatic.join("").includes(`Ancestors: ${parentId}`));
+					assert(automatic.join("").includes(`3/${taskCount} tasks complete`));
 				}
 				if (stopState === "paused" || stopState === "blocked") {
 					assert.match(automatic.join(""), /pause-reason-sentinel/);
@@ -176,8 +179,8 @@ try {
 			if ((!baseline || step.afterCompaction) && !step.budgetWrap) {
 				assert(!context.systemPrompt.includes("[PI GOAL"), "dynamic state must not be trapped in system context");
 				if (current) assert(text.includes(`Current: ${current}`), `current task ${current} must survive mutation/compaction; public result: ${JSON.stringify(results.findLast(r => r.toolName === "update_goal_task")?.details.goal.currentTaskId)}`);
-				if (current) assert(text.includes("Ancestors: t39"));
-				if (completed) assert(text.includes(`${completed}/50 tasks complete`), "completed tasks remain complete");
+				if (current) assert(text.includes(`Ancestors: ${parentId}`));
+				if (completed) assert(text.includes(`${completed}/${taskCount} tasks complete`), "completed tasks remain complete");
 				if (current) assert(text.includes(`Evidence for task ${current.slice(1)} must match its artifact.`), "current contract survives compaction");
 			}
 			assert(JSON.stringify(context.messages).includes("fixture-unrelated-sentinel"), "unrelated extension context survives goal filtering");
@@ -217,14 +220,14 @@ try {
 	assert.equal(beforeStarts, stopState === "budget_limited" ? 1 : 0, "custom continuation proof cannot rely on a user-start hook");
 	assert.equal(steps.length, 0);
 	const finalGoal = results.find(r => r.toolName === "get_goal").details.goal;
-	assert.equal(finalGoal.currentTaskId, "t42");
-	assert.equal(finalGoal.taskList.tasks.flatMap(task => [task, ...(task.subtasks ?? [])]).length, 50);
+	assert.equal(finalGoal.currentTaskId, `t${firstCurrent + 2}`);
+	assert.equal(finalGoal.taskList.tasks.flatMap(task => [task, ...(task.subtasks ?? [])]).length, taskCount);
 	assert.deepEqual(finalGoal.taskList.tasks.filter(t => t.status === "complete").map(t => t.id), ["t1", "t2", "t3"]);
 	for (let c = 0; c < 3; c++) assert.equal(readFileSync(join(cwd, `evidence-${c}.txt`), "utf8"), `proof-${c}`);
 	assert(!manager.getEntries().some(e => e.customType === "pi-goal-context"));
 	const checkpoints = manager.getEntries().filter(e => e.type === "custom_message" && e.customType === "pi-goal-event");
 	assert(checkpoints.every(e => e.content.length <= 160));
-	assert.equal(checkpoints.length, mode === "manual" ? 5 : 2, "overflow retries belong to the host; no extension checkpoint duplicates them");
+	assert.equal(checkpoints.length, (mode === "manual" ? 5 : 2) + taskCount / 50 - 1, "overflow retries belong to the host; no extension checkpoint duplicates them");
 	if (mode === "threshold") assert(compactions.every(c => projections.some(p => p.request > c.request && p.run === c.run)), "threshold compaction must happen between responses within a run");
 	if (stopState === "unfocused") await session.prompt("/goal-unfocus");
 	await session.sendCustomMessage({ customType: "fixture-unrelated", content: "Stopped-state ballast ".repeat(1000), display: false }, { triggerTurn: false });

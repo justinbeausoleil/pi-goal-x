@@ -20,7 +20,7 @@ handlers from their dedicated modules:
 | `goal-task-confirmation.ts` | Task-only result boundary (`{decision}`, no auditor toggle) with neutral Confirm task list / Keep current tasks labels |
 | `goal-commands.ts` | The curated fourteen-command palette and its handlers |
 | `goal-events.ts` | Lifecycle event handlers (`message_start`, `context`, `turn_start`, `tool_call`, `tool_execution_end`, `turn_end`, `message_end`, `session_start`, `session_before_compact`, `session_compact`, `session_tree`, `before_agent_start`, `agent_end`, `agent_settled`, `session_shutdown`) |
-| `goal-widget.ts` | Terminal input keybindings (Esc pause / abort-audit, Ctrl+Shift+T overlay) and the hidden debug helpers |
+| `goal-widget.ts` | Terminal input keybindings (Esc pause / abort-audit, Ctrl+Shift+T dashboard) and the hidden debug helpers |
 | `goal-format.ts` | Pure formatting/message-introspection helpers and renderers |
 | `goal-service.ts` | `GoalService` — the sole mutation boundary: ordered reconcile → id/focus-revision validation → clone-mutate → write/archive → ledger → memory commit → returned effects |
 | `goal-runtime.ts` | `GoalRuntime` — continuation scheduling, stale checkpoint state, turn-stop guard, one-shot steering reminders |
@@ -119,7 +119,7 @@ direct write or ledger calls.
   ├─ /goal [seed] or /sisyphus [seed]
   │    └─ guided draft: clarify/questionnaire → objective + optional task proposal → explicit confirmation
   ├─ /goal-direct <objective> or /sisyphus-direct <objective>
-  │    └─ direct creation: objective (1–4000 chars) → active goal file → focused → autoContinue
+  │    └─ direct creation: nonempty objective → active goal file → focused → autoContinue
   ├─ focused active goal
   │    ├─ autoContinue queues checkpoint turns
   │    ├─ update_goal({status:"blocked"}) records a distinct blocked state after the same
@@ -232,7 +232,7 @@ The extension registers five normal-execution tools and three drafting-only tool
 
 | Tool | Purpose |
 |---|---|
-| `create_goal` | Create and focus a new goal after an explicit user request (objective 1–4000 chars, optional `mode` regular/sisyphus and `token_budget`). |
+| `create_goal` | Create and focus a new goal after an explicit user request (nonempty objective, optional `mode` regular/sisyphus and `token_budget`). |
 | `get_goal` | Compact summary by default; lossless objective/tasks/history pages (up to 4,000 content characters), optional task selection, legacy verbose/history forms. |
 | `update_goal` | Run outcomes: `complete` (audited from actual evidence; optional `completion_summary` is an untrusted claim), `blocked` (after three consecutive identical blockers), or `paused` (immediate agent pause with required `reason`). |
 | `set_goal_tasks` | Upsert at most 50 entries or replace the full tree (at most 200 nodes), with structural confirmation and work-revision validation. |
@@ -296,6 +296,22 @@ caches compare content fields without repeatedly serializing long contracts.
 Compiled detail pages reuse their source and cursor hash; history sources are
 invalidated by an opaque ledger generation on append or refresh. Cache size
 limits bound retained data; larger requirements remain available losslessly.
+Each page exposes goalId, section, optional taskId, contentRevision, exact
+content, nextCursor/end and totalChars. The textual result carries the same
+identity and content revision. Cursors are canonical base64url and bind to the
+selected content; accounting alone leaves them valid. Task evidence is stored
+in full through single/batch/UI updates and retrieved with the task pages.
+
+Task confirmation reuses the structural renderer, including full contracts,
+and the existing questionnaire viewport. Page keys review all proposal text;
+the existing confirm/cancel and auditor choices retain their meaning. The
+expanded dashboard uses that viewport in bounded terminals to reach every
+rendered row, including long current-task requirements, within the stable dock
+height. It preserves latest-completion reanchoring. Compact/unbounded task
+views retain their existing navigation. The existing /goal-status verbose
+command exposes every task's full title, contract and evidence; its locator is
+shown in the expanded footer. The retained standalone overlay also wraps full
+task requirements, but the unified dashboard continues to own the shortcut.
 Pure ANSI text wrapping/truncation is cached by text and layout arguments across
 widgets and dialogs. Live auditor previews scan only the report tail, while the
 complete final report remains available. Measurements and the module audit are
