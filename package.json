@@ -1,7 +1,7 @@
 {
   "name": "pi-goal-x",
   "version": "0.31.1",
-  "description": "Goal mode extension for pi: durable long-running objectives, five model tools, structured tasks, independent completion audit, Sisyphus mode, auto-continue, and a status overlay.",
+  "description": "Adds /goal to pi: conversational goal planning, flexible or ordered goals, persistent progress, and an independent completion auditor.",
   "license": "MIT",
   "author": "pi-goal-x contributors",
   "type": "module",
