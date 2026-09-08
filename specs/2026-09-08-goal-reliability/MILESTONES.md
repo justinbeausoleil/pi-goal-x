@@ -1707,3 +1707,20 @@
   variable expansion, redirection and both command-substitution forms. Actual
   files verify that shell writes still earn continuation. Full qualification and
   final delta reviews remain required before009 acceptance.
+- Both final independent axes clear c9b44ee: Spec5 and Standards3 native checks.
+  Final type/benchmark/dry pack pass. Type checking first rejected unchecked
+  string indexing (echo-scan-type-red.log); charAt satisfies the existing strict
+  target. Lint then rejected an unnecessary quote escape in the test literal
+  (echo-final-lint.log); equivalent literal cleanup passes lint and its native
+  case (echo-literal-final-lint.log, echo-literal-native.log). The runtime stays
+  frozen atc9b44ee while its final full suite runs.
+- Final c9b44ee full run passes1298/1298,48 suites/76 files in231046ms, zero
+  failures/skips. Data009/review-checks.json and the009 review map all six criteria
+  to evidence. Ticket009 is accepted;010 is the next frontier. No dependency or
+  live-selection change. The equivalent test literal cleanup is the only source
+  delta after the reviewed/frozen runtime; its native regression and lint pass.
+- Ticket010 trace: Pi owns _handlePostAgentRun retries/overflow, then emits
+  agent_settled. Existing extension schedules network recovery there and has a
+  finite/unbounded backoff policy. The shared session_compact_failed event is not
+  currently handled; native failure/cancellation characterization is next, along
+  with controlled-timer provider cases. Do not infer a defect before reproducing.

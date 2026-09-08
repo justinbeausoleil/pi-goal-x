@@ -362,7 +362,7 @@ try {
     const inspectionStart = requests.length;
     await run("Inspect state and report the same blocker without attempting the advice.", [
       {name: "get_goal", args: {}},
-      ...(control === "echo-quoted" ? ['echo "inspection; still inspection"', "echo 'inspection > still inspection'", 'echo inspection\\;still', "echo '$(inspection) `still inspection`'", 'echo inspection # no > work', 'echo "inspection\\\"; still inspection"'] : [control === "echo-variable" ? 'echo "$PWD"' : "echo inspecting"]).map(command => ({name: "bash", args: {command}})),
+      ...(control === "echo-quoted" ? ['echo "inspection; still inspection"', "echo 'inspection > still inspection'", 'echo inspection\\;still', "echo '$(inspection) `still inspection`'", 'echo inspection # no > work', 'echo "inspection\\"; still inspection"'] : [control === "echo-variable" ? 'echo "$PWD"' : "echo inspecting"]).map(command => ({name: "bash", args: {command}})),
       {name: "ls", args: {path: "."}}, block,
     ]);
     assert.equal(currentGoal().status, "active", "inspection and another block request do not execute Oracle advice");
