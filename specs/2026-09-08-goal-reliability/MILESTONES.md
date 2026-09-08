@@ -1724,3 +1724,28 @@
   finite/unbounded backoff policy. The shared session_compact_failed event is not
   currently handled; native failure/cancellation characterization is next, along
   with controlled-timer provider cases. Do not infer a defect before reproducing.
+
+### Ticket010 native recovery characterization and repair
+
+- Extend the existing real-Pi stop worker with controlled backoff timers, public
+  creation/task operations and actual file effects. Delay values stay5000/10000ms;
+  only the test advances their callbacks. Scheduling asserts native session idle.
+  Positive cap3 and10000ms plateau are finite test settings; maxAttempts0 is
+  sampled four schedules then cancelled. Production defaults remain unchanged.
+- Data010/provider-native-first.log passes8/10. Its two failures were fixture
+  assumptions: /goal-pause after unfocus selects the sole open goal, and reopening
+  an eligible active session may issue fresh work under D5. Remove the extra pause
+  from the unfocus observation and distinguish a fresh runtime checkpoint from
+  old recovery. The first correction still expected one response where reopened
+  write/pause has two responses in the same run (provider-fixture-corrections.log).
+- Compaction-native-red.log reproduces actual forbidden.txt writes after both
+  failed and cancelled threshold summaries. The prior successful-work handoff
+  survived Pi's session_compact_failed event and dispatched after settlement.
+  Overflow failure/cancellation already pass. Clear the existing continuation
+  and recovery state at that native failure boundary; no new retry subsystem.
+- Provider-native-green.log passes14 cases: transient, transport abort without
+  a user signal, nontransient, cap/plateau, bounded sampling of unbounded mode,
+  success reset, four user/session controls, and four real summary failures.
+  Type/lint pass. Expanded fresh-session, stale host-message, successful retry/
+  compaction and no-progress regressions are running; final qualification and
+  independent reviews remain pending. No acceptance boxes are checked yet.

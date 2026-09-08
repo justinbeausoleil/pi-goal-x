@@ -5,6 +5,10 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
+for (const control of ["transient", "aborted", "nontransient", "cap", "unbounded", "success-reset", "pause", "unfocus", "switch", "reopen", "new-session", ...["threshold", "overflow"].flatMap(mode => ["failed", "cancelled"].map(outcome => `compaction-${mode}-${outcome}`))]) test(`S1: native provider recovery ${control} preserves retry ownership and user stops`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "recovery", control], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const control of ["text", "inspect", "echo", "ls", "work", "redirect", "substitution", "backtick", "clarify"]) test(`S1: native ${control}-only continuation preserves the no-progress boundary and explicit resume`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "idle", control], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);

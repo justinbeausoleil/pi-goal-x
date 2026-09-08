@@ -415,6 +415,12 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.accountProgress(ctx);
 	});
 
+	pi.on("session_compact_failed", () => {
+		continuationAfterSettleFor = null;
+		networkErrorRecoveryAfterSettleFor = null;
+		core.clearContinuationState();
+	});
+
 	pi.on("session_compact", async (_event, ctx) => {
 		core.goalService.flushTurn(ctx); // P1-3: persist any buffered transaction before reload
 		if (core.state.goal) core.persist(ctx);

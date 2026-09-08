@@ -30,4 +30,8 @@ suites, and the plan's required checks. Record baseline/red (or preservation
 characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
-Evidence: pending implementation.
+Evidence: `~/Data/pi-goal-x/reliability/010/` contains native threshold failure/
+cancellation reds with actual forbidden writes and14 passing repaired provider
+cases. Native timers assert settlement, cap/delay behavior and cancellation.
+The milestone log retains fixture corrections. Final expanded regressions,
+qualification and independent reviews remain pending; acceptance is not checked.

@@ -78,6 +78,14 @@ Shell classification excludes simple echo with quoted/escaped literals or variab
 expansion. Unquoted operators and command substitutions remain work attempts;
 the check does not perform semantic analysis of arbitrary shell programs.
 
+Pi owns immediate provider retries and overflow recovery. Goal-level backoff
+starts only after `agent_settled`; success resets its ladder, and user controls
+cancel pending recovery. `session_compact_failed` also clears pending automatic
+continuation and recovery, including an earlier successful-work handoff. A failed
+or cancelled summary cannot authorize the next goal request. The goal stays open
+for explicit user action. Reopening an eligible active session may issue its own
+fresh checkpoint, independently of the cancelled old backoff.
+
 Checkpoint metadata and content must identify the same goal and carry the
 runtime UUID/sequence of its current, single-use issued receipt. Stops clear
 that receipt; replay or a previous runtime's marker cannot resume work.

@@ -14,6 +14,35 @@ import {parseGoalFile} from "../extensions/storage/goal-files.ts";
 import {goalLedgerPath} from "../extensions/goal-ledger.ts";
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
+const recovery = boundary === "recovery";
+const compactionFailure = recovery && control.startsWith("compaction-");
+const compactionOutcomes = [];
+const recoveryTimers = [];
+const originalTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout;
+if (recovery) {
+  globalThis.setTimeout = (callback, milliseconds, ...args) => {
+    if (![5000, 10000].includes(milliseconds)) return originalTimeout(callback, milliseconds, ...args);
+    assert(session.isIdle, "extension backoff must wait for actual host settlement");
+    const handle = originalTimeout(() => {}, 60000);
+    handle.unref();
+    recoveryTimers.push({handle, milliseconds, callback: () => callback(...args), active: true});
+    return handle;
+  };
+  globalThis.clearTimeout = handle => {
+    const timer = recoveryTimers.find(timer => timer.handle === handle);
+    if (timer) timer.active = false;
+    originalClearTimeout(handle);
+  };
+}
+const pendingRecovery = () => recoveryTimers.filter(timer => timer.active);
+async function advanceRecovery() {
+  assert.equal(pendingRecovery().length, 1, "exactly one recovery is pending");
+  const timer = pendingRecovery()[0];
+  clearTimeout(timer.handle);
+  timer.callback();
+  await delay(100);
+  await settled();
+}
 const clearUnpaid = process.argv.includes("--clear-unpaid");
 const lateBudget = process.argv.includes("--late-budget");
 const exhaustedEdit = process.argv.includes("--exhausted-edit");
@@ -23,7 +52,7 @@ let clockNow = originalNow();
 if (controlledClock) Date.now = () => clockNow;
 const switching = control.startsWith("switch");
 const replacing = control.startsWith("replace");
-const successor = boundary !== "oracle-followup" && (replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control));
+const successor = !recovery && boundary !== "oracle-followup" && (replacing || ["switch-active", "pause-resume", "reload", "reopen", "agent-resume"].includes(control));
 const oracleFollowup = boundary === "oracle-followup";
 const oracleOutcome = boundary === "oracle-outcome";
 const reviewing = boundary === "audit" || boundary === "oracle" || oracleFollowup || oracleOutcome;
@@ -104,6 +133,7 @@ async function stop() {
   else if (control === "unfocus") await session.prompt("/goal-unfocus");
   else if (control === "reload") await session.reload();
   else if (control === "reopen") await host.switchSession(session.sessionManager.getSessionFile());
+  else if (control === "new-session") await host.newSession();
   else if (replacing) await session.prompt(control === "replace-ordered"
     ? "/sisyphus-direct 1) Write secondary-proof.txt. Done when the file exists. 2) Inspect the proof. Done when its contents match secondary-proof.txt."
     : "/goal-direct Write only the newly authorized successor proof.");
@@ -172,6 +202,7 @@ async function create({sessionManager, sessionStartEvent}) {
   });
   session = created.session;
   session.subscribe(event => {
+    if (event.type === "compaction_end") compactionOutcomes.push(event);
     if (event.type === "auto_retry_start") hostRetries++;
     if (testing && event.type === "tool_execution_start" && event.toolName === "update_goal" && event.args?.status === "paused") { pauseDispatches++; serialOrder.push("agent-pause-dispatch"); }
     if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason});
@@ -184,7 +215,10 @@ async function create({sessionManager, sessionStartEvent}) {
         content: [{type: "text", text: "Earlier fixture discussion occurred. Goal and Oracle details were omitted."}],
         usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: model.cost}, stopReason: "stop", timestamp: Date.now()};
       const stream = new AssistantMessageEventStream();
-      stream.push({type: "done", reason: "stop", message});
+      if (compactionFailure) {
+        if (control.endsWith("cancelled")) { session.abortCompaction(); assert(options.signal.aborted); }
+        stream.push({type: "error", reason: control.endsWith("cancelled") ? "aborted" : "error", error: {...message, stopReason: control.endsWith("cancelled") ? "aborted" : "error", errorMessage: "Synthetic compaction failure"}});
+      } else stream.push({type: "done", reason: "stop", message});
       return stream;
     }
     requests.push(context);
@@ -202,18 +236,23 @@ async function create({sessionManager, sessionStartEvent}) {
     const retryError = testing && boundary === "provider-retry" && !retryOffered;
     if (retryError) retryOffered = true;
     const calls = failure || retryError ? [] : userWork ? [write("queued-user.txt"), ...(control === "steering-only" ? [pause] : [])] : staleFollowup ? [write("forbidden.txt")] : startSecondary ? [write("secondary-proof.txt"), pause] : responses.shift() ?? [];
+    const recoveryFailure = recovery ? calls[0]?.failure : undefined;
     if (startSecondary) secondaryDone = true;
     if (controlledClock && boundary === "completion" && calls.some(call => call.name === "update_goal" && call.args.status === "complete")) clockNow += 8000;
-    const content = calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: control === "clarify" ? "Which output format should I use?" : "Waiting for explicit authorization."}];
+    const content = recoveryFailure ? [] : calls.length ? calls.map((call, index) => ({type: "toolCall", id: `stop-${requests.length}-${index}`, name: call.name, arguments: call.args})) : [{type: "text", text: control === "clarify" ? "Which output format should I use?" : "Waiting for explicit authorization."}];
     const message = {role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
-      usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: retryError ? "error" : calls.length ? "toolUse" : "stop", ...(retryError ? {errorMessage: "503 Service Unavailable"} : {}), timestamp: Date.now()};
+      usage: {input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0}}, stopReason: retryError ? "error" : calls.length ? "toolUse" : "stop", ...(retryError ? {errorMessage: "503 Service Unavailable"} : {}), ...recoveryFailure, timestamp: Date.now()};
+    if (compactionFailure && testing && !calls.length) message.usage = {...message.usage, input: 50000, totalTokens: 50010};
     const stream = new AssistantMessageEventStream();
     stream.push({type: "start", partial: message});
     const intervene = beforeResponse; beforeResponse = undefined;
     void (async () => {
       try { await intervene?.(); } catch (error) { failure = error; }
       if (boundary.startsWith("steering") && options.signal?.aborted) stream.push({type: "error", reason: "aborted", error: {...message, content: [], stopReason: "aborted"}});
-      else if (retryError) stream.push({type: "error", reason: "error", error: message});
+      else if (retryError || recoveryFailure) {
+        if (recoveryFailure?.stopReason === "aborted") assert.equal(options.signal.aborted, false, "transport abort is distinct from a user abort signal");
+        stream.push({type: "error", reason: message.stopReason, error: message});
+      }
       else stream.push({type: "done", reason: message.stopReason, message});
     })();
     return stream;
@@ -224,7 +263,7 @@ async function settled() {
   for (let i = 0; i < 500; i++) {
     if (failure) throw failure;
     assert.deepEqual(errors, []);
-    if (!responses.length && session.isIdle && (!testing || !successor || secondaryDone)) return;
+    if ((!responses.length || (recovery && testing)) && session.isIdle && (!testing || !successor || secondaryDone)) return;
     await delay(10);
   }
   throw new Error("Native stop fixture did not settle");
@@ -257,6 +296,10 @@ function assertBilling() {
   }
 }
 try {
+  if (recovery) {
+    mkdirSync(join(cwd, ".pi"));
+    writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({networkRecovery: {maxAttempts: control === "unbounded" ? 0 : 3, maxDelayMs: 10000}}));
+  }
   if (boundary === "completion") {
     mkdirSync(join(cwd, ".pi"));
     writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({disabled: true}));
@@ -291,9 +334,84 @@ try {
   }
   const before = requests.length;
   const checkpointsBefore = checkpoints.length;
+  if (compactionFailure) {
+    await session.sendCustomMessage({customType: "recovery-ballast", content: "Historical context ballast. ".repeat(10000), display: false}, {triggerTurn: false});
+    settings.setCompactionEnabled(true);
+  }
   testing = true;
   if (boundary !== "ordinary") await session.prompt("/goal-resume");
-  if (boundary === "idle") {
+  if (compactionFailure) {
+    responses = control.includes("overflow")
+      ? [[{failure: {stopReason: "error", errorMessage: "maximum context length exceeded"}}], [write("forbidden.txt"), pause]]
+      : [[write("before-compaction.txt")], [], [write("forbidden.txt"), pause]];
+    await delay(100); await settled(); await delay(100);
+    assert(summaries > 0, "actual native compaction requested a summary");
+    assert.equal(compactionOutcomes.length, 1);
+    assert.equal(compactionOutcomes[0].reason, control.includes("overflow") ? "overflow" : "threshold");
+    assert.equal(compactionOutcomes[0].willRetry, false);
+    assert.equal(Boolean(compactionOutcomes[0].aborted), control.endsWith("cancelled"));
+    assert.equal(pendingRecovery().length, 0, "compaction failure is not a provider retry");
+    assert.equal(requests.length - before, control.includes("overflow") ? 1 : 2, "failed/cancelled compaction cannot authorize another goal request");
+    assert.equal(existsSync(join(cwd, "forbidden.txt")), false);
+    assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "active", "compaction failure yields without claiming completion");
+    assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).taskList.tasks[0].status, "pending");
+    settings.setCompactionEnabled(false);
+    responses = [];
+    await session.prompt("/goal-pause");
+  } else if (recovery) {
+    const error = {failure: {stopReason: control === "aborted" ? "aborted" : "error", errorMessage: control === "nontransient" ? "401 Authentication failed" : "503 Service Unavailable"}};
+    responses = [[error]];
+    await delay(100); await settled();
+    assert.equal(requests.length - before, 1);
+    assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).taskList.tasks[0].status, "pending", "failure cannot complete a task");
+    if (control === "nontransient") {
+      assert.equal(pendingRecovery().length, 0);
+      assert(!notices.some(notice => notice.includes("Provider network error")));
+    } else {
+      assert.equal(pendingRecovery().length, 1);
+      assert.equal(recoveryTimers[0].milliseconds, 5000);
+      if (["pause", "unfocus", "switch", "reopen", "new-session"].includes(control)) {
+        const count = requests.length;
+        const oldCheckpoint = structuredClone(checkpoints.at(-1));
+        const checkpointCount = checkpoints.length;
+        if (control === "reopen") responses = [[write("reopened-proof.txt"), pause]];
+        await stop();
+        assert.equal(pendingRecovery().length, 0, "user control cancels backoff");
+        await delay(100);
+        assert.equal(requests.length, count + (control === "reopen" ? 2 : 0), "reopened work and its final response belong to one fresh checkpoint");
+        assert.equal(checkpoints.length, checkpointCount + (control === "reopen" ? 1 : 0));
+        if (control === "reopen") {
+          assert.notEqual(checkpoints.at(-1).details.runtimeId, oldCheckpoint.details.runtimeId);
+          assert.equal(readFileSync(join(cwd, "reopened-proof.txt"), "utf8"), "reopened-proof.txt");
+        }
+        responses = [[write("forbidden.txt")]];
+        await session.sendCustomMessage(oldCheckpoint, {triggerTurn: true});
+        await settled();
+        assert.equal(existsSync(join(cwd, "forbidden.txt")), false, "host-delivered stale recovery context cannot regain work authority");
+        await session.sendCustomMessage(oldCheckpoint, {deliverAs: "nextTurn"});
+      } else if (["cap", "unbounded"].includes(control)) {
+        for (let attempt = 0; attempt < 3; attempt++) { responses = [[error]]; await advanceRecovery(); }
+        assert.deepEqual(recoveryTimers.map(timer => timer.milliseconds), control === "cap" ? [5000, 10000, 10000] : [5000, 10000, 10000, 10000]);
+        assert.equal(pendingRecovery().length, control === "cap" ? 0 : 1);
+        assert.equal(notices.some(notice => notice.includes("after all recovery attempts")), control === "cap");
+        if (control === "unbounded") assert(notices.some(notice => notice.includes("recovery 4, unbounded")));
+      } else {
+        responses = control === "success-reset" ? [[write("retry-proof.txt")], [], [error]] : [[write("retry-proof.txt"), pause]];
+        await advanceRecovery();
+        assert.equal(readFileSync(join(cwd, "retry-proof.txt"), "utf8"), "retry-proof.txt");
+        if (control === "success-reset") {
+          assert.deepEqual(recoveryTimers.map(timer => timer.milliseconds), [5000, 5000], "successful work resets the recovery ladder before the next outage");
+          responses = [[write("second-retry-proof.txt"), pause]];
+          await advanceRecovery();
+          assert(existsSync(join(cwd, "second-retry-proof.txt")));
+        }
+      }
+    }
+    if (!["unfocus", "new-session"].includes(control)) await session.prompt("/goal-pause");
+    assert.equal(pendingRecovery().length, 0);
+    assert.equal(hostRetries, 0, "this extension recovery matrix disables immediate Pi retry; its separate native fixture covers that owner");
+    responses = [];
+  } else if (boundary === "idle") {
     const shellWork = {redirect: "echo progress > progress.txt", substitution: 'echo "$(echo progress > progress.txt)"', backtick: 'echo "`echo progress > progress.txt`"'}[control];
     responses = control === "inspect" ? Array.from({length: 3}, () => [{name: "get_goal", args: {}}])
       : control === "echo" ? [[{name: "bash", args: {command: "echo inspecting"}}]]
@@ -498,6 +616,7 @@ try {
     await settled();
     assert.equal(hostRetries, 1, "Pi performs exactly one native provider retry");
     assert.equal(readFileSync(join(cwd, "retry-proof.txt"), "utf8"), "retry-proof.txt");
+    assert(!notices.some(notice => notice.includes("Provider network error")), "successful host retry leaves no extension backoff");
   } else if (boundary === "response") {
     beforeResponse = stop;
     responses = [[write("forbidden.txt")]];
@@ -561,7 +680,7 @@ try {
   const focused = results.at(-1).details.goal;
   if (process.argv.includes("--accounting")) assertBilling();
   if (exhaustedEdit) assert.equal(focused.status, "budget_limited");
-  else if (boundary === "completion" || clearUnpaid || (["unfocus", "clear"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
+  else if (boundary === "completion" || clearUnpaid || (["unfocus", "clear", "new-session"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, boundary === "agent-block" || oracleFollowup || oracleOutcome ? "blocked" : "paused");
   if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {
@@ -573,6 +692,8 @@ try {
   console.error(JSON.stringify({testing, responses, notices, timeline, results: results.map(result => ({tool: result.toolName, content: result.content}))}));
   throw error;
 } finally {
+  for (const timer of recoveryTimers) originalClearTimeout(timer.handle);
+  globalThis.setTimeout = originalTimeout; globalThis.clearTimeout = originalClearTimeout;
   Date.now = originalNow;
   fs.renameSync = originalRename;
   syncBuiltinESMExports();
