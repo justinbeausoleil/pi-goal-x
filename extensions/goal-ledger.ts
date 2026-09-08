@@ -415,7 +415,8 @@ function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
     if (!entry || !Array.isArray(entry.recent) || !Array.isArray(entry.activity) || !Array.isArray(entry.oracle)) return null;
     if (entry.recent.length > 12 || entry.activity.length > 64) return null;
     if (entry.activity.length > 0 && !entry.lastActivityEvent) return null;
-    if (![...entry.recent, ...entry.activity, ...[entry.audit, entry.completion, entry.lifecycle, entry.lastActivityEvent].filter(Boolean)].every(isValidLedgerEvent)) return null;
+    if (![...entry.recent, ...entry.activity, ...[entry.audit, entry.completion, entry.lifecycle, entry.lastActivityEvent, entry.latestOracle].filter(Boolean)].every(isValidLedgerEvent)) return null;
+    if (entry.latestOracle && entry.latestOracle.type !== "oracle_result") return null;
     if (!entry.oracle.every((p: unknown[]) => {
      if (!Array.isArray(p) || p.length !== 2 || typeof p[0] !== "string" || !p[1] || typeof p[1] !== "object") return false;
      const state = p[1] as Record<string, unknown>;
@@ -425,6 +426,8 @@ function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
      const failure = state.lastFailure as Record<string, unknown> | undefined;
      return failure === undefined || Boolean(failure && typeof failure.errorCode === "string" && typeof failure.message === "string");
     })) return null;
+    // Older derived checkpoints lack the latest-result pointer; rebuild once from the ledger.
+    if (!entry.latestOracle && entry.oracle.some((pair: [string, {result?: unknown}]) => pair[1].result)) return null;
     runtimeIndex.set(pair[0], { ...entry, oracle: new Map(entry.oracle) });
   }
   return {
@@ -595,6 +598,12 @@ export function goalRuntimeEvents(ctx: GoalLedgerContext, goalId: string): GoalL
 export function goalOracleState(ctx: GoalLedgerContext, goalId: string, fingerprint: string) {
  const state = runtimeIndex(ctx).get(goalId)?.oracle.get(fingerprint);
  return state ? { ...state } : { failedAttempts: 0, followupAttempted: false };
+}
+
+export function goalPendingOracleAdvice(ctx: GoalLedgerContext, goalId: string) {
+ const entry = runtimeIndex(ctx).get(goalId);
+ const advice = entry?.latestOracle;
+ return advice?.disposition === "actionable" && !entry?.oracle.get(advice.fingerprint)?.followupAttempted ? advice : undefined;
 }
 
 export function loadLedgerState(ctx: GoalLedgerContext): LedgerStateReadResult {

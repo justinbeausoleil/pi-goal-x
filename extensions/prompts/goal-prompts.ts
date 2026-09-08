@@ -283,10 +283,11 @@ export function continuationPrompt(goal: GoalRecord, _settings?: GoalSettings): 
 }
 
 export function staleContinuationPrompt(staleGoalId: string, current: GoalRecord | null): string {
+	const identity = staleGoalId.length <= 80 ? staleGoalId : "invalid-checkpoint";
 	const currentLine = current
 		? `Current goal: ${current.id} (${statusLabel(current)}) - ${truncateText(current.objective)}`
 		: "Current goal: none";
-	return `[GOAL STALE goalId=${staleGoalId}]
+	return `[GOAL STALE goalId=${identity}]
 This queued goal checkpoint no longer matches the active goal.
 ${currentLine}
 

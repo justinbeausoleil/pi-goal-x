@@ -206,3 +206,23 @@
   and deliver it only for the matching active goal. The controlled-clock native
   compaction case fails before repair and passes afterward (stall-context-*.log).
   Latest expanded lifecycle run was 21/21 before adding that 22nd scenario.
+- Independent review of c3a87a6...6a98176: Standards found stale architecture
+  documentation and a ledger-boundary smell in the automatic full-history Oracle
+  scan. Spec reproduced missing stopped-state goal contracts and missing audit
+  rejection in blocked/budget-limited projections. The standards reviewer also
+  identified malformed-checkpoint overflow: Pi catches context-handler errors
+  and can dispatch the original context, so throwing cannot replace bounding.
+- Review repairs: shared stopped-state contract/task/budget projection and
+  rejection guidance; latest Oracle result in the existing ledger index, with
+  old-checkpoint rebuild and public history retrieval proof; architecture updated.
+  Rewrite every goal checkpoint, including malformed/missing IDs, and reject
+  oversized checkpoint identities before context construction. Both malformed
+  marker variants and the short-objective contract case have retained actual-host
+  red/green logs. Native blocked and budget-limited auditor cases pass after
+  repair; follow-up independent review remains pending.
+- Qualification at 6a98176: check/lint/selfcheck/NAF gate/dry pack/audit passed;
+  context gate and provider cross-check passed sequentially. A concurrent attempt
+  collided because both inherited capture tools share /tmp/goal-context-capture;
+  review-4/5.log retain those failures and review-4/5-serial.log the successful
+  reruns. Run these two tools serially. Full-suite completion and final repair
+  checks still need recording. 002 remains in progress.

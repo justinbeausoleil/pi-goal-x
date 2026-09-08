@@ -10,6 +10,7 @@ export interface GoalLedgerIndex {
  audit?: GoalLedgerEvent;
  completion?: GoalLedgerEvent;
  lifecycle?: GoalLedgerEvent;
+ latestOracle?: Extract<GoalLedgerEvent, {type: "oracle_result"}>;
  oracle: Map<string, OracleConsultState>;
 }
 export function newGoalLedgerIndex(): GoalLedgerIndex {
@@ -25,6 +26,7 @@ export function indexLedgerEvent(index: Map<string, GoalLedgerIndex>, event: Goa
  if (lifecycleEvents.has(event.type)) goal.lifecycle = event;
  if (event.type === "audit_result") goal.audit = event;
  if (event.type === "completion_requested") goal.completion = event;
+ if (event.type === "oracle_result") goal.latestOracle = event;
  if (isActivityEvent(event) && (!goal.lastActivityEvent || !sameActivityEvent(event, goal.lastActivityEvent))) {
   goal.lastActivityEvent = event;
   // Stable insertion after equal timestamps matches Array.sort's tie order.

@@ -72,10 +72,22 @@ dispatch. Read-only inspection stays available, and a later ordinary user
 request can use normal work tools. agent_end cannot schedule another goal from
 a rejected checkpoint. Persisted checkpoints remain tiny v2 markers.
 
-Ticket 001's real-loader test exercises four command starts, explicit
-create_goal, second checkpoints, rejected markers, and ordinary user work.
-Repeated-compaction coverage and the aggregate automatic-text bound remain
-ticket 002's acceptance work; package qualification remains ticket 012.
+Automatic goal text, including the retained checkpoint, is capped at 10,000
+characters. Long data uses marked excerpts and detail/history retrieval links;
+large active prompts omit optional pending previews to reserve room for lifecycle,
+audit, Oracle and stall guidance. Stopped projections retain task identity,
+ancestors, counts, goal contracts and audit rejection without authorizing work.
+Budget stop instructions remain after the one-time wrap-up. Inactivity is checked
+before turn_start resets the activity clock; its notice reaches the matching
+active goal's next context. Malformed checkpoints, including missing/oversized
+identities, are rewritten as bounded unusable markers before projection.
+
+The real-loader tests exercise four command starts, explicit create_goal,
+checkpoints, rejected markers, and ordinary user work. The compaction worker
+builds a public plan and crosses three manual, threshold or overflow compactions,
+including threshold within a run. It also checks stopped states, long fields,
+native Oracle/auditor responses and separate child contexts. Package qualification
+remains ticket 012; real-Qwen acceptance remains ticket 013.
 
 ## Sole mutation boundary
 
@@ -239,7 +251,12 @@ validate lifecycle state, including stale calls made after a transition.
 
 Normal prompt/dashboard reads use per-goal ledger indexes: 12 recent events,
 64 activity candidates in stable timestamp order, pinned audit/lifecycle state,
-and blocker-fingerprint Oracle state. Appends extend these indexes without
+and blocker-fingerprint Oracle state plus the latest complete Oracle result.
+Pending advice is queried through that index until a recorded follow-up attempt;
+the complete structured result is retained as JSON text in oracle_result.advice
+and is available through lossless history pages. Legacy summary-only advice is
+explicitly labeled incomplete. Derived checkpoints missing the latest-result
+pointer rebuild from the ledger. Appends extend these indexes without
 copying history. Version 3 derived checkpoints use UTF-8 byte offsets and retain
 reconstructed Oracle advice; old or
 corrupt checkpoints rebuild from the authoritative JSONL ledger. Full history

@@ -85,6 +85,7 @@ try {
 				}
 			}
 			assert(!context.systemPrompt.includes("[PI GOAL"), "dynamic goal state must not live in the system prompt");
+			if (action === "rejected") assert.match(JSON.stringify(context.messages.at(-1)), /GOAL STALE|PI GOAL PAUSED/, "rejected checkpoints retain bounded stop guidance");
 		} catch (error) { failure = error; }
 		const call = (name, args) => [{ type: "toolCall", id: `call-${step}`, name, arguments: args }];
 		const content = failure ? [{ type: "text", text: "Fixture failed." }]
@@ -121,7 +122,11 @@ try {
 		if (mode === "reject-unfocused") await session.prompt("/goal-unfocus");
 		if (mode === "reject-replaced" || mode.startsWith("reject-malformed")) await session.prompt("/goal-direct Leave the replacement goal available for later work.");
 		const currentFocus = manager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-focus").data.focusedGoalId;
-		const message = mode.startsWith("reject-malformed")
+		const message = mode === "reject-malformed-large"
+			? { customType: "pi-goal-event", content: "Malformed checkpoint ".repeat(1000), display: false }
+			: mode === "reject-malformed-long-id"
+				? { customType: "pi-goal-event", content: `<pi_goal_continuation goal_id="${"x".repeat(12000)}" kind="checkpoint" v="2"/>`, details: { goalId: "x".repeat(12000) }, display: false }
+			: mode.startsWith("reject-malformed")
 			? { customType: "pi-goal-event", content: mode === "reject-malformed-prefix" ? `<pi_goal_continuation goal_id="${currentFocus}"` : "malformed checkpoint", details: { goalId: currentFocus }, display: false }
 			: mode === "reject-stale"
 				? { customType: "pi-goal-event", content: '<pi_goal_continuation goal_id="missing-goal" kind="checkpoint" v="2"/>', details: { goalId: "missing-goal" }, display: false }

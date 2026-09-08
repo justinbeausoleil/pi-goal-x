@@ -33,6 +33,10 @@ test("automatic context bounds audit and pending Oracle advice with lossless his
    { type: "oracle_result", goalId: f.goal.id, fingerprint: "blocker", adviceId: "advice-1", disposition: "actionable", summary: "diagnosis", advice, at: "2026-09-08T00:00:02Z" } as GoalLedgerEvent,
    ...Array.from({ length: 20 }, (_, i) => ({ type: "task_started" as const, goalId: f.goal.id, taskId: "child", at: `2026-09-08T00:01:${String(i).padStart(2, "0")}Z` })),
   ]);
+  const checkpointPath = path.join(f.cwd, ".pi/goals", LEDGER_CHECKPOINT_FILE);
+  const checkpoint = JSON.parse(readFileSync(checkpointPath, "utf8"));
+  for (const [, entry] of checkpoint.runtimeIndex) delete entry.latestOracle;
+  writeFileSync(checkpointPath, JSON.stringify(checkpoint));
   invalidateGoalLedgerCache();
   const context = await f.h.handlers.get("context")({ messages: [] }, f.h.ctx);
   const text = context.messages.at(-1).content;

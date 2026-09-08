@@ -13,6 +13,7 @@ const baseline = process.argv.includes("--baseline");
 const stopState = process.argv.find(a => a.startsWith("--stopped="))?.split("=")[1] ?? "paused";
 const long = process.argv.includes("--long");
 const adviceReview = process.argv.includes("--advice-review");
+const review = adviceReview || process.argv.includes("--audit-only");
 const stall = process.argv.includes("--stall");
 const realNow = Date.now;
 let clockOffset = 0;
@@ -26,8 +27,8 @@ process.env.PI_CODING_AGENT_DIR = agentDir;
 process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
 process.env.PI_GOAL_AUTO_CONFIRM = "1";
 mkdirSync(join(cwd, ".pi"));
-writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify(adviceReview
-	? { provider: "fixture", model: "reviewer", disabled: false, oracle: { enabled: true, provider: "fixture", model: "reviewer" } }
+writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify(review
+	? { provider: "fixture", model: "reviewer", disabled: false, oracle: { enabled: adviceReview, provider: "fixture", model: "reviewer" } }
 	: { disabled: true, ...(stall ? { stallTimeoutMinutes: 1 } : {}) }));
 const manager = SessionManager.create(cwd, join(work, "sessions"));
 const settings = SettingsManager.inMemory({ compaction: { enabled: mode !== "manual", reserveTokens: 16384, keepRecentTokens: 2000 }, retry: { enabled: false } });
@@ -54,9 +55,9 @@ const pauseAction = `pause-action-sentinel ${"preserved action ".repeat(2000)}`;
 let resolveFinished;
 const finished = new Promise(resolve => { resolveFinished = resolve; });
 const steps = [{ name: "set_goal_tasks", args: {
-	tasks: Array.from({ length: 50 }, (_, i) => ({ id: `t${i + 1}`, ...(i >= 39 && i <= 41 ? { parent_id: "t39" } : {}), title: `Fixture task ${i + 1}${long ? " title data".repeat(2000) : ""}`, verification_contract: `Evidence for task ${i + 1} must match its artifact.${long ? " contract data".repeat(2000) : ""}` })), block_completion: stopState !== "complete" && !adviceReview,
+	tasks: Array.from({ length: 50 }, (_, i) => ({ id: `t${i + 1}`, ...(i >= 39 && i <= 41 ? { parent_id: "t39" } : {}), title: `Fixture task ${i + 1}${long ? " title data".repeat(2000) : ""}`, verification_contract: `Evidence for task ${i + 1} must match its artifact.${long ? " contract data".repeat(2000) : ""}` })), block_completion: stopState !== "complete" && !review,
 } }];
-const objective = `Preserve the public fixture plan and its completed evidence through three compactions.${long ? `${" objective data".repeat(2000)}\nVerification contract: ${"verification data ".repeat(2000)}` : ""}`;
+const objective = `Preserve the public fixture plan and its completed evidence through three compactions.${long ? " objective data".repeat(2000) : ""}\nVerification contract: unique-goal-contract-sentinel ${long ? "verification data ".repeat(2000) : "Preserve all completed evidence."}`;
 if (stopState === "budget_limited") steps.unshift({ name: "create_goal", args: { objective, token_budget: 100000 } });
 for (let cycle = 0; cycle < 3; cycle++) {
 	steps.push(
@@ -64,7 +65,8 @@ for (let cycle = 0; cycle < 3; cycle++) {
 		{ name: "update_goal_task", args: { task_id: `t${cycle + 1}`, status: "complete", evidence: `evidence-${cycle}.txt contains proof-${cycle}` } },
 		{ name: "update_goal_task", args: { task_id: `t${40 + cycle}`, status: "start" } },
 		{ name: "fixture_padding", args: {} },
-		...(adviceReview && cycle === 0 ? [{ name: "update_goal", args: { status: "blocked", reason: "The same fixture blocker recurred over three turns." } }, { name: "update_goal", args: { status: "complete" } }] : []),
+		...(adviceReview && cycle === 0 ? [{ name: "update_goal", args: { status: "blocked", reason: "The same fixture blocker recurred over three turns." } }] : []),
+		...(review && cycle === 0 ? [{ name: "update_goal", args: { status: "complete" } }] : []),
 		...(mode === "manual" ? [{ manualBoundary: true }] : mode === "overflow" ? [{ overflow: true }] : []),
 		{ name: "read", args: { path: `evidence-${cycle}.txt` }, afterCompaction: cycle + 1 },
 	);
@@ -106,13 +108,13 @@ function automaticText(context) {
 	return context.messages.filter(m => m.role === "user").flatMap(m => m.content.filter(c => c.type === "text").map(c => c.text)).filter(t => t.startsWith("[PI GOAL") || t.startsWith("<pi_goal_continuation")).join("");
 }
 try {
-	if (adviceReview) await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+	if (review) await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 	await loader.reload({ resolveProjectTrust: async () => true });
 	assert.deepEqual(loader.getExtensions().errors, []);
 	assert.equal(loader.getExtensions().extensions.length, 2);
 	const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
 	await runtime.setRuntimeApiKey("openai", "synthetic-unused");
-	if (adviceReview) runtime.registerProvider("fixture", { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{ id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] });
+	if (review) runtime.registerProvider("fixture", { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{ id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] });
 	const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 	({ session } = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager: settings }));
 	await session.bindExtensions({ onError: error => { errors.push(error); } });
@@ -137,6 +139,7 @@ try {
 				assert(automatic.join("").length <= 10000, `aggregate automatic goal text is ${automatic.join("").length} chars`);
 				if (stopState !== "complete") assert(automatic.join("").includes(`PI GOAL ${stopState.toUpperCase().replace("_", " ")}`));
 				if (!["complete", "unfocused"].includes(stopState)) {
+					assert.match(automatic.join(""), /unique-goal-contract-sentinel/);
 					assert.match(automatic.join(""), /Current: t42/);
 					assert.match(automatic.join(""), /Ancestors: t39/);
 					assert.match(automatic.join(""), /3\/50 tasks complete/);
@@ -150,7 +153,7 @@ try {
 					assert.match(automatic.join(""), /Do not autonomously continue/);
 				}
 				if (stopState === "budget_limited") assert.match(automatic.join(""), /Do not start new substantive work/);
-				if (adviceReview) assert.match(automatic.join(""), /audit-objection-sentinel/);
+				if (review) assert.match(automatic.join(""), /audit-objection-sentinel/);
 				assert(!automatic.join("").includes("PI GOAL ACTIVE"));
 			} catch (error) { failure = error; }
 			return message(requestedModel, [{ type: "text", text: "The goal remains paused." }], "stop");
@@ -165,8 +168,8 @@ try {
 			projections.push({ request: executorRequests, run, current, completed, text });
 			if (step.afterCompaction) assert.equal(compactions.length, step.afterCompaction, "work must cross the intended native compaction boundary");
 			if (stall && step.afterCompaction === 1) assert.match(text, /GOAL STALLED/, "inactivity steering must reach the first executor request after the idle interval");
-			if (adviceReview && step.afterCompaction === 1) {
-				assert.match(text, /oracle-step-sentinel/);
+			if (review && step.afterCompaction === 1) {
+				if (adviceReview) assert.match(text, /oracle-step-sentinel/);
 				assert.match(text, /audit-objection-sentinel/);
 			}
 			if (step.budgetWrap) assert.match(text, /TOKEN BUDGET REACHED/);
@@ -227,8 +230,8 @@ try {
 	if (failure) throw failure;
 	assert.equal(results.filter(r => r.toolName === "write").length, 3);
 	assert.equal(manager.getEntries().filter(e => e.type === "custom_message" && e.customType === "pi-goal-event").length, checkpoints.length, "compacting a paused goal cannot start a checkpoint");
-	if (adviceReview) {
-		assert(childRequests.length >= 3);
+	if (review) {
+		assert(childRequests.length >= (adviceReview ? 3 : 1));
 		for (const payload of childRequests) {
 			assert(!JSON.stringify(payload).includes("PI GOAL ACTIVE"), "separate reviewer/Oracle requests contain no executor projection");
 			assert(!payload.tools?.some(tool => ["create_goal", "get_goal", "set_goal_tasks", "update_goal_task", "update_goal"].includes(tool.function.name)));
