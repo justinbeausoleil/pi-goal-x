@@ -1037,3 +1037,40 @@
 - Type/lint, targeted refresh/recovery/pool/drafting/unfocus checks and the
   combined native recovery/legacy cases pass. The repaired slice proceeds to
   fixed-base re-review and frozen full qualification.006 remains partial.
+
+### Ticket 006 cache and path validation
+
+- Both reviews clearc65b699, frozen full1109/1109 passes (76files,126.0s),
+  and the recovery/legacy subset is pushed to feat/goal-reliability.
+- Eight native S2 record cases preserve task evidence and outside files:
+  truncated goal, symlinked goal, unsafe active/archive metadata, malformed
+  snapshot entry during shutdown, and cold snapshots with invalid lifecycle,
+  task, retained-scope or path data. Snapshot entries previously bypassed
+  validation and a null entry threw during shutdown's cache update. Both sync
+  and async readers now share validation against the existing record normalizer
+  and safe-path checks, rejecting corrupt caches in favor of goal files.
+  Legacy unknown top-level fields remain supported (the existing snapshot-marker
+  test caught an initial overly strict comparison; its assertion is unchanged).
+- Direct authoritative reads previously adopted unsafe embedded path metadata,
+  then lost focus on the next reconciliation. The shared service keeps the
+  actual active path and validates the archive path. An initial use of the
+  general sanitizer deleted optional own keys and caused transaction comparisons
+  to reject normal writes; explicit canonical path fields preserve that shape.
+  All failed attempts remain in record-*.log. The path fixture first omitted the
+  public work revision/upsert mode, then exposed the actual focus-loss defect;
+  current assertions require a non-null current public result before inspecting it.
+- Eight native cases,59 storage/service/transaction checks and type/lint pass.
+  Fresh B1/B2/B5b/B7 run matches75 historical NAF timing limits with zero
+  regressions, before the final lexical snapshot-path guard; records-benchmark
+  .json/.log retain that measurement. No context text changed. Independent
+  fixed-base review and frozen full qualification follow.
+- Next storage seam is reproduced but not yet repaired: native resumed public
+  task writes under denied directory access throw out of flushTurn hooks;
+  lock contention silently retains a pending transaction without a diagnostic.
+  Existing unit semantics intentionally retry a contended buffer after release,
+  so preserve that behavior while reporting pending persistence. Ledger-only
+  failure and stale work-revision native cases already characterize correctly.
+  Earlier attempts ran while paused and correctly hit stop controls; the active
+  reproductions are storage-*-active.log, with the pending fixture fragment
+  preserved in Data006/storage-fixture-fragment.json. Broader006 checks, child
+  qualification and all007–014 work remain; no006 checkbox is yet complete.

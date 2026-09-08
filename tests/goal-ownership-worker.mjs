@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {syncBuiltinESMExports} from "node:module";
-import {appendFileSync, chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {appendFileSync, chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -21,6 +21,8 @@ process.env.PI_GOAL_AUTO_CONFIRM = "1";
 const settings = SettingsManager.inMemory({compaction: {enabled: false, reserveTokens: 16384, keepRecentTokens: 100}, retry: {enabled: false}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [], confirmations = [];
+const warnings = [], originalWarn = console.warn;
+console.warn = (...args) => { warnings.push(args.join(" ")); originalWarn(...args); };
 let session, host, steps = [], earlyLeaf, failure, shutdownFile, summaries = 0, repairConfirmed = false, onRepairConfirm = async () => {};
 const originalCopy = fs.copyFileSync;
 let beforeBackup = () => {}, afterBackup = () => {};
@@ -94,7 +96,55 @@ try {
   assert.equal(approved.status, "paused");
   assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
   assert(earlyLeaf);
-  if (scenario === "legacy-refresh") {
+  if (scenario.startsWith("record-")) {
+    const activeFile = join(cwd, approved.activePath), outside = join(work, "outside-user-file.md");
+    const original = readGoal(), split = original.indexOf("\n\n# Goal Prompt"), metadata = JSON.parse(original.slice(0, split));
+    writeFileSync(outside, "User-owned file outside goal storage");
+    if (scenario === "record-corrupt") writeFileSync(activeFile, original.slice(0, 120));
+    if (scenario === "record-symlink") {
+      writeFileSync(outside, original);
+      rmSync(activeFile);
+      symlinkSync(outside, activeFile);
+    }
+    if (scenario === "record-path") {
+      metadata.activePath = "../outside-user-file.md";
+      metadata.archivedPath = "../outside-user-file.md";
+      writeFileSync(activeFile, JSON.stringify(metadata) + original.slice(split));
+    }
+    if (scenario.startsWith("record-snapshot")) {
+      const sessionFile = session.sessionManager.getSessionFile();
+      if (scenario !== "record-snapshot") { await host.dispose(); host = undefined; session = undefined; }
+      const snapshotPath = join(cwd, ".pi", ".goals-pool-snapshot.json");
+      const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
+      if (scenario === "record-snapshot") snapshot.goals = [null];
+      if (scenario === "record-snapshot-status") snapshot.goals[0].status = "invalid";
+      if (scenario === "record-snapshot-task") snapshot.goals[0].taskList.tasks = [null];
+      if (scenario === "record-snapshot-scope") snapshot.goals[0].retainedScope.tasks = null;
+      if (scenario === "record-snapshot-path") snapshot.goals[0].activePath = "../outside-user-file.md";
+      writeFileSync(snapshotPath, JSON.stringify(snapshot));
+      if (scenario === "record-snapshot") await host.switchSession(sessionFile);
+      else host = await createAgentSessionRuntime(({sessionManager, sessionStartEvent}) => open(sessionManager, sessionStartEvent), {cwd, agentDir, sessionManager: SessionManager.open(sessionFile), sessionStartEvent: {type: "session_start", reason: "resume"}});
+    }
+    const outsideBefore = readFileSync(outside, "utf8"), fileBefore = readFileSync(activeFile, "utf8");
+    await session.prompt("/goal-refresh");
+    await run("Inspect current progress after encountering an unsafe or corrupt record.", [{name: "get_goal", args: {}}]);
+    if (["record-corrupt", "record-symlink"].includes(scenario)) {
+      assert.equal(results.at(-1).details.goal, null, "invalid records cannot restore stale project authority");
+      await session.prompt("/goal-recovery");
+      assert.match(notices.at(-1), /malformed goal file/);
+      assert.equal(readFileSync(activeFile, "utf8"), fileBefore, "diagnosis preserves invalid user content");
+    } else {
+      assert(results.at(-1).details.goal, "a valid goal remains focused after corrupt cache or unsafe path metadata");
+      assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
+      assert.equal(goalResult().activePath, approved.activePath);
+      await run("Add an ordinary task through the safe authoritative record.", [{name: "set_goal_tasks", args: {mode: "upsert", expected_work_revision: "$current", tasks: [{id: "new-safe", title: "Safe pending task"}]}}]);
+      assert.equal(results.at(-1).isError, false, JSON.stringify(results.at(-1).content));
+      assert(goalResult().taskList.tasks.some(task => task.id === "new-safe"), JSON.stringify(results.at(-1).content));
+      assert.equal(goalResult().taskList.tasks.find(task => task.id === "verified").evidence, approved.taskList.tasks[0].evidence);
+    }
+    assert.equal(readFileSync(outside, "utf8"), outsideBefore, "unsafe metadata and symlinks cannot overwrite unrelated files");
+    assert.equal(readFileSync(join(cwd, "verified.txt"), "utf8"), "preserved-proof");
+  } else if (scenario === "legacy-refresh") {
     const sessionFile = session.sessionManager.getSessionFile(), activeFile = join(cwd, approved.activePath);
     await host.dispose(); host = undefined; session = undefined;
     const content = readFileSync(activeFile, "utf8"), split = content.indexOf("\n\n# Goal Prompt");
@@ -341,6 +391,7 @@ try {
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({passed: true, scenario, requests: requests.length, summaries, checkpoints: checkpoints(), effects: results.filter(r => r.toolName === "write").length}));
 } finally {
+  console.warn = originalWarn;
   fs.copyFileSync = originalCopy;
   syncBuiltinESMExports();
   if (session) await session.abort();

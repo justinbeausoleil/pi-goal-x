@@ -7,6 +7,7 @@ import {
 	archiveGoalFile,
 	atomicWriteGoalFile,
 	ensureDirectory,
+	isSafeArchivedPath,
 	mergeGoalPromptFromDisk,
 	parseGoalFile,
 	readActiveGoalPool,
@@ -431,7 +432,9 @@ export class GoalService {
 	private readFreshDiskGoal(ctx: GoalServiceContext, current: GoalRecord): GoalRecord | null {
 		if (!current.activePath) return null;
 		try {
-			return parseGoalFile(resolveGoalPath(ctx, GOALS_DIR, current.activePath));
+			const parsed = parseGoalFile(resolveGoalPath(ctx, GOALS_DIR, current.activePath));
+			return parsed ? { ...parsed, activePath: current.activePath,
+				archivedPath: isSafeArchivedPath(ctx, parsed.archivedPath) ? parsed.archivedPath : undefined } : null;
 		} catch {
 			return null;
 		}

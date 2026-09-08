@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
 	formatDuration,
@@ -110,19 +111,16 @@ function poolSnapshotLegacyPath(root: string): string {
 
 /** Read + validate the snapshot; null when missing/corrupt/unsupported. */
 function readPoolSnapshotSync(root: string): PoolSnapshot | null {
-	const parsed = tryParsePoolSnapshotSync(poolSnapshotPath(root));
+	const parsed = tryParsePoolSnapshotSync(poolSnapshotPath(root), root);
 	if (parsed) return parsed;
 	// One-time migration fallback: a snapshot written before 2026-08-09 lives
 	// inside the goals dir; keep serving it until the next write replaces it.
-	return tryParsePoolSnapshotSync(poolSnapshotLegacyPath(root));
+	return tryParsePoolSnapshotSync(poolSnapshotLegacyPath(root), root);
 }
 
-function tryParsePoolSnapshotSync(filePath: string): PoolSnapshot | null {
+function tryParsePoolSnapshotSync(filePath: string, root: string): PoolSnapshot | null {
 	try {
-		const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as Partial<PoolSnapshot>;
-		if (data.version === 1 && Array.isArray(data.goals) && typeof data.dirMtimeMs === "number") {
-			return data as PoolSnapshot;
-		}
+		return parsePoolSnapshot(fs.readFileSync(filePath, "utf8"), root);
 	} catch {
 		// missing or corrupt — caller falls back to a full scan
 	}
@@ -130,21 +128,36 @@ function tryParsePoolSnapshotSync(filePath: string): PoolSnapshot | null {
 }
 
 async function readPoolSnapshotAsync(root: string): Promise<PoolSnapshot | null> {
-	const parsed = await tryParsePoolSnapshotAsync(poolSnapshotPath(root));
+	const parsed = await tryParsePoolSnapshotAsync(poolSnapshotPath(root), root);
 	if (parsed) return parsed;
-	return tryParsePoolSnapshotAsync(poolSnapshotLegacyPath(root));
+	return tryParsePoolSnapshotAsync(poolSnapshotLegacyPath(root), root);
 }
 
-async function tryParsePoolSnapshotAsync(filePath: string): Promise<PoolSnapshot | null> {
+async function tryParsePoolSnapshotAsync(filePath: string, root: string): Promise<PoolSnapshot | null> {
 	try {
-		const data = JSON.parse(await fs.promises.readFile(filePath, "utf8")) as Partial<PoolSnapshot>;
-		if (data.version === 1 && Array.isArray(data.goals) && typeof data.dirMtimeMs === "number") {
-			return data as PoolSnapshot;
-		}
+		return parsePoolSnapshot(await fs.promises.readFile(filePath, "utf8"), root);
 	} catch {
 		return null;
 	}
 	return null;
+}
+
+/** A cache must never normalize corrupt data into authoritative project work. */
+function parsePoolSnapshot(content: string, root: string): PoolSnapshot | null {
+	const data = JSON.parse(content) as Partial<PoolSnapshot> | null;
+	if (data?.version !== 1 || !Array.isArray(data.goals) || !Number.isFinite(data.dirMtimeMs)) return null;
+	const ctx = { cwd: path.resolve(root, "../..") };
+	const ids = new Set<string>();
+	for (const goal of data.goals) {
+		const normalized = normalizeGoalRecord(goal);
+		if (!normalized || ids.has(normalized.id)) return null;
+		if (!isSafeActivePath(ctx, normalized.activePath) || (normalized.archivedPath !== undefined && !isSafeArchivedPath(ctx, normalized.archivedPath))) return null;
+		const known: Record<string, unknown> = { ...goal };
+		for (const key of Object.keys(known)) if (!(key in normalized)) delete known[key];
+		if (!isDeepStrictEqual(JSON.parse(JSON.stringify(normalized)), known)) return null;
+		ids.add(normalized.id);
+	}
+	return data as PoolSnapshot;
 }
 
 function hydratePoolFromSnapshot(snapshot: PoolSnapshot): Map<string, GoalRecord> {
