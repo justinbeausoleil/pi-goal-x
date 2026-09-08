@@ -100,7 +100,7 @@ test("public task writes reject missing/stale work revisions but accept accounti
 	} finally { f.cleanup(); }
 });
 
-test("ordinary structural writes cannot erase contracts or edit completed task requirements", async () => {
+test("ordinary structural writes preserve contracts and reopen retitled completed tasks", async () => {
 	const f = fixtureWithTasks([]);
 	try {
 		const h = createHarness(f.cwd, f.sessionEntries);
@@ -112,8 +112,6 @@ test("ordinary structural writes cannot erase contracts or edit completed task r
 		const expected_work_revision = complete.details.work_revision;
 		const before = readFileSync(path.join(f.cwd, f.goal.activePath!), "utf8");
 		for (const params of [
-			{ mode: "upsert", tasks: [{ id: "a", title: "A changed" }] },
-			{ mode: "replace", tasks: [{ ...tasks[0], title: "A changed" }, tasks[1]] },
 			{ mode: "upsert", tasks: [{ id: "a", verification_contract: "Weaker evidence" }] },
 			{ mode: "replace", tasks: [{ id: "a", title: "A" }, tasks[1]] },
 		]) {
@@ -125,7 +123,16 @@ test("ordinary structural writes cannot erase contracts or edit completed task r
 		assert.equal(unchanged.details.goal.taskList.tasks[0].status, "complete");
 		assert.equal(unchanged.details.goal.taskList.tasks[0].evidence, "Observed A");
 		assert.equal(unchanged.details.goal.taskList.tasks[0].completedAt, complete.details.goal.taskList.tasks[0].completedAt);
-		const removed = await call("set_goal_tasks", { expected_work_revision: unchanged.details.work_revision, tasks: [tasks[1]] });
+		let current = unchanged;
+		for (const mode of ["upsert", "replace"]) {
+			const changed = { ...tasks[0], title: `A changed by ${mode}` };
+			current = await call("set_goal_tasks", {mode, expected_work_revision: current.details.work_revision, tasks: mode === "upsert" ? [changed] : [changed, tasks[1]]});
+			assert.equal(current.details.goal.taskList.tasks[0].status, "pending");
+			assert.equal(current.details.goal.taskList.tasks[0].evidence, undefined);
+			assert.equal(current.details.goal.taskList.tasks[0].completedAt, undefined);
+			current = await call("update_goal_task", {expected_work_revision: current.details.work_revision, task_id: "a", status: "complete", evidence: "Observed A"});
+		}
+		const removed = await call("set_goal_tasks", { expected_work_revision: current.details.work_revision, tasks: [tasks[1]] });
 		assert.deepEqual(removed.details.goal.taskList.tasks.map((task: GoalTask) => task.id), ["b"]);
 		assert.equal(removed.details.goal.retainedScope.tasks.a.evidence, "Observed A", "structural deletion preserves required proof");
 	} finally { f.cleanup(); }

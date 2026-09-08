@@ -648,3 +648,55 @@
   budget/work comparisons. The green keeps completed proof and exact combined
   usage (121 tokens, 8 seconds); service/transaction checks and type pass.
   Evidence: scope-migration-race-{red,green}.log and scope-migration-type.log.
+
+- Spec's pinned public-host follow-up found c9c15b6 restored the raw expected
+  scope after normalizing the record. Missing optional keys therefore differed
+  from parsed undefined keys and rejected native buffered work. cf9c777 derives
+  effective scope from the normalized expected record. Both axes cleared it;
+  Spec independently passed the pinned public 200-node/65-request detail plus
+  concurrent-accounting/reopen worker and 33 record/service checks. Root's
+  scope-migration-native-followup.log used the next uncommitted reopening
+  behavior and failed an obsolete completed-title rejection assertion; it is
+  not evidence about the pinned repair. All attempts remain retained.
+
+### Ticket 005 human revision checkpoint (implementation incomplete)
+
+- Native 200-node proposal with PI_GOAL_AUTO_CONFIRM=1 reproduced bypass of
+  the human scope dialog (scope-tweak-auto-red.log). Tweak confirmation now
+  always requires UI, while existing new-goal auto-confirm behavior remains.
+  Headless model-supplied approval is rejected for unset/0/1 environments.
+  The existing dialog receives complete before/after retained scope and task
+  plan. Decision and service commit are bound to focus and work revision.
+- Accepted revisions store prior/new full text, user-request reason and
+  session/tool/time locator in authoritative metadata. Omitted tasks retain
+  current and removed obligations; explicit replacement revises the set. A
+  tweak-only nullable verification_contract field permits explicit goal-level
+  contract removal; settings never implicitly clear retained contracts.
+  Shared structural mutation reopens retitled/recontracted completed tasks,
+  clears current evidence/timestamp and preserves unaffected progress.
+- Both native modes pass the expanded 200-node flow: cancel then confirm,
+  old/new requirements at native RPC UI, durable receipt after reopen, upsert
+  and replacement reopening, unchanged-task evidence, settings-disabled/no-plan
+  revision, explicit contract removal and receipt after failed ledger append.
+  An initial assertion looked for a UI notification, while the existing sink
+  reports a console diagnostic; the corrected passive warning observer checks
+  that actual sink. scope-tweak-expanded-green.log retains the failed assertion;
+  expanded-followup and sisyphus-expanded logs pass (22 requests each).
+- First full run: 1046/1048, with two older preservation fixtures still expecting
+  completed-title changes to be rejected. They now first prove unchanged-task
+  evidence survives, then confirm a retitle and verify reopened state/history.
+  The follow-up 99 targeted checks pass. Type/lint and context24/provider6 pass;
+  full follow-up is pending at this checkpoint. Context rationale records the
+  new schema and changed structural guidance, with unchanged semantic counts
+  and all ceilings. No ticket005 checkbox is complete and this subset is not
+  independently reviewed yet. Next: inspect full follow-up, review/commit the
+  human subset, then external-edit proposals/approved audit scope and remaining
+  native tweak lifecycle qualification.
+
+- Full human-scope follow-up passes 1048/1048 across 76 files (81.9s).
+  Final scope text makes absent goal contracts explicit as null for review;
+  removed-task lookup rejects inherited object keys. Both final native
+  22-request tweak modes plus type/lint pass after those two small changes.
+  cf9c777 and preceding retained-scope repairs are pushed to origin. The human
+  subset is ready for fixed-base independent review from cf9c777; external
+  proposal handling and final native lifecycle matrix still remain for 005.

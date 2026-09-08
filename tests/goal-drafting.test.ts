@@ -477,6 +477,26 @@ test("/goal-tweak confirms a revision under focus validation", async () => {
 	}
 });
 
+for (const env of [undefined, "0", "1"]) test(`headless tweak cannot waive scope with auto-confirm=${env} or model approval`, async () => {
+	const cwd = mkdtempSync(path.join(tmpdir(), "goal-tweak-headless-"));
+	const previousEnv = process.env.PI_GOAL_AUTO_CONFIRM;
+	try {
+		if (env === undefined) delete process.env.PI_GOAL_AUTO_CONFIRM; else process.env.PI_GOAL_AUTO_CONFIRM = env;
+		const h = createHarness(cwd);
+		await h.sessionStart();
+		await h.commands.get("goal-direct")!.handler("Original approved objective", h.ctx);
+		const before = firstGoal(cwd);
+		await h.commands.get("goal-tweak")!.handler("Waive all requirements", h.ctx);
+		const result = await runProposal(h, proposalParams("Changed objective", {approved: true, verification_contract: null}));
+		assert.match(result.content[0].text, /human confirmation.*interactive/i);
+		assert.deepEqual(firstGoal(cwd), before);
+		assert.equal(h.activeTools().includes("propose_goal_draft"), true);
+	} finally {
+		if (previousEnv === undefined) delete process.env.PI_GOAL_AUTO_CONFIRM; else process.env.PI_GOAL_AUTO_CONFIRM = previousEnv;
+		rmSync(cwd, {recursive: true, force: true});
+	}
+});
+
 test("tweak against a changed focus is rejected without mutation", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-tweakrace-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
@@ -1256,7 +1276,7 @@ test("a tweak without explicit tasks previews the retained current list exactly 
 
 // ── §7.5 regression: a tweak never changes the status of persisting steps ─
 
-test("a tweak merges the proposed task list by id, preserving statuses of surviving steps", async () => {
+test("a human tweak reopens changed requirements while retaining prior proof in its receipt", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-tweak-merge-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	try {
@@ -1288,23 +1308,16 @@ test("a tweak merges the proposed task list by id, preserving statuses of surviv
 			],
 		}));
 		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
-		const rejected = await pending;
-		assert.match(rejected.content[0].text, /scope revision/);
-		assert.equal(firstGoal(cwd).objective, "Initial objective", "unsafe structural edit cannot partially apply its objective");
-		const preservation = runProposal(h, proposalParams("Revised objective", {
-			sisyphus: false,
-			tasks: [{ id: "keep", title: "Surviving task", verification_contract: "tests pass" }, { id: "fresh", title: "Brand new task" }],
-		}));
-		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
-		await preservation;
+		const accepted = await pending;
+		assert.match(accepted.content[0].text, /tweak confirmed/);
 		const after = firstGoal(cwd);
 		const byId = new Map(after.taskList?.tasks.map((t) => [t.id, t]) ?? []);
 		const keep = byId.get("keep");
-		assert.equal(keep?.status, "complete", "persisting step keeps its status across the tweak");
-		assert.equal(keep?.evidence, "Done it.", "evidence preserved");
-		assert.equal(keep?.completedAt, "2026-08-05T10:00:00.000Z", "completedAt preserved");
-		assert.equal(keep?.verificationContract, "tests pass", "completed contract remains unchanged until human scope revision is available");
-		assert.equal(keep?.title, "Surviving task", "completed title remains unchanged");
+		assert.equal(keep?.status, "pending", "changed requirements reopen the completed step");
+		assert.equal(keep?.evidence, undefined);
+		assert.equal(keep?.completedAt, undefined);
+		assert.equal(keep?.verificationContract, "contract v2");
+		assert.equal(keep?.title, "Surviving task (retitled)");
 		assert.equal(byId.has("drop"), false, "removed step is dropped");
 		assert.equal(byId.has("ct"), false, "removed current task is dropped");
 		assert.equal(byId.get("fresh")?.status, "pending", "new step starts pending");

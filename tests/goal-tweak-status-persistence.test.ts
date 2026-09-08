@@ -154,16 +154,6 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 
 		// Tweak: same ids + a new task c. The merge must keep a complete.
 		await h.commands.get("goal-tweak")!.handler("Revise the plan", h.ctx);
-		const unsafe = runProposal(h, proposalParams("Revised objective", {
-			tasks: [
-				{ id: "a", title: "Task A (retitled)" },
-				{ id: "b", title: "Task B" },
-				{ id: "c", title: "Task C" },
-			],
-		}));
-		await confirmDialog(h, unsafe);
-		assert.match((await unsafe).content[0].text, /completed task/);
-		assert.equal(diskGoal(cwd).objective, "Initial objective\nSuccess criteria: tests pass.");
 		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
 			tasks: [{ id: "a", title: "Task A" }, { id: "b", title: "Task B" }, { id: "c", title: "Task C" }],
 		})));
@@ -175,11 +165,20 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 		assert.equal(a.status, "complete", "completed status survives the tweak");
 		assert.equal(a.evidence, "verified-e2e", "evidence survives the tweak");
 		assert.ok(a.completedAt, "completedAt timestamp survives the tweak");
-		assert.equal(a.title, "Task A", "completed requirements remain unchanged until human scope revision is available");
+		assert.equal(a.title, "Task A", "unchanged completed requirements preserve their proof");
 		assert.equal(goal.taskList!.tasks.find((t) => t.id === "c")!.status, "pending", "new id starts pending");
 		assert.equal(goal.taskList!.tasks.find((t) => t.id === "b")!.status, "pending", "pending task stays pending");
 		assert.equal(goal.currentTaskId, "b", "currentTaskId survives while its task is still pending");
 		assert.ok(readGoalLedger({ cwd }).events.some((e) => e.type === "task_list_set"), "task_list_set ledger event on the tweak");
+		await h.commands.get("goal-tweak")!.handler("Retitle task A", h.ctx);
+		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
+			tasks: [{id: "a", title: "Task A (retitled)"}, {id: "b", title: "Task B"}, {id: "c", title: "Task C"}],
+		})));
+		const reopened = diskGoal(cwd).taskList!.tasks[0]!;
+		assert.equal(reopened.status, "pending");
+		assert.equal(reopened.evidence, undefined);
+		assert.equal(reopened.completedAt, undefined);
+		assert(readGoalLedger({cwd}).events.some(e => e.type === "task_complete" && e.evidence === "verified-e2e"), "historical proof remains in the ledger");
 	} finally {
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}
@@ -230,14 +229,6 @@ test("e2e: subtask completion status survives a task-list tweak", async () => {
 
 		// Tweak proposing the same parent/subtask structure.
 		await h.commands.get("goal-tweak")!.handler("Revise", h.ctx);
-		const unsafe = runProposal(h, proposalParams("Revised objective", {
-			tasks: [
-				{ id: "p", title: "Parent" },
-				{ id: "p1", title: "Child one (renamed)", parent_id: "p" },
-			],
-		}));
-		await confirmDialog(h, unsafe);
-		assert.match((await unsafe).content[0].text, /completed task/);
 		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
 			tasks: [{ id: "p", title: "Parent" }, { id: "p1", title: "Child one", parent_id: "p" }],
 		})));
@@ -248,6 +239,14 @@ test("e2e: subtask completion status survives a task-list tweak", async () => {
 		assert.equal(p1.evidence, "child-done", "subtask evidence survives");
 		assert.ok(p1.completedAt, "subtask completedAt survives");
 		assert.equal(p1.title, "Child one", "completed subtask requirements remain unchanged");
+		await h.commands.get("goal-tweak")!.handler("Retitle child", h.ctx);
+		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
+			tasks: [{id: "p", title: "Parent"}, {id: "p1", title: "Child one (renamed)", parent_id: "p"}],
+		})));
+		const reopened = diskGoal(cwd).taskList!.tasks[0]!.subtasks![0]!;
+		assert.equal(reopened.status, "pending");
+		assert.equal(reopened.evidence, undefined);
+		assert.equal(reopened.completedAt, undefined);
 	} finally {
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
 	}

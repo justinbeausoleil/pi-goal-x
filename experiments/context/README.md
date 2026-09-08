@@ -86,3 +86,9 @@ The retained-scope subset adds the D2 scope section to the inspection schema
 (95 goal-state characters where current work is projected). The explicit
 inspection fixture also gains that reminder in its result. All 24 semantic
 counts and child-request measurements remain unchanged; no ceiling is raised.
+
+The human revision subset adds the tweak-only nullable goal-contract schema
+(237 characters in two drafting fixtures) and updates structural guidance for
+D2 reopening (44 SDK-guidance characters in 16 execution fixtures). All semantic
+counts, automatic goal text and child requests remain unchanged. These are
+explicit schema/behavior changes, not relaxed measurement gates.

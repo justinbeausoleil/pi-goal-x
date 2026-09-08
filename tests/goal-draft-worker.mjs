@@ -1,6 +1,6 @@
 /** S1/S2 draft lifecycle through the real loader, public tools and session tree. */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,8 @@ process.env.PI_GOAL_AUTO_CONFIRM = "0";
 const settings = SettingsManager.inMemory({ compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 100 }, retry: { enabled: false } });
 const model = { id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const results = [], errors = [], dialogs = [], notices = [];
+const warnings = [], warn = console.warn;
+console.warn = (...args) => { warnings.push(args.join(" ")); warn(...args); };
 let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles, settingsChoices = [], providerFailure;
 const objective = label => `1) Discuss ${label}. Done when the requirements are agreed.\n2) Implement ${label}. Done when its tests pass.`;
 const proposal = (selectedMode, label) => ({ name: "propose_goal_draft", args: { objective: objective(label), sisyphus: selectedMode === "sisyphus", auto_continue: false } });
@@ -118,7 +120,83 @@ try {
   ]);
   assert.equal(latestDraft().data.auditorEnabled, false, "per-draft auditor choice survives refinement");
   assert.deepEqual(files(), [], "discussion creates no approved goal");
-  if (scenario === "scope") {
+  if (scenario === "scope-tweak") {
+    decision = "Confirm";
+    const proposed = proposal(mode, "Original approved objective");
+    proposed.args.objective += "\nVerification contract: Keep the exact approved output.";
+    proposed.args.tasks = Array.from({length: 200}, (_, i) => ({id: `step-${i + 1}`, title: `Original task ${i + 1}`, verification_contract: `Original requirement ${i + 1}: verify its output.`}));
+    await run("Confirm the 200-node goal.", [proposed]);
+    await run("Record evidence for the first two requirements.", [{name: "update_goal_task", args: {expected_work_revision: "$current", updates: [
+      {task_id: "step-1", status: "complete", evidence: "Original first proof."}, {task_id: "step-2", status: "complete", evidence: "Unaffected second proof."},
+    ]}}]);
+    const originalScope = JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope));
+    const changed = proposal(mode, "Human reviewed objective");
+    changed.args.objective += "\nVerification contract: Verify the revised output.";
+    changed.args.tasks = proposed.args.tasks.slice(0, 199).map((task, i) => i ? task : {...task, title: "Revised first task", verification_contract: "Revised first requirement."});
+    process.env.PI_GOAL_AUTO_CONFIRM = "1";
+    decision = "Cancel";
+    const dialogCount = dialogs.length;
+    await run("/goal-tweak Revise the first requirement and remove the last requirement.", [changed]);
+    assert(dialogs.length > dialogCount, "auto-confirm cannot bypass the human scope decision");
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), originalScope, "cancel leaves all approved requirements and evidence intact");
+    decision = "Confirm";
+    await run("Confirm exactly this revised scope.", [changed]);
+    const revised = results.at(-1).details.goal;
+    assert.equal(revised.retainedScope.objective, objective("Human reviewed objective"));
+    assert.equal(revised.retainedScope.verificationContract, "Verify the revised output.");
+    assert.equal(revised.taskList.tasks.length, 199);
+    assert.equal(revised.taskList.tasks[0].status, "pending", "changed completed requirements reopen");
+    assert.equal(revised.taskList.tasks[0].evidence, undefined);
+    assert.equal(revised.taskList.tasks[0].completedAt, undefined);
+    assert.equal(revised.taskList.tasks[1].evidence, "Unaffected second proof.");
+    assert.equal(revised.retainedScope.tasks["step-200"], undefined, "only the confirmed revision waives the removed requirement");
+    const receipt = revised.retainedScope.changes.at(-1);
+    assert(receipt.priorText.includes("Original requirement 200"));
+    assert(receipt.priorText.includes("Original first proof."), "historical evidence survives reopening in the receipt");
+    assert(receipt.newText.includes("Revised first requirement."));
+    assert.equal(receipt.reason, "Revise the first requirement and remove the last requirement.");
+    assert(receipt.confirmationLocator && receipt.confirmedAt);
+    const shown = dialogs.findLast(d => d.title.startsWith("Confirm")).title;
+    assert(shown.includes("Original requirement 200"), "complete before requirements reach native UI");
+    assert(shown.includes("Revised first requirement."), "complete after requirements reach native UI");
+    const expectedScope = JSON.parse(JSON.stringify(revised.retainedScope));
+    await reopen();
+    await run("Inspect the accepted receipt after reopening.", [{name: "get_goal", args: {}}]);
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), expectedScope);
+    await run("Reopen only the completed task whose title changes through upsert.", [{name: "set_goal_tasks", args: {mode: "upsert", expected_work_revision: "$current", tasks: [{id: "step-2", title: "Second task retitled"}]}}]);
+    assert.equal(results.at(-1).details.goal.taskList.tasks[1].status, "pending");
+    assert.equal(results.at(-1).details.goal.taskList.tasks[1].evidence, undefined);
+    await run("Supply fresh evidence in task order.", [{name: "update_goal_task", args: {expected_work_revision: "$current", updates: [
+      {task_id: "step-1", status: "complete", evidence: "Revised first proof."}, {task_id: "step-2", status: "complete", evidence: "Retitled second proof."},
+    ]}}]);
+    const replace = results.at(-1).details.goal.taskList.tasks.map(t => ({id: t.id, title: t.id === "step-2" ? "Second task retitled again" : t.title, verification_contract: t.verificationContract}));
+    await run("Reopen through full replacement while preserving the unaffected proof.", [{name: "set_goal_tasks", args: {mode: "replace", expected_work_revision: "$current", tasks: replace}}]);
+    const replaced = results.at(-1).details.goal;
+    assert.equal(replaced.taskList.tasks[0].evidence, "Revised first proof.");
+    assert.equal(replaced.taskList.tasks[1].status, "pending");
+    assert.equal(replaced.taskList.tasks[1].evidence, undefined);
+    assert.equal(replaced.taskList.tasks[1].completedAt, undefined);
+    settingsChoices = ["disableTasks:", "Set project override to true", "disableContracts:", "Set project override to true", "Done"];
+    await session.prompt("/goal-settings");
+    const withoutPlan = proposal(mode, "Human reviewed objective");
+    withoutPlan.args.verification_contract = null;
+    decision = "Cancel";
+    await run("/goal-tweak Remove only the goal-level verification contract.", [withoutPlan]);
+    assert.equal(results.at(-1).details.goal.retainedScope.verificationContract, "Verify the revised output.");
+    const ledger = join(cwd, ".pi", "goals", "goal_events.jsonl");
+    renameSync(ledger, `${ledger}.saved`); mkdirSync(ledger); // Fault injection at the ledger append boundary.
+    decision = "Confirm";
+    await run("Confirm the goal contract removal while retaining every task.", [withoutPlan]);
+    const accepted = JSON.parse(JSON.stringify(results.at(-1).details.goal));
+    assert.equal(accepted.retainedScope.verificationContract, undefined);
+    assert.equal(accepted.retainedScope.changes.length, 2);
+    assert.deepEqual(accepted.taskList.tasks, JSON.parse(JSON.stringify(replaced.taskList.tasks)), "omitted plan and disabled settings retain every task and proof");
+    assert(warnings.some(n => /ledger diagnostic.*goal_tweaked/i.test(n)), "ledger failure is reported after accepting the scope receipt");
+    rmSync(ledger, {recursive: true}); renameSync(`${ledger}.saved`, ledger);
+    await reopen();
+    await run("Verify the receipt survives the failed ledger append and reopen.", [{name: "get_goal", args: {}}]);
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), accepted.retainedScope);
+  } else if (scenario === "scope") {
     decision = "Confirm";
     const contract = "Verify the exact output 🧭 é 漢字.\n".repeat(180);
     const evidence = "The independently inspected output matched 🧭 é 漢字.\n".repeat(180).trim();

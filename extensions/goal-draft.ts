@@ -73,6 +73,8 @@ export function buildTweakConfirmationText(args: {
 	changeSummary: string;
 	sisyphus: boolean;
 	tasks?: GoalTask[];
+	currentScope?: string;
+	newScope?: string;
 }): string {
 	const lines: string[] = [];
 	lines.push("● Goal tweak ready for confirmation.");
@@ -82,6 +84,8 @@ export function buildTweakConfirmationText(args: {
 	lines.push(...formatSection("Change", args.changeSummary));
 	lines.push(...formatSection("Current Objective", args.currentObjective));
 	lines.push(...formatSection("Proposed New Objective", args.newObjective));
+	if (args.currentScope !== undefined) lines.push(...formatSection("Approved requirements before", args.currentScope));
+	if (args.newScope !== undefined) lines.push(...formatSection("Requirements after confirmation", args.newScope));
 	if (args.tasks && args.tasks.length > 0) {
 		const taskLines = renderConfirmationTasks(args.tasks, 0);
 		lines.push("");

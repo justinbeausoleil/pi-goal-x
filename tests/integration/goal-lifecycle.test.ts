@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
-for (const mode of ["goal", "sisyphus"]) for (const scenario of ["cancel", "branches", "stale", "stale-question", "stale-questionnaire", "selector-stale", "fork", "fork-tweak", "active-refine", "active-cancel", "active-settings", "paused-refine", "blocked-refine", "scope"]) {
+for (const mode of ["goal", "sisyphus"]) for (const scenario of ["cancel", "branches", "stale", "stale-question", "stale-questionnaire", "selector-stale", "fork", "fork-tweak", "active-refine", "active-cancel", "active-settings", "paused-refine", "blocked-refine", "scope", "scope-tweak"]) {
 	test(`S1/S2: ${mode} draft ${scenario} uses native dialogs and branch state`, { timeout: 15000 }, async () => {
 		const { stdout } = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-draft-worker.mjs", import.meta.url)), scenario, mode], {
 			timeout: 12000, env: { ...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: "" },

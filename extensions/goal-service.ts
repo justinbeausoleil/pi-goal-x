@@ -20,7 +20,7 @@ import {
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
 import { taskIndex } from "./goal-task-index.ts";
-import { retainGoalScope, retainedGoalScope, retainedScopeCompletionWarning, retainedTaskEvidenceError } from "./goal-scope.ts";
+import { reopenChangedTasks, retainGoalScope, retainedGoalScope, retainedScopeCompletionWarning, retainedTaskEvidenceError } from "./goal-scope.ts";
 
 /**
  * Session state access + runtime glue hooks that the GoalService needs.
@@ -62,6 +62,8 @@ export interface GoalServiceRef {
 export type GoalServiceContext = GoalFileContext;
 
 export interface GoalMutationSpec {
+	/** Only supplied by the bound interactive /goal-tweak confirmation. */
+	scopeRevision?: Parameters<typeof retainGoalScope>[2];
 	expectedWorkRevision?: string | null;
 	/** Validate the reconciled clone before any mutation or ledger append. */
 	validate?(goal: GoalRecord): GoalMutationFailure | undefined;
@@ -152,7 +154,7 @@ function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string |
 	return current;
 }
 
-/** Until human scope revision is available, every whole-record structural path preserves obligations. */
+/** Ordinary structural confirmation cannot waive a retained contract. */
 function taskStructureError(before: GoalRecord, after: GoalRecord): string | undefined {
 	if (before.taskList?.tasks === after.taskList?.tasks) return;
 	const incoming = taskIndex(after.taskList?.tasks).byId;
@@ -160,12 +162,6 @@ function taskStructureError(before: GoalRecord, after: GoalRecord): string | und
 		const next = incoming.get(id);
 		if (next && task.verificationContract.trim() !== next.verificationContract?.trim()) {
 			return `Task "${id}" has a retained contract; removing or changing it requires a human scope revision through /goal-tweak.`;
-		}
-	}
-	for (const { task } of taskIndex(before.taskList?.tasks).ordered) {
-		const next = incoming.get(task.id);
-		if (next && task.status === "complete" && (task.title.trim() !== next.title.trim() || (task.verificationContract?.trim() ?? "") !== (next.verificationContract?.trim() ?? ""))) {
-			return `Cannot edit completed task "${task.id}" through an ordinary structural change; a human scope revision must reopen it and invalidate its evidence.`;
 		}
 	}
 }
@@ -477,10 +473,10 @@ export class GoalService {
 			if (revisionError) return { ok: false, message: revisionError };
 			const invalid = spec.validate?.(base);
 			if (invalid) return invalid;
-			const mutated = retainGoalScope(current, sanitizeGoalPaths(ctx, {
+			const mutated = retainGoalScope(current, reopenChangedTasks(current, sanitizeGoalPaths(ctx, {
 				...spec.mutate(base),
 				revision: (current.revision ?? 0) + 1,
-			}));
+			})), spec.scopeRevision);
 			const structureError = taskStructureError(current, mutated) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 			if (spec.ledger) {
@@ -524,10 +520,10 @@ export class GoalService {
 			if (revisionError) return { ok: false, message: revisionError };
 			const invalid = spec.validate?.(base);
 			if (invalid) return invalid;
-			const mutated = retainGoalScope(current, {
+			const mutated = retainGoalScope(current, reopenChangedTasks(current, {
 				...spec.mutate(base),
 				revision: capturedRevision + 1,
-			});
+			}), spec.scopeRevision);
 			const structureError = taskStructureError(current, mutated) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 

@@ -37,7 +37,7 @@ handlers from their dedicated modules:
 | `goal-questionnaire.ts` | Structured question/answer UI (`runGoalQuestionnaire`, `showProposalDialog`) used by the drafting tools and confirmations |
 | `goal-tool-names.ts` | The five published tool-name constants, lifecycle-dependent profiles, work/progress classification, post-stop allowlist |
 | `goal-detail.ts` | Lossless objective/task/scope/history paging with content-bound cursors |
-| `goal-scope.ts` | Legacy scope derivation, retained requirement snapshots, required evidence checks |
+| `goal-scope.ts` | Legacy scope derivation, retained requirements/receipts, structural reopening and required evidence checks |
 | `goal-ledger-index.ts` | Incremental per-goal activity, audit, lifecycle, and Oracle projections |
 | `goal-task-index.ts` | Content-keyed task snapshots shared by prompts, tools, and dashboard models |
 | `prompts/goal-prompts.ts` | Bounded five-tool steering prompts (active-goal, continuation, stale-checkpoint, unfocused, budget-limited) |
@@ -281,8 +281,10 @@ only usage, updatedAt and numeric revision may differ from the original base.
 The local usage delta is added to the fresh record before the single write and
 ledger append. Work, lifecycle and budget changes still reject the buffer.
 UI task dialogs capture it before waiting for evidence. Whole-record structural
-mutations currently reject clearing/changing retained contracts or changing
-completed task requirements; human revision remains under ticket 005.
+mutations reject clearing/changing retained task contracts without a bound
+human scope revision. Completed tasks
+whose trimmed title or contract changes reopen with current proof/timestamps
+cleared through every structural path. Unchanged IDs retain their progress.
 
 The mutation service records approved objective/goal contracts and task
 contracts keyed by stable ID in optional `retainedScope` metadata. Legacy
@@ -294,6 +296,17 @@ Skipped or removed required tasks still block completion until completed with
 evidence; recreate removed IDs with their original contracts to supply it.
 Task/contract settings and auditor bypass cannot waive these requirements.
 Invalid retained metadata rejects the record rather than dropping its scope.
+
+Only the existing interactive `/goal-tweak` confirmation supplies the service's
+scope revision intent. Its decision is bound to goal, focus generation and work
+revision; auto-confirm, headless calls and model approval fields cannot supply
+it. The dialog exposes complete before/after requirements, including removed
+tasks, and the service stores prior/new text, reason and session/tool/time
+locator in the same authoritative write. A ledger warning cannot erase that
+receipt. An explicit replacement revises the retained task set; omitting tasks
+preserves it. The tweak-only `verification_contract` field accepts full text,
+or null for explicit removal; omission retains the current goal contract.
+Task/contract settings cannot implicitly change this reviewed scope.
 
 The existing flat-tree converter validates the complete resulting plan. Upsert
 edits supplied fields, preserving omitted values; new IDs require a title and

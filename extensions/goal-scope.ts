@@ -1,4 +1,4 @@
-import type { GoalRecord, GoalRetainedScope, GoalRetainedTask, GoalTask } from "./goal-record.ts";
+import type { GoalRecord, GoalRetainedScope, GoalRetainedTask, GoalScopeChangeReceipt, GoalTask } from "./goal-record.ts";
 import { taskIndex } from "./goal-task-index.ts";
 
 function taskContracts(goal: GoalRecord): Record<string, GoalRetainedTask> {
@@ -14,14 +14,44 @@ export function retainedGoalScope(goal: GoalRecord): GoalRetainedScope {
 }
 
 /** Called only at the service mutation boundary; deletion cannot erase a prior snapshot. */
-export function retainGoalScope(before: GoalRecord, after: GoalRecord = before): GoalRecord {
+export function retainGoalScope(before: GoalRecord, after: GoalRecord = before, revision?: Omit<GoalScopeChangeReceipt, "priorText" | "newText"> & {replaceTasks: boolean}): GoalRecord {
 	const scope = retainedGoalScope(before);
 	const tasks = new Map(Object.entries(scope.tasks));
 	for (const goal of [before, after]) for (const [id, task] of Object.entries(taskContracts(goal))) {
 		const prior = tasks.get(id);
 		if (!prior || prior.verificationContract.trim() === task.verificationContract.trim()) tasks.set(id, {...task, verificationContract: prior?.verificationContract ?? task.verificationContract});
 	}
-	return {...after, retainedScope: {...scope, tasks: Object.fromEntries(tasks)}};
+	let retainedScope = {...scope, tasks: Object.fromEntries(tasks)};
+	if (revision) {
+		retainedScope = revisedGoalScope(before, after, revision.replaceTasks);
+		const priorText = scopeText(scope), newText = scopeText(retainedScope);
+		if (priorText !== newText) retainedScope.changes = [...scope.changes, {priorText, newText, reason: revision.reason, confirmationLocator: revision.confirmationLocator, confirmedAt: revision.confirmedAt}];
+	}
+	return {...after, retainedScope};
+}
+
+/** Preview and commit use the same complete requirement text; receipts omit receipt history. */
+export function scopeText(scope: GoalRetainedScope): string {
+	return JSON.stringify({objective: scope.objective, verificationContract: scope.verificationContract ?? null, tasks: scope.tasks}, null, 2);
+}
+
+export function revisedGoalScope(before: GoalRecord, after: GoalRecord, replaceTasks: boolean): GoalRetainedScope {
+	const scope = retainedGoalScope(before);
+	return {...scope, objective: after.objective, verificationContract: after.verificationContract,
+		tasks: replaceTasks ? taskContracts(after) : retainGoalScope(before, after).retainedScope!.tasks};
+}
+
+/** Every structural path invalidates current proof when completed requirements change. */
+export function reopenChangedTasks(before: GoalRecord, after: GoalRecord): GoalRecord {
+	if (!after.taskList) return after;
+	const previous = taskIndex(before.taskList?.tasks).byId;
+	const reopen = (tasks: GoalTask[]): GoalTask[] => tasks.map(task => {
+		const retained = before.retainedScope?.tasks;
+		const prior = previous.get(task.id) ?? (retained && Object.hasOwn(retained, task.id) ? retained[task.id] : undefined);
+		const changed = prior?.status === "complete" && (prior.title.trim() !== task.title.trim() || (prior.verificationContract?.trim() ?? "") !== (task.verificationContract?.trim() ?? ""));
+		return {...task, ...(changed ? {status: "pending", evidence: undefined, completedAt: undefined} as const : {}), ...(task.subtasks ? {subtasks: reopen(task.subtasks)} : {})};
+	});
+	return {...after, taskList: {...after.taskList, tasks: reopen(after.taskList.tasks)}};
 }
 
 /** Planning flags and auditor bypass cannot supply missing required evidence. */

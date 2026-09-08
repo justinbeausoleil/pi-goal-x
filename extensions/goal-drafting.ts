@@ -13,6 +13,7 @@ import { currentTaskIdIsPending, goalWorkRevision, nowIso, type GoalRecord, type
 import type { GoalCore } from "./goal-state.ts";
 import { convertFlatTasks, countTasks, mergeTasksWithExisting, type FlatTaskInput } from "./goal-task-tools.ts";
 import { PROPOSE_DRAFT_TOOL_NAME, QUESTIONNAIRE_TOOL_NAME, QUESTION_TOOL_NAME } from "./goal-tool-names.ts";
+import { reopenChangedTasks, retainedGoalScope, revisedGoalScope, scopeText } from "./goal-scope.ts";
 
 export type GoalDraftMode = GoalDraftingFocus | "tweak";
 
@@ -183,6 +184,7 @@ export async function startGoalDrafting(core: GoalCore, ctx: ExtensionContext, m
 		"The user wants to revise the focused persistent goal. Discuss requirements as needed; do not edit files or start substantive work.",
 		"Propose the complete revised objective with propose_goal_draft. Preserve the current goal mode. Include a complete flat task list when the revision changes a decomposable plan; omit tasks to retain the current list.",
 		"Current objective:", targetGoal?.objective ?? "(goal no longer available)",
+		"Read all approved requirements and removed-task evidence with get_goal(section=\"scope\"). Omitted tasks retain the current plan and retained obligations. Scope revisions require the interactive human confirmation; auto-confirm never applies.",
 		"User request:", trimmed || "(ask what they want to change)",
 	].join("\n") : goalDraftingPrompt(trimmed, mode);
 	try {
@@ -201,9 +203,17 @@ function proposedTaskList(core: GoalCore, ctx: ExtensionContext, tasks: FlatTask
 	return { ok: true, value: { tasks: converted.tasks, blockCompletion: blockCompletion === true, proposedAt: nowIso() } };
 }
 
-export function proposalText(draft: ActiveGoalDraft, objective: string, autoContinue: boolean, taskList: GoalTaskList | undefined, current?: GoalRecord): string {
+function tweakProposal(current: GoalRecord, objective: string, proposed: GoalTaskList | undefined, contract?: string | null): GoalRecord {
+	const extracted = extractVerificationContract(objective);
+	const taskList = proposed ? {...proposed, tasks: mergeTasksWithExisting(current.taskList?.tasks, proposed.tasks)} : current.taskList;
+	const after = reopenChangedTasks(current, {...current, objective: extracted.objective.trim(), verificationContract: contract === null ? undefined : contract ?? extracted.verificationContract ?? current.verificationContract, taskList});
+	return {...after, currentTaskId: after.currentTaskId && currentTaskIdIsPending(after.taskList?.tasks, after.currentTaskId) ? after.currentTaskId : undefined};
+}
+
+export function proposalText(draft: ActiveGoalDraft, objective: string, autoContinue: boolean, taskList: GoalTaskList | undefined, current?: GoalRecord, contract?: string | null): string {
 	const base = draft.mode === "tweak" && current
-		? buildTweakConfirmationText({ currentObjective: current.objective, newObjective: objective, changeSummary: draft.originalTopic || "Goal revised through guided drafting.", sisyphus: current.sisyphus, tasks: taskList?.tasks })
+		? buildTweakConfirmationText({ currentObjective: current.objective, newObjective: objective, changeSummary: draft.originalTopic || "Goal revised through guided drafting.", sisyphus: current.sisyphus, tasks: taskList?.tasks,
+			currentScope: scopeText(retainedGoalScope(current)), newScope: scopeText(revisedGoalScope(current, tweakProposal(current, objective, taskList, contract), taskList !== undefined)) })
 		: buildDraftConfirmationText({ focus: draft.mode === "sisyphus" ? "sisyphus" : "goal", originalTopic: draft.originalTopic, objective, autoContinue });
 	// The task list is always shown exactly once in a proposal: explicitly
 	// proposed tasks, or (new drafts) tasks derived from the RAW objective, or
@@ -328,6 +338,7 @@ export function registerDraftingTools(core: GoalCore): void {
 		],
 		parameters: Type.Object({
 			objective: Type.String({ description: "Complete proposed objective, including criteria and constraints." }),
+			verification_contract: Type.Optional(Type.Union([Type.String(), Type.Null()], {description: "Tweak only: complete goal verification contract. Omission retains the current contract; null explicitly proposes removal. Requires human confirmation."})),
 			auto_continue: Type.Optional(Type.Boolean({ description: "Defaults to true." })),
 			sisyphus: Type.Optional(Type.Boolean({ description: "Must match the user-selected goal mode." })),
 			tasks: Type.Optional(flatTaskSchema()),
@@ -337,6 +348,7 @@ export function registerDraftingTools(core: GoalCore): void {
 		async execute(_id, params, _signal, _update, ctx) {
 			const draft = activeDraft(core);
 			if (!draft) return { content: [{ type: "text", text: "No guided goal draft is active. Do not create a goal without the user starting /goal or /sisyphus." }], details: goalDetails(core.state.goal) };
+			if (draft.mode !== "tweak" && params.verification_contract !== undefined) return {content: [{type: "text", text: "For a new goal, include Verification contract: in the complete objective. The separate verification_contract field is only for human scope revisions."}], details: goalDetails(core.state.goal)};
 			const objective = params.objective.trim();
 			if (!objective) return { content: [{ type: "text", text: "The proposed objective must be at least 1 character." }], details: goalDetails(core.state.goal) };
 			const objectiveMaxChars = loadGoalSettings(ctx.cwd).objectiveMaxChars ?? 0;
@@ -350,13 +362,16 @@ export function registerDraftingTools(core: GoalCore): void {
 			if (draft.mode === "tweak" && (!target || target.id !== draft.targetGoalId)) return { content: [{ type: "text", text: "The goal changed while drafting; review it and start /goal-tweak again." }], details: goalDetails(core.state.goal) };
 			if (draft.mode === "sisyphus" && !sisyphusObjectiveSufficient(objective)) return { content: [{ type: "text", text: "A Sisyphus goal needs ordered steps with explicit per-step done criteria. Refine the objective with numbered steps (1) ..., 2) ...) or Step N: blocks before proposing again." }], details: goalDetails(core.state.goal) };
 			const decisionIsCurrent = draftDecisionGuard(core, ctx, draft, _signal);
+			const workRevision = target ? goalWorkRevision(target) : undefined;
+			const token = target ? core.focusedOperationToken(target.id) : undefined;
+			if (draft.mode === "tweak" && !ctx.hasUI) return {content: [{type: "text", text: "Scope revision requires human confirmation in the interactive /goal-tweak workflow. No change was applied; auto-confirm cannot authorize it."}], details: goalDetails(core.state.goal)};
 			let confirmation: { decision: ProposalDecision; auditorEnabled: boolean; unavailable: boolean };
-			if (shouldAutoConfirmProposal({ hasUI: ctx.hasUI, autoConfirmEnv: process.env.PI_GOAL_AUTO_CONFIRM })) {
+			if (draft.mode !== "tweak" && shouldAutoConfirmProposal({ hasUI: ctx.hasUI, autoConfirmEnv: process.env.PI_GOAL_AUTO_CONFIRM })) {
 				confirmation = { decision: "confirm" as const, auditorEnabled: draft.auditorEnabled, unavailable: false };
 			} else {
 				core.enterGoalModal();
 				try {
-					confirmation = await showProposalDialog(ctx, proposalText(draft, objective, params.auto_continue !== false, taskResult.value, target ?? undefined), draft.mode === "sisyphus" ? "sisyphus" : "goal", draft.auditorEnabled);
+					confirmation = await showProposalDialog(ctx, proposalText(draft, objective, params.auto_continue !== false, taskResult.value, target ?? undefined, params.verification_contract), draft.mode === "sisyphus" ? "sisyphus" : "goal", draft.auditorEnabled);
 				} catch (error) {
 					return { content: [{ type: "text", text: `${proposalDialogFailureMessage(error)} Do not retry the dialog until the host issue is resolved.` }], details: goalDetails(core.state.goal) };
 				} finally {
@@ -365,7 +380,8 @@ export function registerDraftingTools(core: GoalCore): void {
 			}
 			if (!decisionIsCurrent()) return { content: [{ type: "text", text: STALE_DRAFT_DECISION }], details: goalDetails(core.state.goal) };
 			const settings = loadGoalSettings(ctx.cwd);
-			const extracted = settings.disableContracts ? { objective, verificationContract: undefined } : extractVerificationContract(objective);
+			const extracted = settings.disableContracts && draft.mode !== "tweak" ? { objective, verificationContract: undefined } : extractVerificationContract(objective);
+			if (params.verification_contract !== undefined && (!settings.disableContracts || draft.mode === "tweak")) extracted.verificationContract = params.verification_contract ?? undefined;
 			// §14: the durable proposal summary is part of the transcript for
 			// EVERY outcome (confirm / continue refining / cancel), so the user
 			// can review the proposal after the dialog closes.
@@ -377,7 +393,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				auditorEnabled: confirmation.auditorEnabled,
 			});
 			if (confirmation.unavailable) {
-				return { content: [{ type: "text", text: `${summary}\n\n${DIALOG_UNAVAILABLE_HINT} The goal was NOT created and drafting remains active; do not retry the dialog until the host supports it or the user explicitly restarts with PI_GOAL_AUTO_CONFIRM=1.` }], details: goalDetails(core.state.goal) };
+				return { content: [{ type: "text", text: `${summary}\n\n${DIALOG_UNAVAILABLE_HINT} The goal was not changed and drafting remains active. ${draft.mode === "tweak" ? "Use the interactive /goal-tweak workflow; auto-confirm cannot authorize a scope revision." : "Do not retry until the host supports it or the user explicitly restarts with PI_GOAL_AUTO_CONFIRM=1."}` }], details: goalDetails(core.state.goal) };
 			}
 			if (confirmation.decision !== "confirm") {
 				// Continue refining: preserve the user's auditor choice for the
@@ -417,30 +433,20 @@ export function registerDraftingTools(core: GoalCore): void {
 				})}` }], details: goalDetails(core.state.goal), terminate: true };
 			}
 			if (!target) return { content: [{ type: "text", text: "The goal changed while drafting; review it and start /goal-tweak again." }], details: goalDetails(core.state.goal) };
-			const token = core.focusedOperationToken(target.id);
 			const now = nowIso();
-			// §7.5 merge: a goal tweak must never change the status of steps that
-			// persist across the tweak. The proposed list merges into the goal's
-			// existing tree by id (same semantics as set_goal_tasks): surviving ids
-			// keep status/evidence/completedAt/skippedAt/skipReason, new ids start
-			// pending, removed ids drop. currentTaskId survives only while its task
-			// is still pending in the merged tree.
+			// Unchanged IDs preserve progress; changed completed requirements
+			// reopen at the shared mutation boundary. The approved scope receipt
+			// keeps prior proof even when its current planning node is removed.
 			// §tweak-resume: a confirmed tweak is a deliberate revision of a
 			// stalled goal — set when the goal actually transitions out of
 			// paused/blocked so the post-apply glue can resume accounting,
 			// continuation, and the ledger event.
 			let resumed = false;
 			const result = core.goalService.apply(ctx, {
-				reconcile: false, focusToken: token, refreshFromDisk: true,
+				reconcile: false, focusToken: token, expectedWorkRevision: workRevision, refreshFromDisk: true,
+				scopeRevision: {replaceTasks: taskResult.value !== undefined, reason: draft.originalTopic || "Goal revised through guided drafting.", confirmationLocator: `${ctx.sessionManager.getSessionId()}:tool:${_id}`, confirmedAt: now},
 				mutate: (goal) => {
-					const proposed = taskResult.value;
-					const mergedTaskList = proposed && goal.taskList
-						? { ...proposed, tasks: mergeTasksWithExisting(goal.taskList.tasks, proposed.tasks) }
-						: proposed;
-					const taskList = mergedTaskList ?? goal.taskList;
-					const currentTaskId = mergedTaskList && goal.currentTaskId && !currentTaskIdIsPending(mergedTaskList.tasks, goal.currentTaskId)
-						? undefined
-						: goal.currentTaskId;
+					const proposed = tweakProposal(goal, objective, taskResult.value, params.verification_contract);
 					// §tweak-resume: resume a paused/blocked goal (mirror the
 					// /goal-resume transition: status active + pause metadata
 					// cleared); budget_limited stays behind its hard resource
@@ -448,10 +454,7 @@ export function registerDraftingTools(core: GoalCore): void {
 					const stalled = goal.status === "paused" || goal.status === "blocked";
 					if (stalled) resumed = true;
 					return {
-						...goal,
-						objective: extracted.objective,
-						verificationContract: extracted.verificationContract ?? goal.verificationContract,
-						taskList, currentTaskId, skipAuditor,
+						...proposed, skipAuditor,
 						status: stalled ? "active" : goal.status,
 						autoContinue: stalled ? true : goal.autoContinue,
 						stopReason: stalled ? undefined : goal.stopReason,

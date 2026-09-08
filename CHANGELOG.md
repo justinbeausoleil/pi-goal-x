@@ -14,9 +14,11 @@ All notable changes to pi-goal-x are documented here.
   usage and timestamps alone do not invalidate the revision. An empty initial
   plan can be created without the field. Storage revisions remain separate.
 - Unchanged task requirements retain progress, evidence, and timestamps through
-  structural edits. Ordinary edits cannot erase contracts or edit completed
-  task requirements; the reviewed human scope-revision workflow is still
-  pending implementation. Structural cancellation preserves the current plan.
+  structural edits. Changed completed titles/contracts reopen the task and
+  clear current proof. Contract changes require interactive `/goal-tweak`
+  confirmation with complete before/after requirements. Accepted scope receipts
+  survive ledger failures and reopen. Headless/automatic confirmation and
+  model approval fields cannot authorize a scope revision.
 - UI evidence dialogs reject results after concurrent work changes or pauses.
 - Goal writes retain approved requirements and contracted-task evidence through
   plan deletion, skipping, and settings changes. `get_goal(section="scope")`
