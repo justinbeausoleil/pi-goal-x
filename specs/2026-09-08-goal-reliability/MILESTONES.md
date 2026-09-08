@@ -1152,3 +1152,30 @@
   retry-notification addition; its17 affected native cases pass afterward.
   Type/lint pass. Independent fixed repair review and frozen full qualification
   follow. 006 remains in progress; all007–014 work and package/model gates remain.
+
+### Ticket 006 lifecycle controls and incomplete clear
+
+- Frozen7817281 passes1138/1138 full checks (76files,142.2s), selfcheck952,
+  dry pack and production audit; fresh B1/B2/B5b/B7 again matches75 unchanged
+  timing limits with zero regressions. Both reviewers independently clear the
+  preceding repairs but reproduce three adjacent public compositions.
+- Work fingerprints deliberately exclude lifecycle controls. A same-revision
+  external blocked state could therefore be overwritten by paused confirmation.
+  Shared setGoal now validates the complete normalized prior record, excluding
+  only usage/updatedAt, before replacing it. The open dialog also rejects a
+  replaced in-memory record. Native stale-control red/green verifies exact
+  external bytes and zero unauthorized requests; existing work fingerprints
+  remain independent of accounting.
+- A confirmed clear with an earlier buffer behind a live lock reported success
+  before any archive was saved. archiveCurrentGoal now requires the existing
+  buffer to flush successfully before attempting immediate archival. A failed
+  clear preserves focus and appends no archive request for a later silent retry.
+- With an existing writable archive directory and denied active-file deletion,
+  archiveGoalFile swallowed unlink failure. It now reports the failure and the
+  retained partial copy's path, leaving the active record authoritative and
+  focus intact. The public command can be explicitly retried after access is
+  restored, updating the same copy and completing removal. This fixes public
+  clear failure handling;011 still owns completed-goal restart recovery.
+- All three new native reproductions fail before repair and pass afterward.
+  Existing archive/file and mutation regressions plus affected native cases,
+  type/lint and fixed follow-up review qualify this slice before006 closure.

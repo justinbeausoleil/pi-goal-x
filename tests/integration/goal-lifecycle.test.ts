@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
-for (const scenario of ["storage-write", "storage-lock-access", "storage-lock", "storage-ledger", "storage-conflict", "storage-resume", "storage-resume-confirm", "storage-pause", "clear-cancel", "clear-confirm", "clear-failure", "clear-stale", "resume-stale-proposal-confirm", "resume-stale-tree-confirm", "resume-stale-session-confirm", "child-fresh", "child-fork", "child-reopen", "child-nested"]) test(`S2: native ${scenario} preserves ownership and authoritative mutation outcomes`, {timeout: 15000}, async () => {
+for (const scenario of ["storage-write", "storage-lock-access", "storage-lock", "storage-clear-lock", "storage-ledger", "storage-conflict", "storage-resume", "storage-resume-confirm", "storage-pause", "clear-cancel", "clear-confirm", "clear-failure", "clear-unlink-failure", "clear-stale", "resume-stale-proposal-confirm", "resume-stale-control-confirm", "resume-stale-tree-confirm", "resume-stale-session-confirm", "child-fresh", "child-fork", "child-reopen", "child-nested"]) test(`S2: native ${scenario} preserves ownership and authoritative mutation outcomes`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
 	});

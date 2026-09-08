@@ -114,8 +114,12 @@ try {
     const before = requests.length;
     let edited;
     onPausedConfirm = async () => {
-      if (scenario === "resume-stale-proposal-confirm") {
-        edited = readGoal().replace("# Goal Prompt\n\n" + approved.objective, "# Goal Prompt\n\nExternal proposal must remain available for human review.");
+      if (["resume-stale-proposal-confirm", "resume-stale-control-confirm"].includes(scenario)) {
+        const content = readGoal(), split = content.indexOf("\n\n# Goal Prompt");
+        const metadata = JSON.parse(content.slice(0, split));
+        metadata.status = "blocked";
+        metadata.pauseReason = "New external dependency entered during confirmation.";
+        edited = scenario === "resume-stale-control-confirm" ? JSON.stringify(metadata) + content.slice(split) : content.replace("# Goal Prompt\n\n" + approved.objective, "# Goal Prompt\n\nExternal proposal must remain available for human review.");
         writeFileSync(join(cwd, approved.activePath), edited);
       } else if (scenario === "resume-stale-tree-confirm") await session.navigateTree(earlyLeaf);
       else await host.newSession();
@@ -133,7 +137,8 @@ try {
     const focuses = () => session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-focus");
     const focusBefore = focuses();
     if (scenario === "clear-stale") onClearConfirm = async () => { await session.navigateTree(earlyLeaf); };
-    if (["storage-pause", "clear-failure"].includes(scenario)) chmodSync(goals, 0o555);
+    if (scenario === "clear-unlink-failure") mkdirSync(join(goals, "archived"));
+    if (["storage-pause", "clear-failure", "clear-unlink-failure"].includes(scenario)) chmodSync(goals, 0o555);
     try {
       await session.prompt(scenario === "storage-pause" ? "/goal-pause" : "/goal-clear");
       assert.deepEqual(errors, [], "failed lifecycle writes return a public diagnostic");
@@ -150,6 +155,10 @@ try {
         assert.equal(readFileSync(ledger, "utf8"), ledgerBefore);
         if (scenario !== "clear-stale") assert.deepEqual(focuses(), focusBefore);
         assert.match(notices.at(-1), scenario === "clear-cancel" ? /cancelled/ : /failed|not.*saved|storage|changed/i);
+        if (scenario === "clear-unlink-failure") {
+          assert.match(notices.at(-1), /archive copy|active goal.*remov/i);
+          assert.equal(readdirSync(join(goals, "archived")).length, 1, "partial archive is retained and diagnosed");
+        }
       }
     } finally { chmodSync(goals, 0o755); }
     await run("Inspect after the lifecycle command.", [{name: "get_goal", args: {}}]);
@@ -158,6 +167,12 @@ try {
       assert.equal(goalResult().id, approved.id);
       assert.equal(goalResult().status, scenario === "storage-pause" ? "active" : "paused");
       assert.equal(goalResult().autoContinue, scenario === "storage-pause");
+    }
+    if (scenario === "clear-unlink-failure") {
+      await session.prompt("/goal-clear");
+      assert.equal(existsSync(join(cwd, approved.activePath)), false, "restored access permits explicit retry");
+      assert.match(notices.at(-1), /cleared and archived/);
+      assert.equal(readdirSync(join(goals, "archived")).length, 1, "retry updates the same archive copy");
     }
   } else if (scenario.startsWith("child-")) {
     if (scenario === "child-nested") process.env.PI_SUBAGENT_DEPTH = "3";
@@ -195,23 +210,31 @@ try {
     } finally { chmodSync(goals, 0o755); }
     await run("Inspect the failed resume without changing it.", [{name: "get_goal", args: {}}]);
     assert.equal(goalResult().status, "paused");
-  } else if (["storage-write", "storage-lock-access", "storage-lock", "storage-ledger", "storage-conflict"].includes(scenario)) {
+  } else if (["storage-write", "storage-lock-access", "storage-lock", "storage-clear-lock", "storage-ledger", "storage-conflict"].includes(scenario)) {
     await session.prompt("/goal-resume");
     const goals = join(cwd, ".pi", "goals"), ledger = join(goals, "goal_events.jsonl"), lock = join(goals, ".locks", approved.id + ".lock");
     const before = readGoal(), ledgerBefore = readFileSync(ledger, "utf8"), warningCount = warnings.length;
     const staleRevision = results.findLast(r => r.details?.work_revision).details.work_revision;
     if (scenario === "storage-write") chmodSync(goals, 0o555);
     if (scenario === "storage-lock-access") chmodSync(join(goals, ".locks"), 0o555);
-    if (scenario === "storage-lock") writeFileSync(lock, JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()}));
+    if (["storage-lock", "storage-clear-lock"].includes(scenario)) writeFileSync(lock, JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()}));
     if (scenario === "storage-ledger") { renameSync(ledger, join(work, "ledger-backup")); mkdirSync(ledger); }
     try {
       await run("Complete the remaining task through the public mutation tool.", [{name: "update_goal_task", args: {task_id: "remaining", status: "complete", expected_work_revision: "$current", evidence: "Fixture checked the remaining work."}}]);
-      if (["storage-write", "storage-lock-access", "storage-lock"].includes(scenario)) {
+      if (["storage-write", "storage-lock-access", "storage-lock", "storage-clear-lock"].includes(scenario)) {
         assert.equal(readGoal(), before, "failed authoritative writes preserve exact project state");
         assert.equal(readFileSync(ledger, "utf8"), ledgerBefore, "failed state writes append no success events");
         const diagnostic = [...warnings.slice(warningCount), ...results.at(-1).content.map(c => c.text ?? "")].join("\n");
         assert.match(diagnostic, /denied|EACCES|lock|failed|write/i);
         if (scenario === "storage-lock-access") assert.match(diagnostic, /EACCES|access/i);
+        if (scenario === "storage-clear-lock") {
+          const focus = session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-focus");
+          await session.prompt("/goal-clear");
+          assert.match(notices.at(-1), /failed|not.*cleared|lock/i);
+          assert.deepEqual(session.sessionManager.getBranch().filter(e => e.customType === "pi-goal-focus"), focus);
+          assert.equal(readGoal(), before);
+          assert.equal(existsSync(join(goals, "archived")), false);
+        }
       } else if (scenario === "storage-ledger") {
         assert.match(warnings.slice(warningCount).join("\n"), /ledger diagnostic/);
         assert.match(readGoal(), /Fixture checked the remaining work/);
@@ -222,7 +245,7 @@ try {
     } finally {
       chmodSync(goals, 0o755);
       chmodSync(join(goals, ".locks"), 0o755);
-      if (scenario === "storage-lock") rmSync(lock, {force: true});
+      if (["storage-lock", "storage-clear-lock"].includes(scenario)) rmSync(lock, {force: true});
       if (scenario === "storage-ledger") { rmSync(ledger, {recursive: true}); renameSync(join(work, "ledger-backup"), ledger); }
     }
     await session.prompt("/goal-pause");

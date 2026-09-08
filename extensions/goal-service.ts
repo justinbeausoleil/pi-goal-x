@@ -596,7 +596,7 @@ export class GoalService {
 
 			return { ok: true, goal: written, previousGoalId, goalId, focusChanged };
 		} catch (error) {
-			return {ok: false, message: "Goal storage write failed; no change was saved. Restore storage access, refresh, and retry. " + String(error)};
+			return {ok: false, message: "Goal storage mutation failed; the requested change was not committed. Check storage access, refresh, and retry. " + String(error)};
 		} finally {
 			lock?.release();
 		}

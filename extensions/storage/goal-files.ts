@@ -507,7 +507,9 @@ export function archiveGoalFile(ctx: GoalFileContext, current: GoalRecord): Goal
 	if (isSafeActivePath(ctx, current.activePath)) {
 		try {
 			safeUnlinkGoalFile(ctx, GOALS_DIR, current.activePath);
-		} catch {}
+		} catch (error) {
+			throw new Error(`Archive copy saved at ${archivedPath}, but the active goal could not be removed and remains authoritative. Restore storage access and retry. ${String(error)}`);
+		}
 	}
 	return next;
 }

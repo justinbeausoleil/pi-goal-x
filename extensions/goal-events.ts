@@ -364,7 +364,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			const token = core.focusedOperationToken(current.id);
 			const work = goalWorkRevision(current);
 			const shouldResume = await ctx.ui.confirm("Resume paused goal?", `Goal: ${current.objective}`);
-			if (!core.isFocusedOperationCurrent(token) || !core.state.goal || goalWorkRevision(core.state.goal) !== work) return;
+			if (!core.isFocusedOperationCurrent(token) || core.state.goal !== current || goalWorkRevision(core.state.goal) !== work) return;
 			if (shouldResume) {
 				if (!core.setGoal({ ...current, status: "active", autoContinue: true, stopReason: undefined, pauseReason: undefined, pauseSuggestedAction: undefined }, ctx)) return;
 				core.releaseContinuationHold(ctx);

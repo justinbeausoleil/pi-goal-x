@@ -1,4 +1,5 @@
 import { type AgentToolResult, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isDeepStrictEqual } from "node:util";
 import { FOCUS_ENTRY, STATE_ENTRY, GOAL_EVENT_ENTRY, goalDetails } from "./goal-format.ts";
 import { loadGoalSettings, loadGoalSettingsFileConfig } from "./goal-settings.ts";
 import {
@@ -783,7 +784,14 @@ export function createGoalCore(
 		const previousGoalId = state.goal?.id ?? null;
 		if (shouldPersist && next && next.id === previousGoalId) {
 			try {
-				const result = goalService.apply(ctx, { reconcile: false, expectedWorkRevision: goalWorkRevision(state.goal!), mutate: () => next! });
+				const result = goalService.apply(ctx, {
+					reconcile: false, expectedWorkRevision: goalWorkRevision(state.goal!),
+					validate: fresh => isDeepStrictEqual(
+						{...normalizeGoalRecord(fresh), usage: undefined, updatedAt: undefined},
+						{...normalizeGoalRecord(state.goal), usage: undefined, updatedAt: undefined},
+					) ? undefined : {ok: false, message: "Goal controls changed; refresh and retry. No state change was saved."},
+					mutate: () => next!,
+				});
 				if (!result.ok) throw new Error(result.message ?? "State write was rejected.");
 				next = result.goal;
 				shouldPersist = false;
@@ -812,6 +820,13 @@ export function createGoalCore(
 
 	function archiveCurrentGoal(ctx: ExtensionContext, reason: StopReason | undefined): GoalRecord | null {
 		if (!state.goal) return null;
+		if (goalService.isTurnBuffered()) {
+			const error = goalService.flushForAudit(ctx);
+			if (error) {
+				ctx.ui.notify("Goal archive failed; nothing was cleared. " + error, "warning");
+				return null;
+			}
+		}
 		const result = goalService.apply(ctx, {
 			reconcile: false,
 			archive: true,
