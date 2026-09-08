@@ -90,6 +90,10 @@ requiring a separate pause command. Native abort signals invalidate the run
 immediately, including while a task dialog or review is awaiting a result.
 Oracle receives the parent signal; the auditor retains its separate controller
 so Escape can cancel only the review and offer the existing completion choice.
+Goal mutation tools request sequential execution from Pi. Within one assistant
+batch, agent pause waits for an earlier task dialog/audit/Oracle result; it then
+preserves its reason/suggestion and stops later work. User controls can interrupt
+those pending operations immediately. This does not add a cross-session lease.
 
 Automatic goal text, including the retained checkpoint, is capped at 10,000
 characters. Long data uses marked excerpts and detail/history retrieval links;

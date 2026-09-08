@@ -12,10 +12,14 @@ for (const [boundary, control] of [
 	...["pause", "unfocus", "switch", "clear"].map(control => ["next-turn", control]),
 	...["pause", "unfocus", "switch", "clear"].map(control => ["host-followup", control]),
 	["replay", "pause-resume"],
+	...["pause", "esc", "unfocus", "switch", "clear", "reload", "reopen"].map(control => ["replay", control]),
+	["dashboard", "esc"],
 	...["steering", "steering-followup"].flatMap(boundary => ["steering-only", "pause", "esc", "abort", "unfocus", "switch", "clear"].map(control => [boundary, control])),
 	...["dialog", "audit", "oracle"].flatMap(boundary => ["pause", "esc", "abort", "unfocus", "switch", "clear", "pause-resume", "switch-active"].map(control => [boundary, control])),
+	...["dialog", "audit", "oracle"].map(boundary => [boundary, "serial"]),
 	...["pause", "esc", "unfocus", "switch", "clear"].map(control => ["queued", control]),
 	["agent", "pause"],
+	["checkpoint-agent", "pause"],
 ]) test(`S1/S2: native stop ${boundary}/${control} prevents later work and preserves fresh user intent`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary!, control!], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},

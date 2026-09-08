@@ -1363,3 +1363,35 @@
   cross-session stale-control coverage if required, post-stop allowlist and
   dashboard Esc preservation, final fixed review/qualification and criterion
   mapping. Tickets008–014 and final packaged/Qwen/adoption gates remain open.
+
+### Ticket 007 preservation qualification checkpoint
+
+- Both reviews clear0751fdc; Spec independently passes all73 native cases.
+  Frozen0751fdc passes1214/1214 tests,76 files,176.0s. Discovery self-check
+  passes952 tests/71 files; historical NAF gate, ranking5 and dry pack pass.
+  Fresh B2/B7 pass53 timing limits with0 regressions and no agent/network/spawn
+  violations. Exact logs/artifact: Data007/async-{full,selfcheck,naf,ranking,
+  dry-pack.json,benchmark.log,benchmark.json}. Product commit0751fdc was pushed
+  to origin/feat/goal-reliability; no installed selection changed.
+- Native preservation additions pass: stale/replayed checkpoints retain get_goal
+  while rejecting write, including reload/reopen with the old runtime receipt;
+  dashboard Escape consumes collapse and permits work, while the next Escape
+  stops it. Twelve selected preservation cases pass; an additional checkpoint
+  agent-pause case passes, including reason/suggestion and fresh ordinary work.
+- Independent Standards coverage audit verifies Pi's sequential tool contract.
+  Three maintained batches now observe pending-entered → pending-released →
+  agent-pause-dispatch across task dialog, audit and Oracle. Nonterminal earlier
+  results (cancel/disapprove/actionable advice) let the pause actually dispatch;
+  the trailing write is absent. Same-host agent pause cannot precede an earlier
+  awaited result. Concurrent user controls remain the real cancellation races;
+  this in-session ticket does not introduce distributed execution coordination.
+- The first checkpoint-pause assertion incorrectly equated one checkpoint with
+  one executor response: Pi may consume a blocked trailing-tool result in the
+  same run. It now checks one actual checkpoint, one pause dispatch, no new
+  requests after settlement, and no forbidden work effect. Original failure is
+  retained at checkpoint-agent-native.log; corrected proof is
+  checkpoint-agent-corrected-native.log. Other logs: preservation-native.log,
+  allowlist-dashboard-native.log, replay-{reload,reopen}-first.log.
+- Current next step: freeze the completed85-case native matrix, final full
+  qualification and cumulative007 independent review against7680b30, then
+  close007 with exact criterion mapping. 008 is the next eligible ticket.

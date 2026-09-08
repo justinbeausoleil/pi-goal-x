@@ -11,7 +11,7 @@ import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, Mo
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const switching = control.startsWith("switch");
-const successor = control === "switch-active" || control === "pause-resume";
+const successor = ["switch-active", "pause-resume", "reload", "reopen"].includes(control);
 const reviewing = boundary === "audit" || boundary === "oracle";
 const work = mkdtempSync(join(tmpdir(), "goal-stop-native-"));
 const cwd = join(work, "project"), agentDir = join(work, "agent");
@@ -24,6 +24,15 @@ const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: 
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [];
 const timeline = [];
+const serialOrder = [];
+let pauseDispatches = 0;
+async function pendingBarrier() {
+  serialOrder.push("pending-entered");
+  await delay(50);
+  assert.equal(pauseDispatches, 0, "agent pause cannot dispatch during the earlier sequential tool");
+  assert.equal(existsSync(join(cwd, "forbidden.txt")), false);
+  serialOrder.push("pending-released");
+}
 const checkpoints = [];
 let session, host, terminalInput, selectId, primary, secondary, responses = [], beforeResponse, duringDialog, failure, deadline;
 let dialogSeen = false;
@@ -46,18 +55,21 @@ const server = http.createServer(async (req, res) => {
   if (res.destroyed) return;
   res.writeHead(200, {"content-type": "text/event-stream"});
   const submit = boundary === "oracle" && !payload.messages.some(message => message.role === "tool");
-  const delta = submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(advice)}}]} : {role: "assistant", content: boundary === "audit" ? "Late approval\n<approved/>" : "Advice recorded."};
+  const delta = submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(advice)}}]} : {role: "assistant", content: boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
   for (const [d, finish_reason] of [[delta, null], [{}, submit ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({id: "stop-review", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta: d, finish_reason}]})}\n\n`);
   res.end("data: [DONE]\n\n");
 });
 
 async function stop() {
+  if (control === "serial") { await pendingBarrier(); return; }
   if (control === "steering-only") return;
   if (control === "pause") await session.prompt("/goal-pause");
   else if (control === "pause-resume") { await session.prompt("/goal-pause"); await session.prompt("/goal-resume"); }
   else if (control === "esc") { const result = terminalInput("\x1b"); if (!result?.consume) void session.abort(); }
   else if (control === "abort") void session.abort();
   else if (control === "unfocus") await session.prompt("/goal-unfocus");
+  else if (control === "reload") await session.reload();
+  else if (control === "reopen") await host.switchSession(session.sessionManager.getSessionFile());
   else if (switching) { selectId = secondary.id; await session.prompt("/goal-focus"); }
   else if (control === "clear") await session.prompt("/goal-clear");
   else throw new Error(`Unsupported user stop: ${control}`);
@@ -73,7 +85,7 @@ async function bind() {
       if (boundary === "audit") return "continue_working";
       if (control === "esc") { assert.equal(terminalInput("\x1b"), undefined); return {decision: "cancel"}; }
       await duringDialog?.();
-      return {decision: "confirm"};
+      return {decision: control === "serial" ? "cancel" : "confirm"};
     },
   }});
 }
@@ -101,7 +113,10 @@ async function create({sessionManager, sessionStartEvent}) {
   if (reviewing) runtime.registerProvider("fixture", {baseUrl: `http://127.0.0.1:${server.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: model.cost}]});
   const created = await createAgentSession({cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager, settingsManager: settings, sessionStartEvent});
   session = created.session;
-  session.subscribe(event => { if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason}); });
+  session.subscribe(event => {
+    if (testing && event.type === "tool_execution_start" && event.toolName === "update_goal" && event.args?.status === "paused") { pauseDispatches++; serialOrder.push("agent-pause-dispatch"); }
+    if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end", "message_end"].includes(event.type)) timeline.push({event: event.type, reason: event.message?.stopReason});
+  });
   session.agent.streamFunction = (requestedModel, context, options) => {
     requests.push(context);
     timeline.push({event: "request", count: requests.length});
@@ -170,9 +185,23 @@ try {
     await session.prompt("/goal-focus");
   }
   const before = requests.length;
+  const checkpointsBefore = checkpoints.length;
   testing = true;
   if (boundary !== "ordinary") await session.prompt("/goal-resume");
-  if (boundary === "ordinary") {
+  if (control === "serial") {
+    const revision = results.findLast(result => result.details?.goal?.id === primary.id)?.details.work_revision;
+    assert(revision);
+    const pendingCall = boundary === "dialog"
+      ? {name: "set_goal_tasks", args: {mode: "upsert", expected_work_revision: revision, tasks: [{id: "late", title: "Pending proposal before agent pause"}]}}
+      : {name: "update_goal", args: {status: boundary === "audit" ? "complete" : "blocked", reason: "The same blocker persisted over three attempts."}};
+    if (boundary === "dialog") { process.env.PI_GOAL_AUTO_CONFIRM = ""; duringDialog = pendingBarrier; }
+    responses = [[pendingCall, pause, write("forbidden.txt")]];
+    await session.prompt("Finish the pending review, then pause with the supplied reason and suggestion.");
+    await settled();
+    assert.equal(pauseDispatches, 1);
+    assert.deepEqual(serialOrder, ["pending-entered", "pending-released", "agent-pause-dispatch"]);
+    if (reviewing) { await childClosed; assert.equal(transportAborted, false, "the child finished before agent pause became executable"); }
+  } else if (boundary === "ordinary") {
     responses = [[{name: "bash", args: {command: "printf started > ordinary-started.txt; sleep 0.2; printf complete > ordinary-finished.txt"}}], [write("ordinary-later.txt")]];
     const pending = session.prompt("Run this unrelated ordinary request while the goal stays paused.");
     for (let i = 0; i < 300 && !existsSync(join(cwd, "ordinary-started.txt")); i++) await delay(10);
@@ -183,6 +212,16 @@ try {
     await settled();
     assert.equal(readFileSync(join(cwd, "ordinary-finished.txt"), "utf8"), "complete", "a paused goal does not own this running ordinary tool");
     assert(existsSync(join(cwd, "ordinary-later.txt")), "goal controls preserve subsequent ordinary dispatches");
+  } else if (boundary === "dashboard") {
+    beforeResponse = () => {
+      terminalInput("\x1b[116;6u");
+      assert.deepEqual(terminalInput("\x1b"), {consume: true}, "expanded dashboard consumes Escape to collapse");
+      beforeResponse = stop;
+    };
+    responses = [[write("dashboard-continued.txt")], [write("forbidden.txt")]];
+    await session.prompt("Continue while the dashboard collapses, then honor the second Escape.");
+    await settled();
+    assert(existsSync(join(cwd, "dashboard-continued.txt")), "the first Escape only collapses the dashboard");
   } else if (boundary === "dialog") {
     process.env.PI_GOAL_AUTO_CONFIRM = "";
     duringDialog = stop;
@@ -233,12 +272,23 @@ try {
     const old = checkpoints.find(message => message.details.goalId === primary.id);
     assert(old, "public startup issued the checkpoint being replayed");
     await stop();
-    responses = [[write("forbidden.txt")]];
+    const resultIndex = results.length;
+    responses = [[{name: "get_goal", args: {}}, write("forbidden.txt")]];
     replaying = true;
     await session.sendCustomMessage(old, {triggerTurn: true});
     replaying = false;
     assert.equal(existsSync(join(cwd, "forbidden.txt")), false, "a host-held old checkpoint cannot regain authority after resume");
+    assert(results.slice(resultIndex).some(result => result.toolName === "get_goal" && !result.isError), "the stale run retains the read-only get_goal allowlist");
     await settled();
+  } else if (boundary === "checkpoint-agent") {
+    responses = [[pause, write("forbidden.txt")]];
+    await settled();
+    const stoppedRequests = requests.length;
+    await delay(50);
+    assert.equal(checkpoints.length - checkpointsBefore, 1, "agent pause consumes one actual checkpoint and schedules no successor");
+    assert.equal(requests.length, stoppedRequests, "the settled pause schedules no further requests");
+    assert.equal(pauseDispatches, 1);
+    assert.equal(checkpoints.at(-1).details.goalId, primary.id);
   } else if (boundary === "queued") {
     responses = [[write("forbidden.txt")]];
     await stop();
@@ -277,7 +327,7 @@ try {
   if (["unfocus", "clear"].includes(control) && boundary !== "agent") assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, "paused");
-  if (boundary === "agent") {
+  if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {
     assert.equal(focused.pauseReason, pause.args.reason);
     assert.equal(focused.pauseSuggestedAction, pause.args.suggested_action);
   }
