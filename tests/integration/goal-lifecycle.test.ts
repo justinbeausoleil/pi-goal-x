@@ -6,6 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const worker = fileURLToPath(new URL("../goal-lifecycle-worker.mjs", import.meta.url));
+for (const [boundary, control] of [
+	...["response", "dispatched"].flatMap(boundary => ["pause", "esc", "abort", "unfocus", "switch", "switch-active", "clear"].map(control => [boundary, control])),
+	...["pause", "esc", "unfocus", "switch", "clear"].map(control => ["queued", control]),
+	["agent", "pause"],
+]) test(`S1/S2: native stop ${boundary}/${control} prevents later work and preserves fresh user intent`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary!, control!], {
+		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
+	});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const scenario of ["storage-write", "storage-lock-access", "storage-lock", "storage-clear-lock", "storage-ledger", "storage-conflict", "storage-resume", "storage-resume-confirm", "storage-pause", "clear-cancel", "clear-confirm", "clear-failure", "clear-unlink-failure", "clear-stale", "resume-stale-proposal-confirm", "resume-stale-control-confirm", "resume-stale-tree-confirm", "resume-stale-session-confirm", "child-fresh", "child-fork", "child-reopen", "child-nested"]) test(`S2: native ${scenario} preserves ownership and authoritative mutation outcomes`, {timeout: 15000}, async () => {
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-ownership-worker.mjs", import.meta.url)), scenario], {
 		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},

@@ -103,12 +103,14 @@ export function registerGoalEvents(core: GoalCore): void {
 	pi.on("message_start", async (event) => {
 		const message = event.message;
 		if (message.role === "custom" && message.customType === GOAL_EVENT_ENTRY) {
+			core.runningGoalId = null;
 			const goalId = goalEventMessageId(message);
 			const markerId = typeof message.content === "string" ? extractGoalIdFromInjectedMessage(message.content) : null;
 			// Empty identity cannot pass isActionableContinuationGoal; null means user work.
 			core.runtime.setCheckpoint(goalId && goalId.length <= 80 && goalId === markerId ? goalId : "");
 			core.clearContinuationState(false);
 		} else if (message.role === "user") {
+			core.runningGoalId = null;
 			draftingRun = hasActiveDraft(core);
 			core.runtime.setCheckpoint(null);
 			core.clearContinuationState();
@@ -121,7 +123,8 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.reconcileFocusedGoalFromDisk(ctx);
 		const checkpoint = core.runtime.getCheckpointGoalId();
 		const stale = checkpoint !== null && !core.isActionableContinuationGoal(checkpoint);
-		core.runningGoalId = !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
+		// A focus change during a response cannot retarget its eventual abort.
+		core.runningGoalId ??= !stale && core.state.goal?.status === "active" ? core.state.goal.id : null;
 		const filtered = filterGoalSessionContext(event.messages);
 		const messages = compactGoalCheckpointContext(filtered ?? event.messages, core.state.goal) ?? filtered ?? event.messages;
 		// A stopped or pending-review goal still needs its authoritative guidance.
@@ -222,7 +225,7 @@ export function registerGoalEvents(core: GoalCore): void {
 			// Pause only on a genuine user abort (signal fired). A provider- or
 			// transport-side abort without the signal routes into recovery via
 			// agent_end instead of stranding the goal.
-			if (ctx.signal?.aborted) core.pauseActiveGoal(ctx);
+			if (ctx.signal?.aborted && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
 			return;
 		}
 		// Provider failures are not completed work: do not turn one failed turn
@@ -316,7 +319,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	pi.on("message_end", async (event, ctx) => {
 		// Signal-aware: see turn_end — only user aborts pause; provider-side
 		// aborts are handled by agent_end's recovery path.
-		if (isAbortedAssistantMessage(event.message) && ctx.signal?.aborted) core.pauseActiveGoal(ctx);
+		if (isAbortedAssistantMessage(event.message) && ctx.signal?.aborted && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
 		const raw = asRecord(event.message);
 		if (raw?.role === "custom" && raw.customType === GOAL_EVENT_ENTRY && raw.display !== false) {
 			return { message: { ...event.message, display: false } as typeof event.message };
@@ -534,6 +537,11 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.runningGoalId = null;
 		continuationAfterSettleFor = null;
 		networkErrorRecoveryAfterSettleFor = null;
+		const selectedGoalId = core.state.goal?.id;
+		if (endedGoalId && selectedGoalId && selectedGoalId !== endedGoalId && core.runtime.continuationPendingFor(selectedGoalId)) {
+			// A user-selected successor waits for the old run's abort to settle.
+			continuationAfterSettleFor = selectedGoalId;
+		}
 
 		// Account for any tokens from aborted in-flight assistant messages so
 		// they are not silently lost (but charge them to the original goal).

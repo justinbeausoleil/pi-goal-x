@@ -1205,3 +1205,64 @@
   repair through those shared boundaries. Preserve ordinary explicit user
   work and already-dispatched effects; do not substitute hasPendingMessages
   for actual host queue behavior. All008–014 gates remain unchanged.
+
+### Ticket 007 first native dispatch reproductions
+
+- 006 closure is committed and pushed as7680b30; final runtime is d5ad5cb.
+  The new standalone native stop worker uses the actual loader/runtime, public
+  goal/task creation, real command/terminal handling and controlled provider
+  responses. It checks forbidden file effects and a fresh ordinary user write
+  after the stop. No product007 changes are made yet.
+- Initial fixture attempts returned while task confirmation had ended a run
+  but a checkpoint still had pending scripted work. The settling condition now
+  waits for both the scripted responses and native host idle, matching the
+  established ownership seam. All first-attempt logs remain in Data007.
+- Corrected response-boundary probes reproduce unauthorized file writes after
+  public /goal-pause, focus switch and confirmed /goal-clear. Native Esc/abort,
+  unfocus and agent pause already prevent the effect and preserve later ordinary
+  user work. Scheduled-checkpoint pause/Esc/unfocus/switch/clear pass. A bare
+  idle SDK abort emits no user-stop extension event and does not cancel an
+  extension timer; the actual queued-user-Escape path does pass. Retain that
+  host characterization separately from active abort/terminal behavior.
+- Current diagnosis: tool_call rejects stale checkpoint identities and the
+  current turn's explicit stop marker. User pause, focus and clear do not all
+  mark/abort their originating active request; per-response turn advancement
+  also clears a turn stop. A repair must bind the whole old run/generation,
+  invalidate asynchronous dialogs/results, cancel supported work, and reset
+  only on fresh user/authorized checkpoint intent. Do not accidentally pause
+  newly focused goal B when the host reports old goal A's abort.
+- Next: finish all relevant caller tracing, add active-secondary and repeated-
+  response checks, repair the existing runtime/dispatch boundary, then expand
+  the native matrix to already-dispatched effects, task/audit/Oracle dialogs
+  and actual steering/custom/next-turn queues. tests/goal-stop-worker.mjs is a
+  work-in-progress seam; register cases in the existing integration suite once
+  their required behavior is implemented. 007 criteria remain unchecked.
+
+### Ticket 007 initial stop boundary repair
+
+- Twenty new registered native cases pass: six response controls plus switching
+  to an active successor, the same seven controls against a running bash tool,
+  five scheduled-checkpoint controls and an agent pause after an earlier work
+  effect. The first bash effect remains; its later write is cancelled. Public
+  ordinary-user writes after stops remain available. Three dispatched-work
+  probes also fail against frozen d5; all red/green logs remain in Data007.
+- Shared core cancellation invalidates focused operations, marks the current
+  turn stopped, cancels continuation/audit work and asks Pi to abort a busy run.
+  Pause, focus switch and confirmed clear use it; unfocus retains its existing
+  cancellation path. A failed pause holds automatic work while reporting the
+  unsaved stop. Clear cancellation still never enters the cancellation path.
+- Active-successor coverage caught the old run being rebound to newly focused
+  B on each response, then pausing B when A's abort settled. Running identity
+  now binds at fresh user/checkpoint intent and remains through the response
+  chain. A user's already-queued successor is revalidated after the old run
+  settles. Automatic abort handlers check their originating goal; unfocus no
+  longer erases that attribution before settlement.
+- The active-B fixture initially consumed B's scripted output in the old
+  aborted run. It now observes actual native checkpoint starts and offers B's
+  proof only to B's own checkpoint; the corrected case fails before the run
+  identity repair and passes after it. Both intermediate traces are retained.
+- 41 native checks (20 new plus21 affected006 regressions),110 targeted checks,
+  type and lint pass. Fixed-base review and full qualification follow. Remaining
+  007 acceptance includes host-held checkpoint generations/duplicate delivery,
+  fresh steering and custom/next-turn queues, dialog/audit/Oracle races, durable
+  cancellation and post-stop allowlist coverage. No007 criterion is closed yet.

@@ -161,7 +161,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		} catch {}
 		if (detachedGoalId && wasBusy) core.runtime.markTurnStopped(detachedGoalId);
 		core.setFocusedGoalId(null, ctx, "unfocused", { recordLedger: false });
-		core.runningGoalId = null;
 		core.runtime.setCheckpoint(null);
 		core.runtime.clearPostCompactReminder();
 		if (core.auditAbortController) core.auditAbortController.abort();

@@ -406,6 +406,14 @@ export function createGoalCore(
 		clearActiveAccounting();
 	}
 
+	function cancelFocusedWork(ctx: ExtensionContext, goalId: string): void {
+		invalidateFocusedOperations();
+		runtime.markTurnStopped(goalId);
+		clearContinuationState();
+		auditAbortController?.abort();
+		try { if (!ctx.isIdle()) ctx.abort?.(); } catch {}
+	}
+
 	function openGoals(): GoalRecord[] {
 		return openGoalsFromPool(goalsById);
 	}
@@ -426,6 +434,7 @@ export function createGoalCore(
 		opts: { recordLedger?: boolean } = {},
 	): void {
 		const previousGoalId = focusedGoalId;
+		if (previousGoalId && goalId && previousGoalId !== goalId) cancelFocusedWork(ctx, previousGoalId);
 		if (previousGoalId !== goalId) goalService.flushTurn(ctx); // P1-3: persist the old buffer before switching focus
 		assignFocusedGoalId(goalId && goalsById.has(goalId) ? goalId : null);
 		if (previousGoalId !== focusedGoalId) {
@@ -820,6 +829,7 @@ export function createGoalCore(
 
 	function archiveCurrentGoal(ctx: ExtensionContext, reason: StopReason | undefined): GoalRecord | null {
 		if (!state.goal) return null;
+		cancelFocusedWork(ctx, state.goal.id);
 		if (goalService.isTurnBuffered()) {
 			const error = goalService.flushForAudit(ctx);
 			if (error) {
@@ -842,6 +852,7 @@ export function createGoalCore(
 
 	function stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): boolean {
 		if (!state.goal) return false;
+		cancelFocusedWork(ctx, state.goal.id);
 		const result = goalService.apply(ctx, {
 			reconcile: false,
 			mutate: (g) => ({ ...g, status, stopReason: reason, updatedAt: nowIso(), ...(status === "paused" && reason === "user" ? {autoContinue: false, pauseReason: undefined, pauseSuggestedAction: undefined} : {}) }),
@@ -865,7 +876,10 @@ export function createGoalCore(
 			error = goalService.flushForAudit(ctx); // User-visible status changes must persist now.
 			updateUI(ctx);
 		}
-		if (error) ctx.ui.notify("Goal stop failed; no stop was saved. Check goal storage and retry. " + error, "warning");
+		if (error) {
+			core.continuationHeld = true;
+			ctx.ui.notify("Goal stop failed; no stop was saved. Check goal storage and retry. " + error, "warning");
+		}
 		return result.ok && !error;
 	}
 
