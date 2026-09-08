@@ -7,3 +7,5 @@
 
 - Corrected rehearsal 34180571692 and exact-main CI 34180572174 passed on 30a062e. No package version was published. Started npm trust setup scoped to pi-goal-x, tmonk/pi-goal-x and publish.yml with direct publish permission; awaiting one-time Safari passkey approval. Dry run does not prove the OIDC exchange.
 - npm trust approval expired before Safari was unlocked (E404 from the approval poll). Trust creation is not confirmed. Retry setup when the user is present; do not claim unattended publication is active until npm confirms the trust.
+
+- Safari authentication succeeded on retry. npm trust exited successfully and confirmed configuration e139ac83-dc67-43f3-80ea-cb63f7bc882f for tmonk/pi-goal-x, publish.yml, with publish and stage publish permissions. Direct unattended publishing is authorized; no npm write token or approval environment is configured. The next actual release will verify the complete OIDC exchange; no extra version was published for setup.
