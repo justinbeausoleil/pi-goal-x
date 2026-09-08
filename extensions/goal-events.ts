@@ -424,6 +424,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		const discussionHeld = hasActiveDraft(core) || core.draftContinuationHeld;
 		const stoppedContext = core.state.goal.status === "active" && !discussionHeld ? "" : [
 			`work_revision: ${goalWorkRevision(core.state.goal)}`,
+			'Retained requirements: get_goal(section="scope"). Plan removal and settings do not waive them.',
 			untrustedObjectiveBlock(core.state.goal), taskListBlock(core.state.goal, settings, 0),
 			verificationContractBlock(core.state.goal, settings), budgetLine(core.state.goal),
 			discussionHeld ? "Draft discussion is active or cancelled; automatic goal work is held. Confirm the revision or use /goal-resume after cancellation to continue when the lifecycle and budget allow it." : "",

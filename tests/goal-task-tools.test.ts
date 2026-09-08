@@ -116,7 +116,6 @@ test("ordinary structural writes cannot erase contracts or edit completed task r
 			{ mode: "replace", tasks: [{ ...tasks[0], title: "A changed" }, tasks[1]] },
 			{ mode: "upsert", tasks: [{ id: "a", verification_contract: "Weaker evidence" }] },
 			{ mode: "replace", tasks: [{ id: "a", title: "A" }, tasks[1]] },
-			{ mode: "replace", tasks: [tasks[1]] },
 		]) {
 			const result = await call("set_goal_tasks", { ...params, expected_work_revision });
 			assert.match(result.content[0].text, /scope revision|completed task/);
@@ -126,6 +125,9 @@ test("ordinary structural writes cannot erase contracts or edit completed task r
 		assert.equal(unchanged.details.goal.taskList.tasks[0].status, "complete");
 		assert.equal(unchanged.details.goal.taskList.tasks[0].evidence, "Observed A");
 		assert.equal(unchanged.details.goal.taskList.tasks[0].completedAt, complete.details.goal.taskList.tasks[0].completedAt);
+		const removed = await call("set_goal_tasks", { expected_work_revision: unchanged.details.work_revision, tasks: [tasks[1]] });
+		assert.deepEqual(removed.details.goal.taskList.tasks.map((task: GoalTask) => task.id), ["b"]);
+		assert.equal(removed.details.goal.retainedScope.tasks.a.evidence, "Observed A", "structural deletion preserves required proof");
 	} finally { f.cleanup(); }
 });
 

@@ -14,6 +14,7 @@ import { mergeGoalPromptFromDisk } from "./storage/goal-files.ts";
 import { showEscapeDialog, type EscapeDialogResult } from "./widgets/goal-escape-dialog.ts";
 import type { GoalCore } from "./goal-state.ts";
 import type { GoalMutationOutcome } from "./goal-service.ts";
+import { retainedScopeCompletionWarning } from "./goal-scope.ts";
 
 // update_goal(complete) execution path: validates the completable state,
 // runs the independent auditor (or the disabled/legacy-skip branches), and
@@ -35,6 +36,8 @@ export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContex
 		};
 	}
 	if (!core.state.goal) throw new Error("Goal disappeared during completion validation.");
+	const scopeWarning = retainedScopeCompletionWarning(core.state.goal);
+	if (scopeWarning) return {content: [{type: "text", text: scopeWarning}], details: goalDetails(core.state.goal)};
 
 	// Task gate: warn if blockCompletion is enabled and tasks remain pending
 	const disableTasksSettings = loadGoalSettings(ctx.cwd).disableTasks;

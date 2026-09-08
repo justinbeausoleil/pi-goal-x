@@ -20,6 +20,7 @@ import {
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
 import { taskIndex } from "./goal-task-index.ts";
+import { retainGoalScope, retainedGoalScope, retainedScopeCompletionWarning, retainedTaskEvidenceError } from "./goal-scope.ts";
 
 /**
  * Session state access + runtime glue hooks that the GoalService needs.
@@ -155,11 +156,14 @@ function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string |
 function taskStructureError(before: GoalRecord, after: GoalRecord): string | undefined {
 	if (before.taskList?.tasks === after.taskList?.tasks) return;
 	const incoming = taskIndex(after.taskList?.tasks).byId;
+	for (const [id, task] of Object.entries(retainedGoalScope(after).tasks)) {
+		const next = incoming.get(id);
+		if (next && task.verificationContract.trim() !== next.verificationContract?.trim()) {
+			return `Task "${id}" has a retained contract; removing or changing it requires a human scope revision through /goal-tweak.`;
+		}
+	}
 	for (const { task } of taskIndex(before.taskList?.tasks).ordered) {
 		const next = incoming.get(task.id);
-		if (task.verificationContract?.trim() && task.verificationContract.trim() !== next?.verificationContract?.trim()) {
-			return `Task "${task.id}" has a retained contract; removing or changing it requires a human scope revision through /goal-tweak.`;
-		}
 		if (next && task.status === "complete" && (task.title.trim() !== next.title.trim() || (task.verificationContract?.trim() ?? "") !== (next.verificationContract?.trim() ?? ""))) {
 			return `Cannot edit completed task "${task.id}" through an ordinary structural change; a human scope revision must reopen it and invalidate its evidence.`;
 		}
@@ -266,10 +270,10 @@ export class GoalService {
     return null;
    }
    const base = freshDisk;
-			const next = { ...goal, revision: (base.revision ?? 0) + 1, usage: revisionChanged ? {
+			const next = retainGoalScope(goal, { ...goal, revision: (base.revision ?? 0) + 1, usage: revisionChanged ? {
 				tokensUsed: base.usage.tokensUsed + Math.max(0, goal.usage.tokensUsed - expected.usage.tokensUsed),
 				activeSeconds: base.usage.activeSeconds + Math.max(0, goal.usage.activeSeconds - expected.usage.activeSeconds),
-			} : goal.usage };
+			} : goal.usage });
 			const written = this.turn.archive || next.status === "complete"
 				? archiveGoalFile(ctx, next)
 				: writeActiveGoalFile(ctx, next);
@@ -473,11 +477,11 @@ export class GoalService {
 			if (revisionError) return { ok: false, message: revisionError };
 			const invalid = spec.validate?.(base);
 			if (invalid) return invalid;
-			const mutated = sanitizeGoalPaths(ctx, {
+			const mutated = retainGoalScope(current, sanitizeGoalPaths(ctx, {
 				...spec.mutate(base),
 				revision: (current.revision ?? 0) + 1,
-			});
-			const structureError = taskStructureError(current, mutated);
+			}));
+			const structureError = taskStructureError(current, mutated) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 			if (spec.ledger) {
 				try {
@@ -520,11 +524,11 @@ export class GoalService {
 			if (revisionError) return { ok: false, message: revisionError };
 			const invalid = spec.validate?.(base);
 			if (invalid) return invalid;
-			const mutated = {
+			const mutated = retainGoalScope(current, {
 				...spec.mutate(base),
 				revision: capturedRevision + 1,
-			};
-			const structureError = taskStructureError(current, mutated);
+			});
+			const structureError = taskStructureError(current, mutated) ?? (mutated.status === "complete" && current.status !== "complete" && !spec.archive ? retainedScopeCompletionWarning(mutated) : undefined);
 			if (structureError) return { ok: false, message: structureError };
 
 			// 4. authoritative file write (active or archive). A failure here throws
@@ -602,8 +606,10 @@ export class GoalService {
 			const updated = spec.update(task);
 			if (typeof updated === "object" && "ok" in updated && !updated.ok) return updated;
 			const updatedTask = updated as GoalTask;
+			const evidenceError = retainedTaskEvidenceError(current, updatedTask);
+			if (evidenceError) return {ok: false, message: evidenceError};
 			const updatedTasks = updateTaskInTree(current.taskList.tasks, spec.taskId, () => updatedTask);
-			const mutated = sanitizeGoalPaths(ctx, {
+			const mutated = retainGoalScope(current, sanitizeGoalPaths(ctx, {
 				...current,
 				taskList: { ...current.taskList, tasks: updatedTasks },
 				// Execution focus (§8): start sets it explicitly; completing or
@@ -611,7 +617,7 @@ export class GoalService {
 				currentTaskId: resolveUpdatedCurrentTaskId(spec, current.currentTaskId, updatedTask),
 				updatedAt: nowIso(),
 				revision: (current.revision ?? 0) + 1,
-			});
+			}));
 			if (spec.ledger) {
 				try {
 					this.turn.ledger.push(...spec.ledger(mutated, updatedTask));
@@ -668,6 +674,8 @@ export class GoalService {
    const updated = spec.update(task);
    if ("ok" in updated && !updated.ok) return updated;
    const updatedTask = updated as GoalTask;
+   const evidenceError = retainedTaskEvidenceError(base, updatedTask);
+   if (evidenceError) return {ok: false, message: evidenceError};
    location!.tasks[location!.index] = updatedTask;
    if (updatedTask.id !== task.id) { locations.delete(task.id); locations.set(updatedTask.id, location!); }
    if (updatedTask.subtasks !== task.subtasks) {
@@ -679,7 +687,7 @@ export class GoalService {
    if (spec.ledger) events.push(...spec.ledger(next, updatedTask));
   }
   if (this.turn.active) return this.apply(ctx, {reconcile: false, expectedGoalId: current.id, focusToken: specs[0]?.focusToken, mutate: () => next, ledger: events});
-  const written = writeActiveGoalFile(ctx, {...next, revision: (base.revision ?? 0) + 1});
+  const written = writeActiveGoalFile(ctx, retainGoalScope(base, {...next, revision: (base.revision ?? 0) + 1}));
   this.appendLedgerEventsBestEffort(ctx, events);
   this.trackBaseline(written.id, written.usage);
   this.ref.setFocused(written);
@@ -745,14 +753,16 @@ export class GoalService {
 			const updated = spec.update(task);
 			if (typeof updated === "object" && "ok" in updated && !updated.ok) return updated;
 			const updatedTask = updated as GoalTask;
+			const evidenceError = retainedTaskEvidenceError(base, updatedTask);
+			if (evidenceError) return {ok: false, message: evidenceError};
 			const updatedTasks = updateTaskInTree(base.taskList.tasks, spec.taskId, () => updatedTask);
-			const mutated = {
+			const mutated = retainGoalScope(base, {
 				...base,
 				taskList: { ...base.taskList, tasks: updatedTasks },
 				currentTaskId: resolveUpdatedCurrentTaskId(spec, base.currentTaskId, updatedTask),
 				updatedAt: nowIso(),
 				revision: capturedRevision + 1,
-			};
+			});
 			const written = writeActiveGoalFile(ctx, mutated);
 			if (spec.ledger) {
 				try {
@@ -789,7 +799,7 @@ export class GoalService {
 		// P1-3: within a turn the persist is buffered; the flush at turn end
 		// performs the single write + ledger batch.
 		if (this.turn.active) {
-			const next = { ...current, updatedAt: nowIso() };
+			const next = retainGoalScope(current, { ...current, updatedAt: nowIso() });
 			this.turn.goal = next;
 			this.ref.setFocused(next);
 			return next;
@@ -811,7 +821,7 @@ export class GoalService {
 				// revision. All other fields stay authoritative from disk.
 				const { tokens, seconds } = this.usageDelta(current, freshDisk);
 				if (tokens === 0 && seconds === 0) return null;
-				const merged = mergeGoalPromptFromDisk(ctx, {
+				const merged = retainGoalScope(mergeGoalPromptFromDisk(ctx, {
 					...freshDisk,
 					usage: {
 						tokensUsed: freshDisk.usage.tokensUsed + tokens,
@@ -819,13 +829,13 @@ export class GoalService {
 					},
 					updatedAt: nowIso(),
 					revision: (freshDisk.revision ?? 0) + 1,
-				});
+				}));
 				const written = merged.status === "complete" ? archiveGoalFile(ctx, merged) : writeActiveGoalFile(ctx, merged);
 				this.trackBaseline(written.id, written.usage);
 				this.ref.setFocused(written);
 				return written;
 			}
-			const merged = mergeGoalPromptFromDisk(ctx, { ...current, updatedAt: nowIso(), revision: capturedRevision + 1 });
+			const merged = retainGoalScope(mergeGoalPromptFromDisk(ctx, { ...current, updatedAt: nowIso(), revision: capturedRevision + 1 }));
 			const written = merged.status === "complete" ? archiveGoalFile(ctx, merged) : writeActiveGoalFile(ctx, merged);
 			this.trackBaseline(written.id, written.usage);
 			this.ref.setFocused(written);
@@ -838,7 +848,7 @@ export class GoalService {
 	/** Create a goal: write active file → ledger → memory/focus commit. */
 	create(ctx: GoalServiceContext, spec: { goal: GoalRecord; ledger?: GoalLedgerEvent[] }): GoalMutationResult {
 		const previousGoalId = this.ref.getFocused()?.id ?? null;
-		const written = writeActiveGoalFile(ctx, spec.goal);
+		const written = writeActiveGoalFile(ctx, retainGoalScope(spec.goal));
 		if (spec.ledger && spec.ledger.length > 0) {
 			this.appendLedgerEventsBestEffort(ctx, spec.ledger);
 		}

@@ -13,7 +13,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { GoalService, type GoalServiceRef } from "../extensions/goal-service.ts";
-import { cloneGoal, createGoal, type GoalRecord } from "../extensions/goal-record.ts";
+import { cloneGoal, createGoal, goalWorkRevision, type GoalRecord } from "../extensions/goal-record.ts";
 import { writeActiveGoalFile, parseGoalFile, serializeGoalFile } from "../extensions/storage/goal-files.ts";
 import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 import { acquireGoalLock } from "../extensions/storage/goal-lock.ts";
@@ -97,6 +97,30 @@ function activeFiles(cwd: string): string[] {
 		return [];
 	}
 }
+
+for (const buffered of [false, true]) it(`migrates surviving legacy scope on the first successful ${buffered ? "buffered" : "immediate"} write without invalidating work`, () => {
+	const f = fixture();
+	try {
+		const file = path.join(f.cwd, f.written.activePath!);
+		const original = readFileSync(file, "utf8");
+		const revision = goalWorkRevision(f.written);
+		assert.equal(f.service.reconcileFocused(f), true);
+		assert.equal(f.ref.getFocused()!.retainedScope, undefined);
+		assert.equal(readFileSync(file, "utf8"), original, "reading a legacy record never migrates it");
+		assert.equal(f.service.apply(f, {validate: () => ({ok: false, message: "Rejected mutation"}), mutate: g => g}).ok, false);
+		assert.equal(readFileSync(file, "utf8"), original, "a rejected mutation never migrates it");
+		if (buffered) f.service.beginTurn(f, f.written.id);
+		f.service.persist(f);
+		if (buffered) {
+			assert.equal(readFileSync(file, "utf8"), original);
+			f.service.endTurn(f);
+		}
+		const saved = parseGoalFile(file)!;
+		assert.equal(saved.retainedScope!.objective, f.written.objective);
+		assert.deepEqual(saved.retainedScope!.tasks, {});
+		assert.equal(goalWorkRevision(saved), revision, "accounting migration does not invalidate work");
+	} finally { f.cleanup(); }
+});
 
 it("keeps an old locked buffer when focus changes, then flushes without stealing focus", () => {
 	const f = fixture();

@@ -16,6 +16,7 @@ const large = process.argv.includes("--large");
 const taskCount = large ? 200 : 50, firstCurrent = large ? 142 : 40, parentId = `t${firstCurrent - 1}`;
 const adviceReview = process.argv.includes("--advice-review");
 const review = adviceReview || process.argv.includes("--audit-only");
+const qualifyTasks = review || stopState === "complete";
 const stall = process.argv.includes("--stall");
 const realNow = Date.now;
 let clockOffset = 0;
@@ -61,6 +62,10 @@ const steps = Array.from({ length: taskCount / 50 }, (_, batch) => ({ name: "set
 	tasks: Array.from({ length: 50 }, (_, index) => { const id = batch * 50 + index + 1; return { id: `t${id}`, ...(id >= firstCurrent && id <= firstCurrent + 2 ? { parent_id: parentId } : {}), title: `Fixture task ${id}${long ? " title data".repeat(2000) : ""}`, verification_contract: `Evidence for task ${id} must match its artifact.${long ? " contract data".repeat(2000) : ""}` }; }), block_completion: stopState !== "complete" && !review,
 } }));
 const objective = `Preserve the public fixture plan and its completed evidence through three compactions.${long ? " objective data".repeat(2000) : ""}\nVerification contract: unique-goal-contract-sentinel ${long ? "verification data ".repeat(2000) : "Preserve all completed evidence."}`;
+// Retained-task evidence now gates auditing. Obtain the durable rejection
+// before planning, then exercise the full large-plan auditor again after
+// completing its required tasks through public tools below.
+if (review) steps.unshift({ name: "update_goal", args: { status: "complete" } });
 if (stopState === "budget_limited") steps.unshift({ name: "create_goal", args: { objective, token_budget: 100000 } });
 for (let cycle = 0; cycle < 3; cycle++) {
 	steps.push(
@@ -69,12 +74,20 @@ for (let cycle = 0; cycle < 3; cycle++) {
 		{ name: "update_goal_task", args: { task_id: `t${firstCurrent + cycle}`, status: "start" } },
 		{ name: "fixture_padding", args: {} },
 		...(adviceReview && cycle === 0 ? [{ name: "update_goal", args: { status: "blocked", reason: "The same fixture blocker recurred over three turns." } }] : []),
-		...(review && cycle === 0 ? [{ name: "update_goal", args: { status: "complete" } }] : []),
 		...(mode === "manual" ? [{ manualBoundary: true }] : mode === "overflow" ? [{ overflow: true }] : []),
 		{ name: "read", args: { path: `evidence-${cycle}.txt` }, afterCompaction: cycle + 1 },
 	);
 }
-steps.push({ name: "get_goal", args: { verbose: true }, input: stopState === "budget_limited" ? 100001 : 100 });
+steps.push({ name: "get_goal", args: { verbose: true } });
+const auditEvidence = Object.fromEntries(Array.from({length: taskCount}, (_, i) => [`t${i + 1}`, `proof-${i + 1}`]));
+if (qualifyTasks) {
+	steps.push({ name: "write", args: { path: "audit-evidence.json", content: JSON.stringify(auditEvidence) } });
+	const ids = Array.from({length: taskCount - 3}, (_, i) => `t${i + 4}`).filter(id => id !== parentId);
+	ids.push(parentId); // Complete children before their non-lightweight parent.
+	for (let offset = 0; offset < ids.length; offset += 100) steps.push({ name: "update_goal_task", args: { updates: ids.slice(offset, offset + 100).map(task_id => ({task_id, status: "complete", evidence: `audit-evidence.json: ${task_id} contains ${auditEvidence[task_id]}`})) } });
+	if (review) steps.push({ name: "update_goal", args: { status: "complete" } });
+}
+if (stopState === "budget_limited") steps.push({ name: "get_goal", args: { verbose: true }, input: 100001 });
 if (stopState === "budget_limited") steps.push({ budgetWrap: true });
 else if (stopState === "blocked") steps.push({ name: "update_goal", args: { status: "blocked", reason: pauseReason } });
 else steps.push({ name: "update_goal", args: { status: stopState === "complete" ? "complete" : "paused", reason: pauseReason, suggested_action: pauseAction } });
@@ -87,8 +100,10 @@ const loader = new DefaultResourceLoader({
 		pi.on("agent_start", () => { run++; });
 		pi.on("tool_result", event => {
 			results.push(event);
-			if (event.toolName === "update_goal_task" && event.input.status === "start") current = event.input.task_id;
-			if (event.toolName === "update_goal_task" && event.input.status === "complete") completed++;
+			if (event.toolName === "update_goal_task") {
+				current = event.details.goal.currentTaskId ?? null;
+				completed = event.details.goal.taskList.tasks.flatMap(task => [task, ...(task.subtasks ?? [])]).filter(task => task.status === "complete").length;
+			}
 		});
 		pi.on("session_compact", event => {
 			compactions.push({ reason: event.reason, run, request: executorRequests, success: event.success });
@@ -143,9 +158,11 @@ try {
 				if (stopState !== "complete") assert(automatic.join("").includes(`PI GOAL ${stopState.toUpperCase().replace("_", " ")}`));
 				if (!["complete", "unfocused"].includes(stopState)) {
 					assert.match(automatic.join(""), /unique-goal-contract-sentinel/);
-					assert(automatic.join("").includes(`Current: t${firstCurrent + 2}`));
-					assert(automatic.join("").includes(`Ancestors: ${parentId}`));
-					assert(automatic.join("").includes(`3/${taskCount} tasks complete`));
+					if (!qualifyTasks) {
+						assert(automatic.join("").includes(`Current: t${firstCurrent + 2}`));
+						assert(automatic.join("").includes(`Ancestors: ${parentId}`));
+					}
+					assert(automatic.join("").includes(`${qualifyTasks ? taskCount : 3}/${taskCount} tasks complete`));
 				}
 				if (stopState === "paused" || stopState === "blocked") {
 					assert.match(automatic.join(""), /pause-reason-sentinel/);
@@ -224,6 +241,12 @@ try {
 	assert.equal(finalGoal.taskList.tasks.flatMap(task => [task, ...(task.subtasks ?? [])]).length, taskCount);
 	assert.deepEqual(finalGoal.taskList.tasks.filter(t => t.status === "complete").map(t => t.id), ["t1", "t2", "t3"]);
 	for (let c = 0; c < 3; c++) assert.equal(readFileSync(join(cwd, `evidence-${c}.txt`), "utf8"), `proof-${c}`);
+	if (qualifyTasks) {
+		assert.deepEqual(JSON.parse(readFileSync(join(cwd, "audit-evidence.json"), "utf8")), auditEvidence);
+		const qualified = results.findLast(r => r.toolName === "update_goal_task").details.goal;
+		assert.equal(qualified.currentTaskId, undefined);
+		assert.equal(qualified.taskList.tasks.flatMap(t => [t, ...(t.subtasks ?? [])]).filter(t => t.status === "complete" && t.evidence).length, taskCount);
+	}
 	assert(!manager.getEntries().some(e => e.customType === "pi-goal-context"));
 	const checkpoints = manager.getEntries().filter(e => e.type === "custom_message" && e.customType === "pi-goal-event");
 	assert(checkpoints.every(e => e.content.length <= 160));
@@ -237,10 +260,13 @@ try {
 	stoppedProbe = true;
 	await session.prompt("Report the goal's paused state without resuming work.");
 	if (failure) throw failure;
-	assert.equal(results.filter(r => r.toolName === "write").length, 3);
+	assert.equal(results.filter(r => r.toolName === "write").length, qualifyTasks ? 4 : 3);
 	assert.equal(manager.getEntries().filter(e => e.type === "custom_message" && e.customType === "pi-goal-event").length, checkpoints.length, "compacting a paused goal cannot start a checkpoint");
 	if (review) {
-		assert(childRequests.length >= (adviceReview ? 3 : 1));
+		assert(childRequests.length >= (adviceReview ? 4 : 2));
+		const auditorRequests = childRequests.filter(payload => !payload.tools?.some(tool => tool.function.name === "submit_goal_oracle_advice"));
+		assert(auditorRequests.length >= 2, "auditor sees both the initial goal and the fully evidenced plan");
+		assert(JSON.stringify(auditorRequests.at(-1)).includes(`Fixture task ${taskCount}`), "final auditor receives the full plan");
 		for (const payload of childRequests) {
 			assert(!JSON.stringify(payload).includes("PI GOAL ACTIVE"), "separate reviewer/Oracle requests contain no executor projection");
 			assert(!payload.tools?.some(tool => ["create_goal", "get_goal", "set_goal_tasks", "update_goal_task", "update_goal"].includes(tool.function.name)));

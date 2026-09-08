@@ -53,7 +53,7 @@ const steps = [
     [{ mode: "upsert", tasks: [{ id: "t2", lightweight_subtasks: true }] }, /no subtasks/],
     [{ mode: "upsert", tasks: [{ id: "t2", title: "Atomic edit" }, { id: "t3", title: " " }] }, /non-empty title/],
     [{ mode: "upsert", tasks: [{ id: "t1", title: "Completed task changed" }] }, /completed task/],
-    [{ mode: "replace", tasks: tasks(2, 199) }, /scope revision/],
+    [{ mode: "upsert", tasks: [{ id: "t1", verification_contract: "" }] }, /scope revision/],
   ].map(([args, reject]) => ({ name: "set_goal_tasks", args, reject })),
   { name: "update_goal_task", args: { updates: [{ task_id: "t2", status: "complete", evidence: "valid member" }, { task_id: "missing", status: "start" }] }, reject: /not found/ },
   { name: "set_goal_tasks", args: { mode: "upsert", tasks: [{ id: "t2", title: "Stale edit" }] }, staleRevision: true, reject: /expected_work_revision/ },

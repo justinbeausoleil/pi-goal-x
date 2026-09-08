@@ -18,6 +18,11 @@ All notable changes to pi-goal-x are documented here.
   task requirements; the reviewed human scope-revision workflow is still
   pending implementation. Structural cancellation preserves the current plan.
 - UI evidence dialogs reject results after concurrent work changes or pauses.
+- Goal writes retain approved requirements and contracted-task evidence through
+  plan deletion, skipping, and settings changes. `get_goal(section="scope")`
+  retrieves the full retained record. Removed unresolved tasks keep their IDs
+  and must be recreated with their original contracts to supply evidence.
+  Legacy reads remain unchanged; migration occurs on the first successful write.
 - Detail pages expose goal/section/task identity and a content revision. Full
   Unicode requirements and evidence are retrieved in 4,000-character pages;
   malformed or stale cursors require restarting the selected section.

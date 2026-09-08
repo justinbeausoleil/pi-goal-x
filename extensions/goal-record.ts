@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { retainedGoalScope } from "./goal-scope.ts";
 
 export type GoalStatus = "active" | "paused" | "blocked" | "budget_limited" | "complete";
 export type StopReason = "user" | "agent";
@@ -31,6 +32,21 @@ export interface GoalTaskList {
 export interface GoalUsage {
 	tokensUsed: number;
 	activeSeconds: number;
+}
+
+export type GoalRetainedTask = Pick<GoalTask, "title" | "status" | "evidence" | "completedAt"> & { verificationContract: string };
+export interface GoalScopeChangeReceipt {
+	priorText: string;
+	newText: string;
+	reason: string;
+	confirmationLocator: string;
+	confirmedAt: string;
+}
+export interface GoalRetainedScope {
+	objective: string;
+	verificationContract?: string;
+	tasks: Record<string, GoalRetainedTask>;
+	changes: GoalScopeChangeReceipt[];
 }
 
 export interface GoalRecord {
@@ -68,6 +84,8 @@ export interface GoalRecord {
 	taskList?: GoalTaskList;
 	/** Plain-text description of what verification evidence is required before completing this goal. */
 	verificationContract?: string;
+	/** Approved requirements survive changes to the planning tree. Absent in legacy files. */
+	retainedScope?: GoalRetainedScope;
 }
 
 export interface GoalStateEntry {
@@ -185,6 +203,7 @@ export function cloneGoal(goal: GoalRecord): GoalRecord {
 	return {
 		...goal,
 		usage: { ...goal.usage },
+		retainedScope: goal.retainedScope ? structuredClone(goal.retainedScope) : undefined,
 		taskList: goal.taskList
 			? { ...goal.taskList, tasks: goal.taskList.tasks.map(cloneGoalTask) }
 			: undefined,
@@ -193,6 +212,7 @@ export function cloneGoal(goal: GoalRecord): GoalRecord {
 
 /** Content identity for work. Accounting and wall-clock fields never invalidate it. */
 export function goalWorkRevision(goal: GoalRecord): string {
+	const scope = retainedGoalScope(goal);
 	const tasks = (list: GoalTask[]): unknown[] => list.map(task => [
 		task.id, task.title, task.verificationContract ?? "", task.status,
 		task.evidence ?? "", task.skipReason ?? "", task.lightweightSubtasks === true,
@@ -200,6 +220,8 @@ export function goalWorkRevision(goal: GoalRecord): string {
 	]);
 	return createHash("sha256").update(JSON.stringify([
 		goal.id, goal.objective, goal.verificationContract ?? "",
+		[scope.objective, scope.verificationContract ?? "", Object.keys(scope.tasks).sort().map(id => { const task = scope.tasks[id]!; return [id, task.title, task.verificationContract, task.status, task.evidence ?? ""]; }),
+			scope.changes.map(change => [change.priorText, change.newText, change.reason, change.confirmationLocator])],
 		goal.taskList ? [goal.taskList.blockCompletion, tasks(goal.taskList.tasks)] : null,
 		goal.currentTaskId ?? null,
 	])).digest("hex");
@@ -345,11 +367,41 @@ export function currentTaskIdIsPending(tasks: readonly GoalTask[] | undefined, i
 	return false;
 }
 
+function normalizeRetainedScope(value: unknown): GoalRetainedScope | undefined {
+	const raw = asRecord(value);
+	const tasks = asRecord(raw?.tasks);
+	if (!raw || typeof raw.objective !== "string" || !raw.objective.trim() || !tasks || !Array.isArray(raw.changes)
+		|| (raw.verificationContract !== undefined && typeof raw.verificationContract !== "string")) return;
+	const entries: Array<[string, GoalRetainedTask]> = [];
+	for (const [id, value] of Object.entries(tasks)) {
+		const task = asRecord(value);
+		if (!id.trim() || !task || typeof task.title !== "string" || !task.title.trim()
+			|| typeof task.verificationContract !== "string" || !task.verificationContract.trim()
+			|| !["pending", "complete", "skipped"].includes(String(task.status))
+			|| (task.evidence !== undefined && typeof task.evidence !== "string")
+			|| (task.completedAt !== undefined && typeof task.completedAt !== "string")) return;
+		entries.push([id, {title: task.title, verificationContract: task.verificationContract, status: task.status as TaskStatus,
+			evidence: task.evidence as string | undefined, completedAt: task.completedAt as string | undefined}]);
+	}
+	const changes: GoalScopeChangeReceipt[] = [];
+	for (const value of raw.changes) {
+		const change = asRecord(value);
+		if (!change || typeof change.priorText !== "string" || typeof change.newText !== "string"
+			|| typeof change.reason !== "string" || !change.reason.trim()
+			|| typeof change.confirmationLocator !== "string" || !change.confirmationLocator.trim()
+			|| typeof change.confirmedAt !== "string" || !change.confirmedAt.trim()) return;
+		changes.push({priorText: change.priorText, newText: change.newText, reason: change.reason, confirmationLocator: change.confirmationLocator, confirmedAt: change.confirmedAt});
+	}
+	return {objective: raw.objective, verificationContract: raw.verificationContract as string | undefined, tasks: Object.fromEntries(entries), changes};
+}
+
 export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	const raw = asRecord(value);
 	if (!raw) return null;
 	const objective = typeof raw.objective === "string" ? raw.objective.trim() : "";
 	if (!objective) return null;
+	const retainedScope = normalizeRetainedScope(raw.retainedScope);
+	if (raw.retainedScope !== undefined && !retainedScope) return null; // Invalid scope must never silently become a legacy goal.
 
 	const timestamp = nowIso();
 	// Persisted lifecycle status is authoritative. autoContinue is an execution
@@ -397,5 +449,6 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 		taskList,
 		currentTaskId,
 		verificationContract: typeof raw.verificationContract === "string" ? raw.verificationContract : undefined,
+		...(retainedScope ? {retainedScope} : {}),
 	};
 }

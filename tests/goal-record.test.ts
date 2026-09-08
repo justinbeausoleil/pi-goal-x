@@ -5,6 +5,7 @@ import {
 	cloneGoal,
 	createGoal,
 	goalFocusDetails,
+	goalWorkRevision,
 	normalizeGoalFocusEntry,
 	normalizeGoalRecord,
 	type GoalCreationConfig,
@@ -16,6 +17,22 @@ const baseConfig: GoalCreationConfig = {
 	autoContinue: true,
 	sisyphus: false,
 };
+
+test("retained scope is isolated, validated, and content-based without timestamp churn", () => {
+	const goal = createGoal(baseConfig);
+	goal.retainedScope = {objective: goal.objective, tasks: {removed: {title: "Removed proof", verificationContract: "Keep the verified output", status: "complete", evidence: "Output inspected", completedAt: "2026-09-08T00:00:00Z"}}, changes: [{priorText: "Prior scope", newText: "Revised scope", reason: "User revision", confirmationLocator: "session:tool-1", confirmedAt: "2026-09-08T00:00:00Z"}]};
+	assert(normalizeGoalRecord(goal));
+	const revision = goalWorkRevision(goal);
+	const copy = cloneGoal(goal);
+	copy.retainedScope!.tasks.removed!.completedAt = "2026-09-09T00:00:00Z";
+	copy.retainedScope!.changes[0]!.confirmedAt = "2026-09-09T00:00:00Z";
+	copy.usage.tokensUsed++;
+	assert.equal(goalWorkRevision(copy), revision);
+	copy.retainedScope!.tasks.removed!.evidence = "Different output";
+	assert.notEqual(goalWorkRevision(copy), revision);
+	assert.equal(goal.retainedScope.tasks.removed!.evidence, "Output inspected");
+	assert.equal(normalizeGoalRecord({...goal, retainedScope: {...goal.retainedScope, tasks: {removed: {title: "Missing contract"}}}}), null, "corruption cannot drop requirements into a legacy record");
+});
 
 test("createGoal builds stable goal records with fresh usage and requested mode", () => {
 	const goal = createGoal(baseConfig, Date.UTC(2026, 0, 2, 3, 4, 5));

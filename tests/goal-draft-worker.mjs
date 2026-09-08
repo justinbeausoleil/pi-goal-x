@@ -51,7 +51,7 @@ async function open(manager, sessionStartEvent) {
     input: async () => "Fixture custom answer", confirm: async () => false,
     select: async (title, choices) => {
       dialogs.push({ title, choices });
-      if (title === "Goal settings" || title.startsWith("disableTasks (")) {
+      if (title === "Goal settings" || /^(disableTasks|disableContracts) \(/.test(title)) {
         const label = settingsChoices.shift();
         const selected = choices.find(choice => choice.trim().startsWith(label));
         assert(selected, "scripted public settings choice exists");
@@ -78,7 +78,9 @@ async function open(manager, sessionStartEvent) {
         for (const required of step.contextIncludes ?? []) assert(projection.includes(required), `current projection includes ${required}`);
       } catch (error) { providerFailure = error; }
     }
-    const content = step ? [{ type: "toolCall", id: `draft-${requests}`, name: step.name, arguments: step.args }]
+    const args = step ? { ...step.args } : undefined;
+    if (args?.expected_work_revision === "$current") args.expected_work_revision = results.findLast(r => r.details?.work_revision)?.details.work_revision;
+    const content = step ? [{ type: "toolCall", id: `draft-${requests}`, name: step.name, arguments: args }]
       : [{ type: "text", text: summary ? "Unconfirmed discussion remains. No goal or implementation has been approved." : "Discussion awaits the user." }];
     const value = { role: "assistant", api: requestedModel.api, provider: requestedModel.provider, model: requestedModel.id, content,
       usage: { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 110, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: step ? "toolUse" : "stop", timestamp: Date.now() };
@@ -116,7 +118,80 @@ try {
   ]);
   assert.equal(latestDraft().data.auditorEnabled, false, "per-draft auditor choice survives refinement");
   assert.deepEqual(files(), [], "discussion creates no approved goal");
-  if (scenario === "cancel") {
+  if (scenario === "scope") {
+    decision = "Confirm";
+    const contract = "Verify the exact output 🧭 é 漢字.\n".repeat(180);
+    const evidence = "The independently inspected output matched 🧭 é 漢字.\n".repeat(180).trim();
+    const proposed = proposal(mode, "Retained scope");
+    proposed.args.tasks = [
+      { id: "proof", title: "Verify the feature", verification_contract: contract.trim() },
+      { id: "later", title: "Verify the next feature", verification_contract: "The second test passes." },
+    ];
+    await run("Confirm the complete requirements.", [proposed]);
+    assert.equal(results.at(-1).details.goal.retainedScope?.objective, objective("Retained scope"), "creation persists approved scope");
+    await run("Record completed evidence and start the remaining task.", [{ name: "update_goal_task", args: { expected_work_revision: "$current", updates: [
+      { task_id: "proof", status: "complete", evidence }, { task_id: "later", status: "start" },
+    ] } }]);
+    const completed = results.at(-1).details.goal.retainedScope.tasks.proof;
+    assert.equal(completed.status, "complete");
+    assert.equal(completed.evidence, evidence);
+    assert.equal(typeof completed.completedAt, "string");
+    let expectedScope = JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope));
+    await reopen();
+    let cursor, firstCursor, full = "", revision;
+    do {
+      await run("Retrieve all retained requirements.", [{ name: "get_goal", args: { section: "scope", ...(cursor ? { cursor } : {}) } }]);
+      const page = results.at(-1).details.page;
+      assert.equal(page.section, "scope");
+      assert(page.content.length <= 4000);
+      assert.equal(Buffer.from(page.content).toString("utf8"), page.content);
+      assert.equal(page.contentRevision, revision ?? page.contentRevision);
+      revision = page.contentRevision;
+      full += page.content;
+      cursor = page.nextCursor;
+      firstCursor ??= cursor;
+    } while (cursor);
+    assert.deepEqual(JSON.parse(full), expectedScope, "scope and full evidence survive actual reopen and lossless paging");
+    assert.equal(JSON.parse(full).tasks.proof.verificationContract, contract.trim());
+    await run("Skip a planning step without waiving its contract.", [{ name: "update_goal_task", args: { expected_work_revision: "$current", task_id: "later", status: "skipped", reason: "The user changed the schedule; required evidence remains outstanding." } }]);
+    expectedScope = JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope));
+    assert.equal(expectedScope.tasks.later.status, "skipped");
+    await run("Reject a cursor bound to earlier retained progress.", [{ name: "get_goal", args: { section: "scope", cursor: firstCursor } }]);
+    assert.equal(results.at(-1).details.page, undefined);
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /Invalid or stale cursor.*Restart/s);
+    await run("Attempt completion after skipping the required task.", [{ name: "update_goal", args: { status: "complete" } }]);
+    assert.equal(results.at(-1).details.goal.status, "active", "skipping does not waive a contract");
+    process.env.PI_GOAL_AUTO_CONFIRM = "1";
+    await run("Remove the planning nodes, retaining their requirements.", [{ name: "set_goal_tasks", args: { mode: "replace", expected_work_revision: "$current", tasks: [{ id: "optional", title: "Optional planning note" }] } }]);
+    assert.deepEqual(results.at(-1).details.goal.taskList.tasks.map(t => t.id), ["optional"], "structural deletion is allowed without waiving retained scope");
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), expectedScope, "removed proof and pending obligation are retained");
+    settingsChoices = ["disableTasks:", "Set project override to true", "disableContracts:", "Set project override to true", "Done"];
+    await session.prompt("/goal-settings");
+    assert.deepEqual(settingsChoices, []);
+    assert(!session.getActiveToolNames().includes("set_goal_tasks"));
+    await run("Attempt completion after removing the plan.", [{ name: "update_goal", args: { status: "complete" } }]);
+    assert.equal(results.at(-1).details.goal.status, "active");
+    assert.match(results.at(-1).content.map(c => c.text ?? "").join(""), /later.*recreate|recreate.*later/is);
+    await reopen();
+    await run("Inspect retained requirements after deletion and reopen.", [{ name: "get_goal", args: {} }]);
+    assert.deepEqual(JSON.parse(JSON.stringify(results.at(-1).details.goal.retainedScope)), expectedScope);
+    settingsChoices = ["disableTasks:", "Set project override to false", "Done"];
+    await session.prompt("/goal-settings");
+    await run("Reject a weaker contract hidden behind a recreated ID.", [{ name: "set_goal_tasks", args: { mode: "upsert", expected_work_revision: "$current", tasks: [{ ...proposed.args.tasks[1], verification_contract: "A weaker assertion." }] } }]);
+    assert(!results.at(-1).details.goal.taskList.tasks.some(t => t.id === "later"), "recreation cannot change a retained contract without human scope approval");
+    await run("Recreate the unresolved task with its original ID and contract.", [{ name: "set_goal_tasks", args: { mode: "upsert", expected_work_revision: "$current", tasks: [proposed.args.tasks[1]] } }]);
+    for (const batch of [false, true]) {
+      const update = { task_id: "later", status: "complete" };
+      await run("Attempt completion without required evidence while contracts are hidden.", [{ name: "update_goal_task", args: { expected_work_revision: "$current", ...(batch ? {updates: [update]} : update) } }]);
+      assert.equal(results.at(-1).details.goal.taskList.tasks.find(t => t.id === "later").status, "pending", "settings cannot bypass retained task evidence");
+    }
+    await run("Supply the retained evidence through the existing task tool.", [{ name: "update_goal_task", args: { expected_work_revision: "$current", task_id: "later", status: "complete", evidence: "The second test passes, as independently observed." } }]);
+    assert.equal(results.at(-1).details.goal.retainedScope.tasks.later.status, "complete");
+    assert.equal(results.at(-1).details.goal.retainedScope.tasks.proof.evidence, evidence, "recreation preserves the other removed task's proof");
+    await run("Add a later contract with an arbitrary valid stable ID.", [{ name: "set_goal_tasks", args: { mode: "upsert", expected_work_revision: "$current", tasks: [{ id: "__proto__", title: "Later requirement", verification_contract: "This later requirement also remains owed." }] } }]);
+    assert(Object.hasOwn(results.at(-1).details.goal.retainedScope.tasks, "__proto__"));
+    assert.equal(results.at(-1).details.goal.retainedScope.tasks.__proto__.verificationContract, "This later requirement also remains owed.");
+  } else if (scenario === "cancel") {
     decision = "Cancel";
     await run("Cancel this proposal, retaining the discussion.", [proposal(mode, "First discussion")]);
     assert(session.getActiveToolNames().includes("propose_goal_draft"), "proposal cancellation must retain the draft");

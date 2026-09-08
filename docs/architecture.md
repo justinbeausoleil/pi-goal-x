@@ -36,7 +36,8 @@ handlers from their dedicated modules:
 | `goal-drafting.ts` | Guided drafting orchestration: durable `pi-goal-draft` session entries (survive compaction/tree navigation), resume/replace/cancel protection, transient drafting profile, `goal_question`/`goal_questionnaire`/`propose_goal_draft` tools, per-draft auditor selection |
 | `goal-questionnaire.ts` | Structured question/answer UI (`runGoalQuestionnaire`, `showProposalDialog`) used by the drafting tools and confirmations |
 | `goal-tool-names.ts` | The five published tool-name constants, lifecycle-dependent profiles, work/progress classification, post-stop allowlist |
-| `goal-detail.ts` | Lossless objective/task/history paging with content-bound cursors |
+| `goal-detail.ts` | Lossless objective/task/scope/history paging with content-bound cursors |
+| `goal-scope.ts` | Legacy scope derivation, retained requirement snapshots, required evidence checks |
 | `goal-ledger-index.ts` | Incremental per-goal activity, audit, lifecycle, and Oracle projections |
 | `goal-task-index.ts` | Content-keyed task snapshots shared by prompts, tools, and dashboard models |
 | `prompts/goal-prompts.ts` | Bounded five-tool steering prompts (active-goal, continuation, stale-checkpoint, unfocused, budget-limited) |
@@ -269,7 +270,7 @@ The SDK active profile changes only when membership changes. Executors still
 validate lifecycle state, including stale calls made after a transition.
 
 Task writes carry `expected_work_revision`, an opaque content hash of the goal
-ID, objective/contract, ordered task structure/progress/evidence, task gate,
+ID, objective/contract, retained scope, ordered task structure/progress/evidence, task gate,
 and current task. It excludes usage, timestamps, storage revision, and ledger
 activity. Inspection, executor projections, and task mutation results expose
 the current value. Initial empty-plan creation may omit it. The mutation
@@ -280,14 +281,25 @@ only usage, updatedAt and numeric revision may differ from the original base.
 The local usage delta is added to the fresh record before the single write and
 ledger append. Work, lifecycle and budget changes still reject the buffer.
 UI task dialogs capture it before waiting for evidence. Whole-record structural
-mutations currently reject removing/changing contracts or changing completed
-task requirements; ticket 005 owns retained-scope metadata and human revision.
+mutations currently reject clearing/changing retained contracts or changing
+completed task requirements; human revision remains under ticket 005.
+
+The mutation service records approved objective/goal contracts and task
+contracts keyed by stable ID in optional `retainedScope` metadata. Legacy
+reads derive the surviving scope without rewriting files; the first successful
+write persists it without changing work identity. Task progress refreshes each
+retained snapshot in the same transaction, while deletion preserves its last
+title/status/evidence/completion timestamp. Scope pages retain full strings.
+Skipped or removed required tasks still block completion until completed with
+evidence; recreate removed IDs with their original contracts to supply it.
+Task/contract settings and auditor bypass cannot waive these requirements.
+Invalid retained metadata rejects the record rather than dropping its scope.
 
 The existing flat-tree converter validates the complete resulting plan. Upsert
 edits supplied fields, preserving omitted values; new IDs require a title and
 start pending at the root. `parent_id=null` moves to a root. Existing siblings
 keep order, while new/moved nodes append in input order. Replacement (including
-omitted mode) specifies the complete order/tree and removes omitted uncontracted
+omitted mode) specifies the complete order/tree and removes omitted
 tasks only after confirmation. Unchanged IDs retain progress and timestamps;
 current-task focus survives only for a pending node. Cancelling or confirming
 a proposal after concurrent work changes leaves that work intact. The original

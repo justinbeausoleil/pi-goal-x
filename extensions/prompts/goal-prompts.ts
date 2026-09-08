@@ -234,7 +234,7 @@ function retainedTaskChars(task: GoalTask): number {
 export function goalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
 	const fixed = cachedPrompt(goal, settings, "goal", () => buildGoalPrompt(goal, settings));
  const budget = budgetLine(goal);
- return `${fixed}\nwork_revision: ${goalWorkRevision(goal)}\nUsage: ${formatUsage(goal)}${budget ? `\n${budget}` : ""}`;
+ return `${fixed}\nwork_revision: ${goalWorkRevision(goal)}\nRetained requirements: get_goal(section="scope"). Plan removal and settings do not waive them.\nUsage: ${formatUsage(goal)}${budget ? `\n${budget}` : ""}`;
 }
 
 function buildGoalPrompt(goal: GoalRecord, settings?: GoalSettings): string {

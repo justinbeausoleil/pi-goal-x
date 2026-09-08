@@ -80,3 +80,9 @@ requires that instruction and excludes execution guidance in those fixtures.
 All semantic counts, schemas, child contexts, and other 22 measurements remain
 unchanged; no size limit is raised. Native tests separately check an active
 tweak's cancellation, blocked same-run dispatch, and fresh ordinary user work.
+
+The retained-scope subset adds the D2 scope section to the inspection schema
+(24 characters in 22 execution fixtures) and a D3 retrieval/authority reminder
+(95 goal-state characters where current work is projected). The explicit
+inspection fixture also gains that reminder in its result. All 24 semantic
+counts and child-request measurements remain unchanged; no ceiling is raised.

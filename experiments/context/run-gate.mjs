@@ -95,6 +95,7 @@ for (const fixtureId of expectedFixtureIds) {
 	// actually dispatched with an active block (a stale-checkpoint trigger
 	// correctly aborts and injects GOAL STALE instead).
 	const hasActiveBlock = /\[PI GOAL ACTIVE goalId=/.test(goalText);
+	if (hasActiveBlock && !goalText.includes('get_goal(section="scope")')) failures.push(`${fixtureId}: retained scope retrieval missing`);
 	if (scenario.goal?.status === "active" && fixtureId !== "stale-checkpoint" && !hasActiveBlock) failures.push(`${fixtureId}: active goal projection missing`);
 	if (scenario.goal?.status === "active" && hasActiveBlock) {
 		if (semantic.goalActiveMarker !== 1) failures.push(`${fixtureId}: [PI GOAL ACTIVE] block count ${semantic.goalActiveMarker} != 1`);

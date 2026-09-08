@@ -567,3 +567,75 @@
   compaction additions; stopped goals retain their existing lifecycle branches
   plus the discussion hold. Native tests require current reasons and the paused
   suggested action, with lifecycle unchanged and zero autonomous checkpoints.
+
+### Ticket 005 retained-scope checkpoint (implementation incomplete)
+
+- Both independent axes cleared the draft repairs at 6f39a58. That commit and
+  its preceding draft commits are pushed to origin/feat/goal-reliability.
+  Full tests at ac75921 were 1033/1033; the final stopped-context repair passed
+  40 native draft/startup cases, type/lint, 24 context fixtures and six provider
+  checks. This closes the reviewed draft subset, not ticket 005.
+- Working-tree scope implementation adds optional retainedScope metadata,
+  strict parsing (absence remains legacy; invalid scope is not silently dropped),
+  clone isolation and timestamp-free work identity. The effective legacy scope
+  participates in work identity so first-write accounting migration does not
+  invalidate a task revision. GoalService creates/refreshes the snapshot in
+  every existing immediate/buffered mutation and persistence path.
+- get_goal section=scope uses the existing Unicode-safe 4000-character pages.
+  Native scope cases in both modes create contracts, record long evidence,
+  reopen and reconstruct every field. The first provisional green log failed
+  only because its expected JavaScript object retained undefined fields that
+  JSON correctly omits; the corrected serialized expectation passes.
+- Public structural deletion now retains contracted-task progress/evidence;
+  old 003 deletion rejection coverage now tests forbidden contract clearing,
+  with deletion-preservation asserted separately. Completion cannot waive an
+  unresolved retained task via skipping, plan removal, auditor bypass, or
+  disableTasks/disableContracts. Native red shows hidden contracts allowed
+  evidence-free task completion; shared service validation now rejects it in
+  single and batch progress paths. Recreating the original ID/contract and
+  supplying evidence works and preserves the other removed task's proof.
+- Both native scope cases pass (34 requests each), the public 200-node plan
+  with concurrent accounting passes, and 101 targeted service/record/task/draft/
+  transaction checks passed before the latest evidence guard. Immediate and
+  buffered migration checks preserve legacy bytes on reads/rejected writes
+  and keep work_revision stable on the first successful accounting write.
+  Evidence: ~/Data/pi-goal-x/reliability/005/scope-*.log. The earlier targeted
+  command named two nonexistent test paths (Node ignored them); its 67 count
+  covers the discovered service/drafting files only. The 101 run uses real paths.
+- Next: inspect scope-first-full.log (full suite running at this checkpoint),
+  repair any required fixture updates/regressions, add automatic scope locators,
+  qualify scope paging/migration and review the slice. Still required for 005:
+  human-bound scope revision and durable receipts, 200-node before/after UI,
+  completed-task reopening across structural paths, external-edit proposals
+  with preserved body/authority, receipt survival on ledger failure, remaining
+  lifecycle races and final checks/reviews. No 005 checkbox is complete.
+
+### Ticket 005 retained-scope qualification (partial)
+
+- The first full scope run failed eight cases: legacy normalization added an
+  observable undefined property, and seven compaction fixtures attempted audit
+  or completion with contracted tasks still pending. Normalization now preserves
+  the legacy shape. Those fixtures retain their three native compactions,
+  current-task/count/200-node assertions and child isolation. They now create
+  and independently inspect audit-evidence.json, then complete required tasks
+  through ordered public batches before the final audit/complete attempt.
+  Rejection is obtained before planning and again after qualification; the
+  latter auditor request must contain the complete 50/200-task plan.
+- A recreated removed ID could initially supply a weaker contract because the
+  structural guard examined only current nodes. scope-recreate-contract-red.log
+  preserves that failure. The shared guard now checks retained entries. Both
+  native scope modes pass 39 requests, including special-key IDs, Unicode paging,
+  a stale scope cursor after progress, and hidden-contract single/batch evidence
+  checks. No structural confirmation or setting waives retained requirements.
+- `npm run test:all` passes 1042/1042 across 76 files (scope-latest-full.log,
+  80.7s). Type/lint, runner self-check (71 unit + 3 integration + 2 e2e entries),
+  24 context fixtures, six SDK provider payload checks, package dry run and
+  existing NAF gate pass. The NAF gate uses retained campaign measurements;
+  it is not a fresh timing claim. scope-*.log evidence remains under Data/005,
+  including all failed attempts. No package installation or Qwen claim is made.
+- D2/D3 intentionally add the scope inspection schema and compact retrieval
+  reminder. The measured baseline changes 22 fixture breakdowns, with all
+  semantic counts and child-request measurements unchanged. Rationale is in
+  experiments/context/README.md; all limits remain fixed. Independent reviews
+  follow from fixed base 6f39a58. Human receipts/revisions, completed-task
+  reopening, external proposals and final ticket qualification remain next.
