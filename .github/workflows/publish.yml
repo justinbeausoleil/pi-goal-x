@@ -87,12 +87,13 @@ jobs:
           node "$RUNNER_TEMP/package-smoke/package/scripts/recover-session-checkpoints.mjs" --help
       - uses: actions/upload-artifact@v4
         with:
-          name: npm-${{ env.RELEASE_TAG }}
+          name: npm-${{ env.RELEASE_TAG }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release/
           if-no-files-found: error
       - name: Rehearse publication
         if: env.DRY_RUN == 'true'
-        run: npm publish "$TARBALL" --dry-run --access public --tag latest
+        # --force skips npm's existing-version check only in this non-writing rehearsal.
+        run: npm publish "$TARBALL" --dry-run --force --access public --tag latest
       - name: Publish exact tarball with OIDC and verify registry
         if: env.DRY_RUN != 'true'
         shell: bash
@@ -153,6 +154,6 @@ jobs:
         if: env.DRY_RUN != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: registry-${{ env.RELEASE_TAG }}
+          name: registry-${{ env.RELEASE_TAG }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release/registry.json
           if-no-files-found: error
