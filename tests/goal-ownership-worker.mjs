@@ -133,6 +133,18 @@ try {
     await settled();
     assert.equal(checkpoints() - boundaryCheckpoints, 1, "explicit user action authorizes one checkpoint");
     assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
+  } else if (scenario === "tree-paused-confirm") {
+    await session.navigateTree(earlyLeaf);
+    const before = requests.length, checkpointCount = checkpoints();
+    steps = [pause];
+    await host.switchSession(session.sessionManager.getSessionFile());
+    await delay(150);
+    assert(confirmations.includes("Resume paused goal?"));
+    assert.equal(requests.length - before, 1, "the existing paused-resume confirmation releases a navigated branch");
+    await settled();
+    assert.equal(checkpoints() - checkpointCount, 1);
+    assert.equal(session.sessionManager.getBranch().findLast(e => e.customType === "pi-goal-focus").data.reason, "resumed", "interactive resume persists release");
+    assert.equal(goalResult().taskList.tasks[0].evidence, approved.taskList.tasks[0].evidence);
   } else if (["new", "new-auto", "missing-focus"].includes(scenario)) {
     if (scenario !== "new") writeFileSync(join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({autoSelectSingleGoal: true}));
     await session.prompt("/goal-resume");

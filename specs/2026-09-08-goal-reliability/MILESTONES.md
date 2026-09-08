@@ -976,3 +976,14 @@
   No006 criterion is marked complete; legacy reads, storage fault/recovery
   checks and child qualification remain next after this ownership subset.
   The overall development goal is still active.
+
+- Both independent reviewers reproduced one remaining composition at31a2c4:
+  navigating a paused goal then accepting the existing paused-resume dialog
+  changed status to active but left its navigation hold set. Spec independently
+  passed all14 other ownership cases; the original reopen leak is repaired.
+  Permanent native tree-paused-confirm red reports zero requests instead of one.
+  The dialog's successful resume now calls the same releaseContinuationHold
+  path. Green: six executor requests total, one approved artifact, one newly
+  authorized checkpoint, persisted resumed focus and unchanged task evidence.
+  Type/lint pass. The frozen31 full suite is still running; this one-line caller
+  fix and combined regression receive their own fixed-base re-review.
