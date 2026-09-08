@@ -484,3 +484,5 @@ Both `provider` and `model` must be set explicitly — the executor model is nev
 ## License
 
 MIT
+
+Maintainers: see [Publishing releases](https://github.com/tmonk/pi-goal-x/blob/main/docs/publishing.md) for unattended npm publishing through GitHub Actions.
