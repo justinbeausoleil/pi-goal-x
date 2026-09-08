@@ -435,3 +435,24 @@
 - Full 1010/1010 tests and all original review checks passed at 8adbbba;
   context's 24 fixtures and six payload cases ran sequentially and passed.
   Follow-up qualification/reviews remain pending for these repairs.
+
+### Ticket 004 complete; ticket 005 frontier
+
+- Both independent follow-ups clear 5046e7b; Spec independently reran native
+  host rendering, details/accounting (65 requests, one effect, reopen), and
+  all 16 overlay/confirmation checks. Reports: docs/reviews/2026-09-08-ticket-004.md.
+- Final qualification: 1011/1011 full tests across 76 files; discovery plus
+  932 unit tests; check/lint; five ranking checks; dry pack; production audit
+  (zero vulnerabilities); historical NAF gate. All passed. Context's 24
+  fixtures and six payload cases passed sequentially at unchanged payload code.
+  Fresh B2/B7 ran 53 rows with successful mutations, zero threshold regressions
+  and a passing no-network/process exclusion guard. Commands and results:
+  ~/Data/pi-goal-x/reliability/004/review-checks.json.
+- 004 criteria are verified. Code commits 8adbbba and 5046e7b and completion
+  records are being pushed to origin/feat/goal-reliability. Main and live Pi
+  selection remain unchanged. No packaged/Qwen/adoption success is claimed.
+- Next: 005. Trace the existing draft/session/dialog and mutation paths;
+  reproduce branch replacement, proposal-cancel and stale-dialog failures,
+  then add retained scope and human-bound revisions through GoalService.
+  The approved D3 lifecycle and all 005 criteria remain authoritative; 006
+  remains independently eligible. No new approval or planning gate is needed.
