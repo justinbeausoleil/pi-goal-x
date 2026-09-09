@@ -42,6 +42,8 @@
     ".tests/goal-pool.test.ts",
     ".tests/goal-prompts.test.ts",
     ".tests/goal-questionnaire.test.ts",
+    ".tests/goal-qwen-driver.test.ts",
+    ".tests/goal-qwen-fixture.test.ts",
     ".tests/goal-record.test.ts",
     ".tests/goal-recovery.test.ts",
     ".tests/goal-refresh.test.ts",

@@ -2138,3 +2138,29 @@
   remains artifact source 8e012c7 / SHA e2f0f850...f94e7aa6. Do not rebuild it for
   unshipped fixture/driver changes. A runtime repair after a failed matrix needs
   a new candidate and complete new six-run matrix, with old results retained.
+
+### 013 native runner rehearsal (no S3 request)
+
+- Added the frozen-matrix driver using native Pi loading, public task results,
+  native manual/threshold compaction and the existing completion auditor. The
+  installed candidate remains exactly Data012/attempt-04; no runtime change.
+- Native rehearsal now passes both incomplete-run rejection and the complete
+  artifacts/auditor/archive path: Data013/native-rehearsal-13.log, 2/2,6331ms.
+  Synthetic outputs are explicitly labelled; this is S1 harness verification,
+  not S3 evidence. Source fixtures and expected answers remain independent.
+- Retained earlier rehearsal failures (first,02–12). They exposed a mismatched
+  mock max-token field, insufficient history for compaction, early manual
+  dispatch, queued-message timing and unrealistically constant synthetic usage.
+  Large final tool results may leave Pi without a cut point until the following
+  response. The fixture now reports size-based synthetic usage and asserts the
+  actual native threshold event. Final pressure is a 256200-character color
+  sequence in the normalization tool result; no answers or instructions.
+- The full rehearsal caught the verifier's wrong review field (outcome, not
+  verdict), missing recursive archive scan and a mock approval marker that was
+  not on its own final line. All are corrected without changing product code.
+  A temporary passive next-turn diagnostic was removed after tracing the host;
+  no hook is manually invoked or replaced in the final driver.
+- Type/lint passed at the earlier driver checkpoint; final targeted checks and
+  independent fixed-base review are next, then commit/freeze and run all six
+  Qwen slots once. No real model request, matrix acceptance or live selection
+  change has occurred. Ticket013 remains in progress;014 remains blocked.
