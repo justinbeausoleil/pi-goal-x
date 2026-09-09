@@ -2363,3 +2363,24 @@
   retained; neither limits nor assertions changed. Ticket012 remains open until
   this passes. Then merge the reviewed branch, preserve e47f475 ancestry, update
   qualification evidence, and freeze matrix03 before any further model request.
+
+### Replacement full qualification green; final evidence review
+
+- e47f475 / reliability.2 full idle rerun passes1358/1358,48 suites,78files,
+  no skips,279842ms. The three formerly timed-out cases pass at15318/13185/14849ms
+  including worker startup; the internal15-second fixture deadline is unchanged.
+  Original under-load failure/reproduction logs remain retained.
+- Data012/reliability-02/qualification.json now records passed qualification:
+  full1358, selfcheck/serial958, native40 commands across supported runtimes,
+  rollback78, context28/provider7, benchmark53/NAF105/95/ranking5, zero audits
+  and68-file identity. Runtime/source/limits stayed unchanged throughout.
+- Both existing reviewers are checking the final evidence and immutable
+  matrix02 report without duplicate tests or model calls. When clear, mark012
+  done, merge fix/goal-review-findings into feat/goal-reliability to retain the
+  exact e47f475 artifact-source ancestry, push, and freeze matrix03. All package
+  checks finish before further real-model requests.013/014 remain unfinished.
+
+- Final Standards and Spec evidence reviews are both clear. Each independently
+  verified the complete qualification and all six original matrix02 outcomes
+  without duplicate tests/model calls.012 is done for reliability.2;013 is the
+  frontier. No runtime source changed after its e47f475 qualification.

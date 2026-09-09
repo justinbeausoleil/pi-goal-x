@@ -1,6 +1,6 @@
 # 013: execute the fixed real-Qwen acceptance matrix
 
-**Status:** in-progress — Codex; matrix02 finished0/6; repaired candidate awaits qualification and a new full matrix.
+**Status:** in-progress — Codex; matrix02 finished0/6; qualified repaired candidate awaits a new full matrix.
 **Blocked by:** 012.
 **Requirements:** G8; seams S3.
 **What to build:** The maintainer sees all outcomes from a frozen six-run artifact-producing experiment on the installable candidate.
@@ -17,10 +17,10 @@ Use the plan's navigation/test table; trace the selected public flow before edit
 
 - [x] Freeze the D6 fixture, independent expected outputs, candidate/tarball hash, input seeds, tool configuration, context/output limits, and off/low/low allocation for each model before running.
 - [ ] Run all six scheduled cases through Pi using public goal operations, real tools, and native model-generated summaries. Each must reach manual/threshold/manual compactions; record evidence of the host threshold trigger.
-- [ ] Enforce 60 executor responses, 30 minutes, and two extension recovery attempts per run. Model unavailability, timeouts, missing compactions, or failed artifacts count as failed scheduled cases; no retry-until-pass.
+- [x] Enforce 60 executor responses, 30 minutes, and two extension recovery attempts per run. Model unavailability, timeouts, missing compactions, or failed artifacts count as failed scheduled cases; no retry-until-pass.
 - [ ] Independently verify normalizer, normalized JSON, aggregates, rejection report, checks, and documentation against frozen expected results; verify task/requirement transitions and audited completion.
-- [ ] Record every attempt's environment/model/settings, all exposed token categories, elapsed time, summaries/compaction counts, retries/errors, artifact checks, final state, and limitations; keep secrets/private data out.
-- [ ] Report acceptance PASS only for six of six passing cases. Publish a failed matrix honestly and block adoption; any changed candidate starts a new numbered matrix without deleting earlier attempts.
+- [x] Record every attempt's environment/model/settings, all exposed token categories, elapsed time, summaries/compaction counts, retries/errors, artifact checks, final state, and limitations; keep secrets/private data out.
+- [x] Report acceptance PASS only for six of six passing cases. Publish a failed matrix honestly and block adoption; any changed candidate starts a new numbered matrix without deleting earlier attempts.
 
 ## Proof and completion
 
@@ -52,3 +52,9 @@ All six scheduled outcomes are recorded: **matrix02 FAIL,0/6**.
 See [the complete results report](../reviews/2026-09-08-qwen-matrix-02.md).
 G8 remains unmet;014 requires6/6. Reviewed harness repairs and cumulative runtime
 repairs require a newly qualified artifact and a new full matrix afterward.
+
+Replacement qualification is complete at source
+`e47f475a37ddc04db1e68199c33041888a3d32c1`, reliability.2, SHA256
+`1f32b6757aad3889933c543a3eead173747faf9c7f27860cbede98fdf5be3e64`.
+Data012/reliability-02/qualification.json and both review axes verify it.
+The next full matrix must freeze this artifact after integration.
