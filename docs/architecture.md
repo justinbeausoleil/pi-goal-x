@@ -173,8 +173,10 @@ removing the active file. If removal fails, the active file remains authoritativ
 focus and success-ledger entries stay unchanged. The diagnostic identifies the
 retained archive copy and asks for restored storage access and an explicit retry.
 Retrying the unchanged record updates that same copy and completes removal.
-An intervening record update can yield a different timestamped archive path;
-the earlier partial copy remains retained evidence, never execution authority.
+Completed records use the review timestamp (creation time for legacy records)
+for a stable archive path across accounting updates and retries. Clearing an
+open goal retains the existing update-time naming convention; an earlier partial
+copy remains retained evidence, never execution authority.
 
 ## Lifecycle
 
@@ -279,7 +281,9 @@ The report also discovers completed goal files still at active paths, even
 though they are excluded from the open pool. Confirmed repair locks each goal,
 checks the selected file's content and identity before and after backup, then
 uses the existing archive operation. It retains any unpaid usage's archive
-locator and records completion/archival events without another model turn.
+locator and records completion/archival events through GoalService without
+another model turn. Ledger failures use the service's per-event retry and
+warning diagnostics; they do not undo a successful archive.
 
 ## Goal styles
 
@@ -450,6 +454,10 @@ negative-review writes use GoalService with the captured focus/work revision;
 ledger failure cannot remove an already saved review. Completion settings use
 the resolved global/project configuration. Provider errors and missing verdicts
 remain distinct from explicit disapproval.
+The ledger preserves cancelled and malformed outcomes after a later review
+replaces the latest metadata. An actual approval remains diagnostic history
+even if the following completion write fails; success UI still waits for that
+write. Hiding task tools does not disable an existing completion gate.
 `get_goal(section="review")` pages the complete metadata/report through the
 existing 4000-character detail boundary. Automatic context carries a bounded
 excerpt from this authoritative review, with ledger fallback for legacy records.
@@ -516,7 +524,8 @@ retains sub-second remainders across charges and response starts for the same
 goal. Pi emits turn_end for final and aborted responses; the event handler
 deduplicates response objects there instead of charging aborted messages again
 at agent_end. A run retains its original goal record through pause, focus
-changes and clear, including its resulting archive locator. Each incurred
+changes and archival, including its resulting archive locator. This also
+covers the final executor response after user-chosen audit bypass. Each incurred
 delta goes through GoalService's per-goal lock and a fresh record read. Saving
 old-goal usage updates that record without changing current focus. Unpaid
 deltas remain in the service for retry on refresh/reconciliation and emit a

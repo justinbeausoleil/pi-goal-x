@@ -6,6 +6,12 @@ import { normalizeRelPath, nowIso, safeIdPart, type GoalRecord } from "./goal-re
 
 export const GOAL_LEDGER_FILE = ".pi/goals/goal_events.jsonl";
 
+const AUDIT_VERDICTS = ["approved", "disapproved", "error", "cancelled", "malformed"] as const;
+export type GoalAuditVerdict = typeof AUDIT_VERDICTS[number];
+function isAuditVerdict(value: unknown): value is GoalAuditVerdict {
+  return AUDIT_VERDICTS.some(verdict => verdict === value);
+}
+
 export type GoalLedgerEvent =
   | { type: "goal_created"; goalId: string; objective: string; sisyphus: boolean; autoContinue: boolean; at: string }
   | { type: "goal_focused"; goalId: string; reason: string; at: string }
@@ -16,7 +22,7 @@ export type GoalLedgerEvent =
   | { type: "auditor_toggled"; goalId: string; enabled: boolean; at: string }
   | { type: "completion_requested"; goalId: string; summary?: string; at: string }
   | { type: "audit_started"; goalId: string; provider?: string; model?: string; thinkingLevel?: string; at: string }
-  | { type: "audit_result"; goalId: string; verdict: "approved" | "disapproved" | "error"; report: string; at: string }
+  | { type: "audit_result"; goalId: string; verdict: GoalAuditVerdict; report: string; at: string }
   | { type: "audit_skipped"; goalId: string; reason: "disabled" | "user_aborted"; provider?: string; model?: string; thinkingLevel?: string; at: string }
   | { type: "goal_completed"; goalId: string; archivePath?: string; at: string }
   | { type: "goal_archived"; goalId: string; archivePath: string; at: string }
@@ -53,7 +59,7 @@ export interface ReconstructedGoalState {
   latestFocus: boolean;
   latestPauseReason?: string;
   latestPauseSuggestedAction?: string;
-  latestAuditorResult?: { verdict: "approved" | "disapproved" | "error"; report: string; at: string };
+  latestAuditorResult?: { verdict: GoalAuditVerdict; report: string; at: string };
   /** Issue #26: bounded latest Oracle disposition for this goal. */
   latestOracleResult?: { fingerprint: string; adviceId: string; disposition: "actionable" | "needs_human" | "insufficient_context"; summary: string; at: string };
   createdAt?: string;
@@ -348,7 +354,7 @@ function parseGoalState(value: unknown): ReconstructedGoalState | null {
   if (latestStatus !== "active" && latestStatus !== "paused" && latestStatus !== "complete" && latestStatus !== "aborted" && latestStatus !== "unknown") return null;
   const auditor = o.latestAuditorResult as Record<string, unknown> | undefined;
   if (auditor !== undefined) {
-    if (auditor.verdict !== "approved" && auditor.verdict !== "disapproved" && auditor.verdict !== "error") return null;
+    if (!auditor || !isAuditVerdict(auditor.verdict)) return null;
     if (typeof auditor.report !== "string" || typeof auditor.at !== "string") return null;
   }
   const oracle = o.latestOracleResult as Record<string, unknown> | undefined;
@@ -362,7 +368,7 @@ function parseGoalState(value: unknown): ReconstructedGoalState | null {
     latestPauseReason: typeof o.latestPauseReason === "string" ? o.latestPauseReason : undefined,
     latestPauseSuggestedAction: typeof o.latestPauseSuggestedAction === "string" ? o.latestPauseSuggestedAction : undefined,
     latestAuditorResult: auditor
-      ? { verdict: auditor.verdict as "approved" | "disapproved" | "error", report: auditor.report as string, at: auditor.at as string }
+      ? { verdict: auditor.verdict as GoalAuditVerdict, report: auditor.report as string, at: auditor.at as string }
       : undefined,
     createdAt: typeof o.createdAt === "string" ? o.createdAt : undefined,
     completedAt: typeof o.completedAt === "string" ? o.completedAt : undefined,
@@ -709,7 +715,7 @@ function isValidLedgerEvent(value: unknown): value is GoalLedgerEvent {
     case "audit_started":
       return typeof obj.goalId === "string" && (obj.provider === undefined || typeof obj.provider === "string") && (obj.model === undefined || typeof obj.model === "string") && (obj.thinkingLevel === undefined || typeof obj.thinkingLevel === "string");
     case "audit_result":
-      return typeof obj.goalId === "string" && (obj.verdict === "approved" || obj.verdict === "disapproved" || obj.verdict === "error") && typeof obj.report === "string";
+      return typeof obj.goalId === "string" && isAuditVerdict(obj.verdict) && typeof obj.report === "string";
     case "audit_skipped":
       return typeof obj.goalId === "string" && (obj.reason === "disabled" || obj.reason === "user_aborted") && (obj.provider === undefined || typeof obj.provider === "string") && (obj.model === undefined || typeof obj.model === "string") && (obj.thinkingLevel === undefined || typeof obj.thinkingLevel === "string");
     case "goal_completed":
@@ -951,7 +957,7 @@ function cloneAccumulator(acc: ReconstructAccumulator): ReconstructAccumulator {
   };
 }
 
-export function latestAuditorResultForGoal(events: GoalLedgerEvent[], goalId: string): { verdict: "approved" | "disapproved" | "error"; report: string; at: string } | undefined {
+export function latestAuditorResultForGoal(events: GoalLedgerEvent[], goalId: string): { verdict: GoalAuditVerdict; report: string; at: string } | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i]!
     if (event.type === "audit_result" && event.goalId === goalId) {

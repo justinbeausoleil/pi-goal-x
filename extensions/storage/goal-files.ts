@@ -338,7 +338,9 @@ export function makeActiveGoalPath(goal: GoalRecord): string {
 }
 
 export function makeArchivedGoalPath(goal: GoalRecord): string {
-	return `${ARCHIVED_GOALS_DIR}/goal_${timestampForFile(goal.updatedAt)}_${safeIdPart(goal.id)}.md`;
+	// Usage/persistence can change updatedAt between failed archival and repair.
+	const archiveTime = goal.status === "complete" ? goal.latestReview?.at ?? goal.createdAt : goal.updatedAt;
+	return `${ARCHIVED_GOALS_DIR}/goal_${timestampForFile(archiveTime)}_${safeIdPart(goal.id)}.md`;
 }
 
 export function activePathForGoal(ctx: GoalFileContext, goal: GoalRecord): string {

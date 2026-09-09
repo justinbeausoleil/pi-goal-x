@@ -112,3 +112,9 @@ removed tasks and disabled task/contract presentation. It verifies full retained
 requirements and evidence in the isolated child request and adds a seventh
 actual SDK provider-payload cross-check. All prior 27 fixture measurements and
 semantic counts stay unchanged. Existing legacy auditor fixtures remain intact.
+
+Ticket 011 refreshes the baseline for D2/D3 review retrieval: the existing
+get_goal schema adds section=review and its help text (24 serialized characters
+in each of 26 normal-tool fixtures; the two drafting profiles are unchanged).
+All 28 semantic counts, automatic goal text and child requests stay unchanged.
+The 10,000-character automatic-text and 4,000-character detail limits remain.

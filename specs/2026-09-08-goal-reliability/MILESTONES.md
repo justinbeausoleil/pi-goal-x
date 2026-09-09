@@ -1869,3 +1869,42 @@
   public skipped-task completion. `check-candidate.log` and
   `lint-candidate.log` pass. Freeze this011 candidate for independent review and
   full qualification; do not mark acceptance complete until those pass.
+
+### 011 — qualification and independent-review repairs
+
+- Frozen079398d full qualification failed: 1342/1345 tests passed. Active
+  cancellation wording regressed, a failed completion write lost the actual
+  approval's diagnostic ledger event, and unlink retries could create two
+  archive copies. Install/type/lint passed; selfcheck did not run after failure.
+  Preserve `qualified-full.log` and the original review evidence in Data011.
+- Spec review reproduced disableTasks bypassing blockCompletion, cancellation
+  and malformed outcomes disappearing from full history after later approval,
+  and Escape-bypass final-response accounting losing110 of770 executor tokens.
+  Standards review reproduced archive recovery silently ignoring ledger EACCES
+  and bypassing GoalService's ledger boundary. Acceptance remains incomplete.
+- Minimal shared repairs now enforce the task gate regardless of display;
+  retain distinct audit_result verdicts in ledger parsing/checkpoints/history;
+  retain actual approval history before a possibly failing completion commit;
+  and preserve active/paused cancellation wording. Archive filenames for
+  completed records use a stable review timestamp, while GoalService retargets
+  the existing run owner as well as pending usage after every successful archive.
+  Recovery routes events through the existing service with per-event warnings.
+- Native red/green evidence: `required-hidden-gate-red.log`/`required-hidden-green.log`,
+  `archive-clock-registered-red.log`/`archive-clock-green.log`,
+  `cancel-skip-accounting-red.log`/`cancel-skip-accounting-green.log`,
+  `review-history-red.log`/`review-history-green.log`, and
+  `archive-ledger-registered-red.log`/`archive-ledger-green.log`.
+  Keep the earlier hidden-task fixture attempts (wrong settings path and
+  premature tool-profile assertion); they are not gate evidence.
+- `review-fixes-native.log`:34/34 real-Pi cases pass. Explicit adapter regression
+  command covers integration/extension plus ledger, index, compaction, status,
+  goal files and deferred archival:89/89 (`review-fixes-regression.log`).
+  An earlier runner invocation with an unsupported file argument ran its default
+  953 unit checks, all passing; `extension-review-regressions.log` is unit
+  evidence only. Type/lint pass. Context gate first reports expected schema
+  drift; the measured baseline adds24 schema characters to26 normal profiles,
+  with no semantic/automatic-text/child-request changes. Rationale is recorded
+  in experiments/context/README.md; all bounds remain unchanged.
+- Next: freeze repaired candidate, re-review both axes, full qualification,
+  context/provider gates, benchmark/harness/dry-pack checks. Tickets012–014 and
+  the real-Qwen matrix remain pending; no live installation or selection change.

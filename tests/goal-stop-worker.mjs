@@ -11,7 +11,7 @@ import {setTimeout as delay} from "node:timers/promises";
 import {AssistantMessageEventStream} from "@earendil-works/pi-ai";
 import {createAgentSession, createAgentSessionRuntime, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager} from "@earendil-works/pi-coding-agent";
 import {parseGoalFile} from "../extensions/storage/goal-files.ts";
-import {goalLedgerPath} from "../extensions/goal-ledger.ts";
+import {goalLedgerPath, readGoalLedger} from "../extensions/goal-ledger.ts";
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
 const recovery = boundary === "recovery";
@@ -58,6 +58,7 @@ const oracleFollowup = boundary === "oracle-followup";
 const oracleOutcome = boundary === "oracle-outcome";
 const auditOutcome = boundary === "audit-outcome";
 const reviewReopen = process.argv.includes("--review-reopen");
+const reviewHistory = process.argv.includes("--review-history");
 const reviewLedgerFailure = process.argv.includes("--review-ledger-failure");
 const completionWriteFailure = process.argv.includes("--completion-write-failure");
 const reviewWriteFailure = process.argv.includes("--review-write-failure");
@@ -67,6 +68,7 @@ const auditSkipped = auditOutcome && (planningGate || control.startsWith("disabl
 const auditStopped = auditOutcome && control.endsWith("-paused");
 const archiveFailure = process.argv.find(arg => arg.startsWith("--archive-failure="))?.split("=")[1];
 const archiveReopen = process.argv.includes("--archive-reopen");
+const archiveLedgerFailure = process.argv.includes("--archive-ledger-failure");
 const archiveRepairRace = process.argv.find(arg => arg.startsWith("--archive-repair-race="))?.split("=")[1];
 let repairRaceFired = false;
 let allowArchiveRetry = false, confirmArchiveRepair = false, archiveWrites = 0, failedArchives = 0;
@@ -83,6 +85,8 @@ process.env.PI_GOAL_AUTO_CONFIRM = "1";
 const settings = SettingsManager.inMemory({compaction: {enabled: false}, retry: {enabled: boundary === "provider-retry", maxRetries: 2, baseDelayMs: 1}});
 const model = {id: "synthetic", name: "Synthetic", provider: "openai", api: "openai-completions", baseUrl: "http://127.0.0.1:1", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}};
 const results = [], errors = [], requests = [], notices = [], statuses = [];
+const warnings = [], originalWarn = console.warn;
+console.warn = (...args) => { warnings.push(args.join(" ")); originalWarn(...args); };
 const widgetFrames = [];
 let goalWidget;
 const bills = [];
@@ -109,6 +113,10 @@ let failedReviewWrites = 0;
 let failedLedgerWrites = 0;
 const originalAppend = fs.appendFileSync;
 fs.appendFileSync = (path, ...args) => {
+  if (archiveLedgerFailure && allowArchiveRetry && String(path).endsWith("goal_events.jsonl") && /"type":"goal_(completed|archived)"/.test(String(args[0]))) {
+    failedLedgerWrites++;
+    throw Object.assign(new Error("Synthetic archive ledger failure"), {code: "EACCES"});
+  }
   if (reviewLedgerFailure && testing && String(path).endsWith("goal_events.jsonl")) {
     failedLedgerWrites++;
     throw Object.assign(new Error("Synthetic review ledger failure"), {code: "EACCES"});
@@ -142,6 +150,7 @@ const originalUnlink = fs.unlinkSync;
 fs.unlinkSync = path => {
   if (archiveFailure === "unlink" && testing && !allowArchiveRetry && String(path).includes("/active_goal_") && parseGoalFile(String(path))?.status === "complete") {
     failedArchives++;
+    if (controlledClock) clockNow += 1000;
     throw Object.assign(new Error("Synthetic archive unlink failure"), {code: "EACCES"});
   }
   return originalUnlink(path);
@@ -192,7 +201,7 @@ const server = http.createServer(async (req, res) => {
   }
   const delta = auditRead ? {role: "assistant", tool_calls: [{index: 0, id: "audit-read", type: "function", function: {name: "read", arguments: JSON.stringify({path: "proof.txt"})}}]}
     : submit ? {role: "assistant", tool_calls: [{index: 0, id: "advice", type: "function", function: {name: "submit_goal_oracle_advice", arguments: JSON.stringify(offered)}}]}
-    : {role: "assistant", content: auditOutcome ? (artifactWrong ? rejectionReport : control === "malformed" ? "The artifact was inspected; no verdict supplied." : "proof.txt contains verified.\n<approved/>") : boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
+    : {role: "assistant", content: auditOutcome ? (artifactWrong ? rejectionReport : control === "malformed" && (!reviewHistory || childRequests <= 2) ? "The artifact was inspected; no verdict supplied." : "proof.txt contains verified.\n<approved/>") : boundary === "audit" ? (control === "serial" ? "More work is required.\n<disapproved/>" : "Late approval\n<approved/>") : "Advice recorded."};
   for (const [d, finish_reason] of [[delta, null], [{}, submit || auditRead ? "tool_calls" : "stop"]]) res.write(`data: ${JSON.stringify({id: "stop-review", object: "chat.completion.chunk", created: 1, model: "reviewer", choices: [{index: 0, delta: d, finish_reason}]})}\n\n`);
   res.end("data: [DONE]\n\n");
 });
@@ -480,10 +489,20 @@ try {
   if (boundary !== "ordinary" && !auditStopped && !archiveReopen) await session.prompt("/goal-resume");
   if (auditOutcome) {
     if (control === "required-pending") {
+      const settingsPath = join(cwd, ".pi/pi-goal-x-settings.json");
+      const savedSettings = readFileSync(settingsPath, "utf8");
+      if (process.argv.includes("--hide-task-tools")) {
+        writeFileSync(settingsPath, JSON.stringify({...JSON.parse(savedSettings), disableTasks: true}));
+        await session.prompt("/goal-refresh");
+      }
       await run("Request completion with a pending required planning task.", [{name: "update_goal", args: {status: "complete"}}]);
       assert.equal(childRequests, 0);
       assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "active");
       assert.match(JSON.stringify(results.findLast(result => result.toolName === "update_goal").content), /pending.*blockCompletion/);
+      if (process.argv.includes("--hide-task-tools")) {
+        writeFileSync(settingsPath, savedSettings);
+        await session.prompt("/goal-refresh");
+      }
       await run("Explicitly skip this uncontracted planning task with a reason.", [{name: "update_goal_task", args: {task_id: "work", status: "skipped", reason: "The optional planning exercise is no longer needed."}}]);
       assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).taskList.tasks[0].status, "skipped", "the public skip persists before retrying completion");
     }
@@ -536,6 +555,15 @@ try {
       }
     }
     if (!completed) await session.prompt("/goal-pause");
+    if (reviewHistory) {
+      await host.switchSession(session.sessionManager.getSessionFile());
+      await run("Request a fresh independent review after the earlier unsuccessful review.", [{name: "update_goal", args: {status: "complete"}}]);
+      const archived = parseGoalFile(join(cwd, ".pi/goals/archived", readdirSync(join(cwd, ".pi/goals/archived")).find(name => name.includes(primary.id))));
+      assert.equal(archived.latestReview.outcome, "approved");
+      const history = readGoalLedger({cwd}).events.filter(event => event.type === "audit_result");
+      assert.deepEqual(history.map(event => event.verdict), [control === "malformed" ? "malformed" : "cancelled", "approved"], "full review history survives reopen and a later approval");
+      assert.equal(history[0].report, record.latestReview.report);
+    }
     if (archiveFailure) {
       if (!archiveReopen) {
         assert(failedArchives > 0);
@@ -578,8 +606,11 @@ try {
       assert.equal(requests.length, requestCount);
       assert.equal(childRequests, childCount);
       const ledger = readFileSync(goalLedgerPath({cwd}), "utf8").trim().split("\n").map(line => JSON.parse(line));
-      assert.equal(ledger.filter(event => event.type === "goal_completed").length, 1);
-      assert.equal(ledger.filter(event => event.type === "goal_archived").length, 1);
+      for (const type of ["goal_completed", "goal_archived"]) {
+        assert.equal(ledger.filter(event => event.type === type).length, archiveLedgerFailure ? 0 : 1);
+        if (archiveLedgerFailure) assert(warnings.some(warning => warning.includes(`Ledger append failed for ${type}`)), "successful archival must diagnose each lost ledger event");
+      }
+      if (archiveLedgerFailure) assert(failedLedgerWrites > 0);
     }
     if (reviewReopen) {
       assert.equal(record.latestReview.outcome, "disapproved");
@@ -833,7 +864,10 @@ try {
     if (boundary === "audit" && control === "esc") assert.equal(results[resultIndex].details.goal.status, "active", "Escape aborts the audit and the continue choice preserves the open goal");
     assert(childRequests > 0, "the actual child transport reached the async boundary");
     const ledger = readFileSync(join(cwd, ".pi/goals/goal_events.jsonl"), "utf8");
-    assert.doesNotMatch(ledger, /"type":"(?:audit_result|goal_completed|oracle_result)"/, "late child results cannot mutate or arm the stopped goal");
+    if (boundary === "audit" && control === "esc") {
+      assert.deepEqual(readGoalLedger({cwd}).events.filter(event => event.type === "audit_result").map(event => event.verdict), ["cancelled"], "Escape records cancellation without accepting the late child result");
+      assert.doesNotMatch(ledger, /"type":"(?:goal_completed|oracle_result)"/);
+    } else assert.doesNotMatch(ledger, /"type":"(?:audit_result|goal_completed|oracle_result)"/, "late child results cannot mutate or arm the stopped goal");
     if (boundary === "oracle" && control === "abort") assert.match(ledger, /"type":"oracle_failed".*"errorCode":"aborted"/, "Oracle cancellation remains visible after the conversation is gone");
     await childClosed;
     assert(transportAborted, "supported child transport is aborted after a user stop");
@@ -963,7 +997,7 @@ try {
   const focused = results.at(-1).details.goal;
   if (process.argv.includes("--accounting")) assertBilling();
   if (exhaustedEdit) assert.equal(focused.status, "budget_limited");
-  else if (boundary === "completion" || (auditOutcome && !completionWriteFailure && (reviewReopen || auditSkipped || control.startsWith("approved"))) || clearUnpaid || (["unfocus", "clear", "new-session"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
+  else if (boundary === "completion" || (auditOutcome && !completionWriteFailure && (reviewReopen || reviewHistory || auditSkipped || control.startsWith("approved"))) || clearUnpaid || (["unfocus", "clear", "new-session"].includes(control) && boundary !== "agent")) assert.equal(focused, null);
   else if (switching && boundary !== "agent") assert.equal(focused.id, secondary.id);
   else assert.equal(focused.status, boundary === "agent-block" || oracleFollowup || oracleOutcome ? "blocked" : "paused");
   if (["agent", "checkpoint-agent"].includes(boundary) || control === "serial") {

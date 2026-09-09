@@ -191,7 +191,14 @@ export function registerGoalCommands(core: GoalCore): void {
 			const result = await runRecoveryRepair({ cwd: ctx.cwd }, report, async () => {
 				const confirmed = await ctx.ui.confirm(`Remove ${report.staleLocks.length} stale lock(s), archive ${report.completedGoals.length} completed goal(s) and refresh the pool snapshot?`, `Files are backed up to .pi/goals/.recovery-backup first.`);
 				return confirmed === true && core.focusRevision === revision;
-			}, (fileContext, goal) => core.goalService.archiveGoal(fileContext, goal));
+			}, (fileContext, goal) => {
+				const written = core.goalService.archiveGoal(fileContext, goal);
+				core.goalService.appendEvents(fileContext, [
+					{type: "goal_completed", goalId: written.id, archivePath: written.archivedPath, at: written.updatedAt},
+					{type: "goal_archived", goalId: written.id, archivePath: written.archivedPath!, at: written.updatedAt},
+				]);
+				return written;
+			});
 			if (core.focusRevision !== revision) return;
 			core.reconcileFocusedGoalFromDisk(ctx);
 			core.updateUI(ctx);

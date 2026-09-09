@@ -41,15 +41,12 @@ export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContex
 	if (scopeWarning) return {content: [{type: "text", text: scopeWarning}], details: goalDetails(core.state.goal)};
 
 	// Task gate: warn if blockCompletion is enabled and tasks remain pending
-	const disableTasksSettings = loadGoalSettings(ctx.cwd).disableTasks;
-	if (!disableTasksSettings) {
-		const taskWarning = core.state.goal.taskList ? taskCompletionBlockWarning(core.state.goal.taskList) : null;
-		if (taskWarning) {
-			return {
-				content: [{ type: "text", text: taskWarning }],
-				details: goalDetails(core.state.goal),
-			};
-		}
+	const taskWarning = core.state.goal.taskList ? taskCompletionBlockWarning(core.state.goal.taskList) : null;
+	if (taskWarning) {
+		return {
+			content: [{ type: "text", text: taskWarning }],
+			details: goalDetails(core.state.goal),
+		};
 	}
 
 	const auditTarget = mergeGoalPromptFromDisk(ctx, core.state.goal);
@@ -125,11 +122,11 @@ function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
 	}
 	if (completeResult.goal) core.runtime.markTurnStopped(completeResult.goal.id);
 	const skipped = opts.review.outcome === "audit_skipped";
-	try {
-		core.goalService.appendEvents(ctx, [skipped ? {
+	if (skipped) try {
+		core.goalService.appendEvents(ctx, [{
 			type: "audit_skipped", goalId: auditTarget.id, reason: opts.review.bypassOrigin === "user_choice" ? "user_aborted" : "disabled",
 			provider: settings.provider, model: settings.model, thinkingLevel: settings.thinkingLevel, at: opts.review.at,
-		} : {type: "audit_result", goalId: auditTarget.id, verdict: "approved", report: opts.review.report, at: opts.review.at}]);
+		}]);
 	} catch { /* The committed review remains authoritative if the ledger fails. */ }
 	core.auditMessages.enqueue(ctx, {
 		customType: GOAL_AUDIT_ENTRY,
@@ -297,13 +294,15 @@ if (settings.disabled === true) {
 			});
 		}
 		// ── Continue working ────────────────────────────────────────
-		const retentionError = retainReview(review("cancelled", "User cancelled the completion audit and chose to keep the goal open."));
+		const cancelledReview = review("cancelled", "User cancelled the completion audit and chose to keep the goal open.");
+		const retentionError = retainReview(cancelledReview);
 		if (retentionError) return retentionError;
+		core.goalService.appendEvents(ctx, [{type: "audit_result", goalId: auditTarget.id, verdict: "cancelled", report: cancelledReview.report, at: cancelledReview.at}]);
 		// Preserve the existing lifecycle; cancelling a review never resumes it.
 		core.goalWidgetComponentRef.current?.invalidate();
 		core.updateUI(ctx);
 		return {
-			content: [{ type: "text", text: `Audit aborted — the goal remains ${core.state.goal ? statusLabel(core.state.goal) : "open"}. No completion was committed.` }],
+			content: [{ type: "text", text: `Audit aborted — the goal remains ${core.state.goal?.status === "active" ? "active" : core.state.goal ? statusLabel(core.state.goal) : "open"}. No completion was committed.` }],
 			details: goalDetails(core.state.goal),
 		};
 	}
@@ -320,19 +319,19 @@ if (settings.disabled === true) {
 		core.goalWidgetComponentRef.current?.invalidate();
 	}
 	// Append ledger: audit result
-	const verdict = auditor.approved ? "approved" : auditor.error ? "error" : "disapproved" as const;
-	const latestReview = review(auditor.approved ? "approved" : auditor.error ? "error" : auditor.disapproved ? "disapproved" : "malformed", auditor.output || auditor.error || "Auditor produced no verdict.");
+	const verdict = auditor.approved ? "approved" : auditor.error ? "error" : auditor.disapproved ? "disapproved" : "malformed";
+	const latestReview = review(verdict, auditor.output || auditor.error || "Auditor produced no verdict.");
 	if (!auditor.approved) {
 		const retentionError = retainReview(latestReview);
 		if (retentionError) return retentionError;
 	}
-	if (!auditor.approved) try {
+	try {
 		core.goalService.appendEvents(ctx, [{
 			type: "audit_result",
 			goalId: auditTarget.id,
 			verdict,
-			report: auditor.output || "Auditor produced no output.",
-			at: nowIso(),
+			report: latestReview.report,
+			at: latestReview.at,
 		}]);
 	} catch {
 		// Ledger append failure should not block completion

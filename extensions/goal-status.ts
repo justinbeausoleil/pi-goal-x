@@ -196,10 +196,10 @@ function formatCompactTokensForHealth(value: number): string {
 }
 
 function lastAuditBlock(
-	audit: { verdict: "approved" | "disapproved" | "error"; report: string; at: string },
+	audit: NonNullable<ReturnType<typeof latestAuditorResultForGoal>>,
 	width: number,
 ): string {
-	const verdictLabel = audit.verdict === "approved" ? "APPROVED" : audit.verdict === "disapproved" ? "CHANGES REQUIRED" : "ERROR";
+	const verdictLabel = audit.verdict === "disapproved" ? "CHANGES REQUIRED" : audit.verdict.toUpperCase();
 	const line = `Last audit: ${verdictLabel} (${audit.at.slice(0, 10)}) — ${truncateText(audit.report.replace(/\s+/g, " "), 90)}`;
 	const inner = Math.max(4, width - 2);
 	return [

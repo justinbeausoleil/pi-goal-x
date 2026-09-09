@@ -17,7 +17,7 @@ import { taskIndex } from "./goal-task-index.ts";
 export function buildGoalCompactSummary(
   goal: GoalRecord,
   events: GoalLedgerEvent[],
-  auditorOverride?: { verdict: "approved" | "disapproved" | "error"; report: string; at: string },
+  auditorOverride?: ReturnType<typeof latestAuditorResultForGoal>,
 ): string {
   const lines: string[] = [];
   lines.push(`Goal ${goal.id} — ${statusLabel(goal)}`);

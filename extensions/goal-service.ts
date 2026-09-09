@@ -63,6 +63,8 @@ export interface GoalServiceRef {
 	onDiagnostic(diagnostic: GoalDiagnostic): void;
 	/** Runtime/UI effects after an original owner's usage and budget state are saved. */
 	onUsageCharged?(goal: GoalRecord, previous: GoalRecord, ctx: GoalServiceContext): void;
+	/** Retarget the current run's late usage without changing session focus. */
+	onArchived?(goal: GoalRecord): void;
 }
 
 export type GoalServiceContext = GoalFileContext;
@@ -190,6 +192,7 @@ export class GoalService {
 		const written = archiveGoalFile(ctx, goal);
 		const pending = this.pendingUsage.get(goal.id);
 		if (pending) pending.goal = written;
+		this.ref.onArchived?.(written);
 		return written;
 	}
 

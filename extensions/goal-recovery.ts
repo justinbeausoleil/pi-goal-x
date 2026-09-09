@@ -20,7 +20,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
-import { appendGoalEvents, invalidateGoalLedgerCache, readGoalLedger, type GoalLedgerContext } from "./goal-ledger.ts";
+import { invalidateGoalLedgerCache, readGoalLedger, type GoalLedgerContext } from "./goal-ledger.ts";
 import { acquireGoalLock, GOAL_LOCK_DIR } from "./storage/goal-lock.ts";
 import { archiveGoalFile, parseGoalFile, refreshGoalPoolSnapshot, type GoalFileContext } from "./storage/goal-files.ts";
 
@@ -258,12 +258,6 @@ export async function runRecoveryRepair(
 			if (!after.isFile() || before.ino !== after.ino || before.dev !== after.dev || !fs.readFileSync(backup).equals(content) || !fs.readFileSync(source).equals(content)) throw new Error("Completed goal changed during backup; run /goal-recovery again.");
 			const written = archive(ctx, {...goal, activePath: entry.relPath});
 			applied.push(`archived completed goal ${written.id}: ${written.archivedPath}`);
-			try {
-				appendGoalEvents(ctx, [
-					{type: "goal_completed", goalId: written.id, archivePath: written.archivedPath, at: written.updatedAt},
-					{type: "goal_archived", goalId: written.id, archivePath: written.archivedPath!, at: written.updatedAt},
-				]);
-			} catch (error) { failures.push(`Goal ${written.id} was archived, but its ledger event could not be saved: ${String(error)}`); }
 		} catch (error) { failures.push(`Archive recovery failed for ${entry.goalId}: ${String(error)}`); }
 		finally { lock?.release(); }
 	}

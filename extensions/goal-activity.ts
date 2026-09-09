@@ -108,6 +108,8 @@ function mapEvent(event: GoalLedgerEvent, taskTitles: ReadonlyMap<string, string
 		case "audit_started":
 			return { at: event.at, kind: "audit", text: "Started independent completion review." };
 		case "audit_result":
+			if (event.verdict === "cancelled") return {at: event.at, kind: "audit", text: "Completion review was cancelled."};
+			if (event.verdict === "malformed") return {at: event.at, kind: "audit", text: "Completion review returned no valid verdict."};
 			return event.verdict === "approved"
 				? { at: event.at, kind: "audit", text: "Independent auditor approved completion." }
 				: event.verdict === "disapproved"

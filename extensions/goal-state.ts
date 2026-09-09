@@ -236,6 +236,7 @@ export function createGoalCore(
 			console.warn(`[pi-goal] ${diagnostic.source} diagnostic: ${diagnostic.message}`);
 		},
 		onUsageCharged: (goal, previous, ctx) => onUsageCharged(goal, previous, ctx as ExtensionContext),
+		onArchived: (goal) => { if (runningGoal?.id === goal.id) runningGoal = goal; },
 	});
 	let runningGoalId: string | null = null;
 	let terminalInputUnsubscribe: (() => void) | null = null;
