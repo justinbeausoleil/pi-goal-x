@@ -2087,3 +2087,28 @@
   added. The actual installed extension still loads only through native Pi.
   Node22.15.0/24.0.0 executable checks now pass2/2 each (12325/12428ms), including
   both terminal error paths and delayed recovery. Prior failed logs retained.
+
+### 012 accepted; 013 fixture freeze is the frontier
+
+- Both independent review axes cleared b270d47. The spec reviewer reran both
+  original reproductions and confirmed real error status, legitimate yielding
+  and retained delayed recovery. No outstanding material finding.
+- Final package source is 8e012c7323b8cb21c223432fab0a53b83683fe5e, artifact
+  Data012/attempt-04/justinbeausoleil-pi-goal-x-0.31.2-reliability.1.tgz,
+  SHA256 e2f0f850bf2d66cc5c042e29c429168a40ad7bb9f6200014138e56e8f94e7aa6.
+  All 68 packed files are accounted for. Only five documentation files differ
+  from the 34-case qualified runtime; runtime and package metadata are exact.
+  Six fresh exact-artifact Node 22.15/24 checks pass. Rollback-07 restores all
+  78 files, reloads upstream, and retains fork-written data separately.
+- Data012/qualification.json records exact commands, source commits, evidence
+  and remaining gates. Full 1,352, selfcheck 954, real-SDK serial 954, new native
+  launcher checks on both runtimes, context 28, SDK payloads 7, fresh benchmark
+  limits 53, NAF/ranking gates, dry/actual packing and both audits all pass.
+  Different source commits are explicit; later repairs affect only the separate
+  launcher/tests and are independently exercised against installed code.
+- Tickets 012 and 012a are done. Ticket 013 is in progress: freeze the 40-row
+  CSV fixture, independent expected artifacts, six contracted milestones and
+  full six-run configuration before executing any model trial. Qualified
+  runtime is frozen at the artifact above. Both local model definitions still
+  declare 65,536 context/8,192 output. No S3 trial has run; 014 stays blocked by
+  its required 6/6 behavioral acceptance. Live settings remain unchanged.

@@ -1,7 +1,7 @@
 # Development tickets: goal reliability
 
 These are development tickets for the goal package, not tasks it generates.
-Status: implementation approved 2026-09-08. Tickets 001–011 are verified; 012 is in progress.
+Status: implementation approved 2026-09-08. Tickets 001–012 are verified; 013 is in progress.
 Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 [source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
@@ -18,13 +18,13 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [009](009-blocker-oracle.md) | retain blocker and Oracle recovery through compaction | 007 | done | G2, G12 |
 | [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | done | G5, G12 |
 | [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | done | G6, G7 |
-| [012](012-package-compatibility.md) | qualify the packed fork and rollback across existing surfaces | 004, 005, 006, 008, 009, 010, 011 | in-progress | G9, G13 |
-| [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | ready-for-agent | G8 |
+| [012](012-package-compatibility.md) | qualify the packed fork and rollback across existing surfaces | 004, 005, 006, 008, 009, 010, 011 | done | G9, G13 |
+| [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | in-progress | G8 |
 | [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
 
-The current frontier is **012** (Codex, single implementation writer).
-Its bounded child [012a](012a-harness-sdk.md) repairs the existing experiment
-launcher's obsolete SDK calls; the original14-ticket scope is unchanged.
+The current frontier is **013** (Codex, single implementation writer).
+The completed bounded child [012a](012a-harness-sdk.md) repaired the existing
+experiment launcher; the original 14-ticket scope is unchanged.
 Later tickets follow only their
 listed blockers. Use one writer unless parallel work is explicitly requested.
 Blockers are numbered before dependents; approval is a shared entry condition,

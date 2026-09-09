@@ -1,6 +1,6 @@
 # 013: execute the fixed real-Qwen acceptance matrix
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; 012 qualified, fixture/configuration freeze next.
 **Blocked by:** 012.
 **Requirements:** G8; seams S3.
 **What to build:** The maintainer sees all outcomes from a frozen six-run artifact-producing experiment on the installable candidate.
@@ -31,3 +31,10 @@ characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
 Evidence: pending implementation.
+
+Qualified artifact source: `8e012c7323b8cb21c223432fab0a53b83683fe5e`;
+`@justinbeausoleil/pi-goal-x@0.31.2-reliability.1`, SHA256
+`e2f0f850bf2d66cc5c042e29c429168a40ad7bb9f6200014138e56e8f94e7aa6`.
+Location: Data012/attempt-04. Fixture, independent expected outputs and the
+complete six-run configuration must still be frozen before any model attempt.
+No S3 run has started and no G8 acceptance is claimed.

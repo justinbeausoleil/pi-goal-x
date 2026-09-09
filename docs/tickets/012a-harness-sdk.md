@@ -1,6 +1,6 @@
 # 012a: align the existing experiment launcher with Pi 0.85.1
 
-**Status:** in-progress — implementation verified; parent qualification/review pending.
+**Status:** done — native executable/installed-package checks and both review axes passed.
 **Parent/acceptance owner:** 012 (G9/G13, native S1).
 **Requires:** the pinned Pi0.85.1 dependency alignment from001.
 
@@ -46,7 +46,8 @@ timed out while the disk goal stayed active. The added native clarification →
 /goal-pause chain reproduces exit124, then passes after the launcher uses Pi's
 idle/queue state and reserves its delayed-recovery wait for provider failures.
 Data012/harness-yield-red.log and harness-yield-green.log retain both outcomes.
-The repaired combined fixture passes2/2 in4738ms; re-review remains pending.
+The repaired combined fixture passed2/2 in4738ms; the follow-up review below
+then identified the remaining active-provider-error path.
 
 The follow-up spec review cleared yielding but reproduced a sibling error path:
 an active-goal HTTP401 was incorrectly treated as delayed recovery. The driver
@@ -57,7 +58,8 @@ The registered fixture also exhausts Pi's two immediate retries, waits beyond
 the quiet window for one extension recovery, and observes a second real goal
 checkpoint followed by public pause. No classifier or retry policy was copied.
 Data012/harness-active-error-red.log and harness-recovery-green.log preserve
-red and green; the combined2/2 checks pass in11838ms. Final re-review pending.
+red and green; the combined2/2 checks pass in11838ms. Both review axes cleared
+the final repair at b270d47; the spec reviewer also reran both original repros.
 
 The installed-package checks caught a harness import-resolution mistake:
 directly importing a helper beside the isolated package bypassed Pi's peer
