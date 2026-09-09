@@ -1,6 +1,6 @@
 /** S1/S2 draft lifecycle through the real loader, public tools and session tree. */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -167,11 +167,34 @@ try {
     for (const key of ["\x1b[B", "\x1b[A", "\x1b[6~", "\x1b[5~", "\x1b[F", "\x1b[H"]) assert.deepEqual(terminalInput(key), {consume: true}, `navigation ${JSON.stringify(key)} in ${expanded}`);
     assert.deepEqual(terminalInput("\x1b"), {consume: true}, "Escape collapses the view without pausing");
     await run("Inspect the focused trial goal.", [{name: "get_goal", args: {}}]);
+    const toggles = () => readFileSync(join(cwd, ".pi/goals/goal_events.jsonl"), "utf8").trim().split("\n").map(JSON.parse).filter(event => event.type === "auditor_toggled");
+    afterTool = async event => {
+      if (event.toolName !== "get_goal") return;
+      afterTool = undefined;
+      const before = files(), noticeCount = notices.length, eventCount = toggles().length;
+      chmodSync(join(cwd, ".pi/goals"), 0o555);
+      try { terminalInput("\x1b[97;6u"); }
+      finally { chmodSync(join(cwd, ".pi/goals"), 0o755); }
+      assert.deepEqual(files(), before, "failed auditor toggle preserves the authoritative file");
+      assert.equal(toggles().length, eventCount, "failed toggle emits no success event");
+      assert(notices.slice(noticeCount).some(notice => /Could not toggle the auditor/.test(notice)), "failed toggle reports its persistence error");
+      assert(!notices.slice(noticeCount).some(notice => /Auditor (enabled|disabled) for this goal\./.test(notice)), "failed toggle cannot announce success");
+    };
+    await run("Inspect during a failed auditor toggle.", [{name: "get_goal", args: {}}]);
     const beforeToggle = results.at(-1).details.goal.skipAuditor;
     assert.deepEqual(terminalInput("\x1b[97;6u"), {consume: true}, "Ctrl+Shift+A toggles the focused auditor");
     await run("Inspect the saved auditor choice.", [{name: "get_goal", args: {}}]);
     assert.equal(!!results.at(-1).details.goal.skipAuditor, !beforeToggle);
+    assert.equal(toggles().at(-1).enabled, !!beforeToggle, "retry records the successfully saved setting");
+    assert.equal(notices.at(-1), beforeToggle ? "Auditor enabled for this goal." : "Auditor disabled for this goal.");
     terminalInput("\x1b[97;6u");
+    const beforeExternal = files()[0];
+    assert(beforeExternal[1].includes('"skipAuditor": true'));
+    writeFileSync(join(cwd, ".pi/goals", beforeExternal[0]), beforeExternal[1].replace('"skipAuditor": true', '"skipAuditor": false'));
+    terminalInput("\x1b[97;6u");
+    assert(files()[0][1].includes('"skipAuditor": true'), "toggle uses the fresh disk setting");
+    assert.equal(toggles().at(-1).enabled, false, "event describes the saved setting after an external edit");
+    assert.equal(notices.at(-1), "Auditor disabled for this goal.", "notice describes the saved setting after an external edit");
     settingsChoices = ["Done"];
     await session.prompt("/goal-settings");
     assert.deepEqual(settingsChoices, []);
