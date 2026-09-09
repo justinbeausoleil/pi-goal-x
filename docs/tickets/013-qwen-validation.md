@@ -48,5 +48,7 @@ Qualified artifact source: `8e012c7323b8cb21c223432fab0a53b83683fe5e`;
 `@justinbeausoleil/pi-goal-x@0.31.2-reliability.1`, SHA256
 `e2f0f850bf2d66cc5c042e29c429168a40ad7bb9f6200014138e56e8f94e7aa6`.
 Location: Data012/attempt-04. Matrix02 uses that exact installed artifact.
-Runs01–03 failed the required milestone/compaction checks; runs04–06 are still
-executing from the frozen configuration. G8 acceptance remains unmet;014 requires6/6.
+Runs01–03 failed the required milestone/compaction checks; run04 failed the
+required threshold-compaction path. Runs05–06 continue unchanged. G8 remains
+unmet;014 requires6/6. Reviewed harness repairs and cumulative runtime repairs
+require a newly qualified artifact and a new full matrix afterward.

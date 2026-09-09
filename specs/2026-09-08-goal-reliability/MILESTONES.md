@@ -2287,3 +2287,32 @@
   outcomes, then integrate6170a57 and53cb5f1 (plus any required review repairs).
   Freeze a new full matrix only after that. Runtime tarball stays8e012c7 /
   SHA e2f0f850...f94e7aa6; no live selection or package installation changed.
+
+### Cumulative review repairs; replacement package qualification reopened
+
+- Standards review of7ac9380..53cb5f1 reproduced two auditor-toggle failures:
+  a failed durable write still reported success, and stale UI state could report
+  the opposite of the persisted toggle. Commitc6b4abb8eec1cd1221861c5fc71fdc2463d19467
+  checks the existing flush boundary and derives the ledger/notice from the
+  written result. Native package-surfaces red0/2, green2/2; type/lint pass.
+- Global abort on an already-paused goal left pending task confirmations and
+  completion audits live. Commite22aea85378cf8cf7775136b477ec67930fae0a9 captures
+  the existing focused-operation token at run start and routes abort through
+  existing cancellation only while that token remains current. Paused-goal
+  red0/2, green31/31 including active/ordinary/successor-focus controls; type/lint
+  pass. No new public surface, dependency or cancellation abstraction.
+- Both independent review axes clear the repairs. Standards reran all four
+  original native probes against the repaired extension; all pass, including
+  late-result rejection and subsequent ordinary-work preservation. Spec inspected
+  the retained31-case evidence without duplicating it. Data013/cumulative-repairs.json
+  indexes commands/results; original probes and reviewer confirmations are under
+  Data/reliability/cumulative-standards-53cb5f1 (relative to pi-goal-x).
+- Repairs remain isolated in ~/Developer/scratch/pi-goal-x-review-fixes, branch
+  fix/goal-review-findings at e22aea8, descended from both reviewed harness fixes.
+  Ticket012 is reopened for a distinct prerelease artifact, full qualification,
+  packed native checks and rollback. The original8e012c7 qualification is retained.
+- Matrix02 run05 continues under its original watchdog with no completed
+  milestones;06 remains scheduled. Main runtime sources and the installed
+  reliability.1 package remain frozen. Finish all six outcomes, integrate the
+  reviewed commits, and freeze a new full matrix only after012 passes again.
+  No live selection, publication, or main-branch change is authorized here.
