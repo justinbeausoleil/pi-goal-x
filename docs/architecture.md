@@ -112,6 +112,9 @@ new automatic checkpoint.
 At dispatch, queued ordinary user input also blocks new goal work without
 requiring a separate pause command. Native abort signals invalidate the run
 immediately, including while a task dialog or review is awaiting a result.
+An already-paused goal has no ownership of ordinary work, but global abort
+still cancels its pending dialog/review through the captured focus-generation
+token. A changed focus cannot receive an older run's cancellation.
 Oracle receives the parent signal; the auditor retains its separate controller
 so Escape can cancel only the review and offer the existing completion choice.
 Goal mutation tools request sequential execution from Pi. Within one assistant
@@ -568,6 +571,9 @@ The user can Escape an in-flight audit to choose "complete without audit" or
 auditor result before the goal is archived. The global `disabled` setting is
 an explicit user-owned switch: completion skips the auditor, records
 `audit_skipped`, and proceeds through the normal deferred-completion path.
+The per-goal auditor toggle reports success only after a checked durable flush;
+its notice and ledger value come from the saved result, including after an
+external settings edit. Storage failure retains the prior selection.
 
 ## Disk format and old-data reads
 

@@ -1,6 +1,6 @@
 {
   "name": "@justinbeausoleil/pi-goal-x",
-  "version": "0.31.2-reliability.1",
+  "version": "0.31.2-reliability.2",
   "private": true,
   "description": "Adds /goal to pi: conversational goal planning, flexible or ordered goals, persistent progress, and an independent completion auditor.",
   "license": "MIT",

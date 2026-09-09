@@ -14,6 +14,7 @@ import {parseGoalFile} from "../extensions/storage/goal-files.ts";
 import {goalLedgerPath, readGoalLedger} from "../extensions/goal-ledger.ts";
 
 const [boundary = "response", control = "pause"] = process.argv.slice(2);
+const pausedGoal = process.argv.includes("--paused-goal");
 const recovery = boundary === "recovery";
 const compactionFailure = recovery && control.startsWith("compaction-");
 const compactionSuccessor = process.argv.find(arg => arg.startsWith("--compaction-successor="))?.split("=")[1];
@@ -486,7 +487,8 @@ try {
     settings.setCompactionEnabled(true);
   }
   testing = true;
-  if (boundary !== "ordinary" && !auditStopped && !archiveReopen) await session.prompt("/goal-resume");
+  if (boundary !== "ordinary" && !auditStopped && !archiveReopen && !pausedGoal) await session.prompt("/goal-resume");
+  if (pausedGoal) assert.equal(parseGoalFile(resolve(cwd, primary.activePath)).status, "paused", "the asynchronous operation starts with an already-paused goal");
   if (auditOutcome) {
     if (control === "required-pending") {
       const settingsPath = join(cwd, ".pi/pi-goal-x-settings.json");

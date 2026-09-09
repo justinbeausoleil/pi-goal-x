@@ -18,13 +18,14 @@ for (const mode of ["incomplete", "complete", "corrupt"]) test(`Qwen driver rehe
 	const hash = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 	const writeJson = (file: string, value: unknown) => writeFileSync(file, JSON.stringify(value, null, 2));
 	const expected = makeFixture(101).expected;
+	const proof = "NATIVE_REHEARSAL_ONLY\n".repeat(success ? 800 : 200);
 	// Deliberately synthetic outputs exercise the verifier's plumbing, not CSV
 	// correctness. Only real model runs can earn the distinct D6 PASS label.
 	const syntheticNormalizer = `// NATIVE_REHEARSAL_ONLY\nimport{readFileSync,mkdirSync,writeFileSync}from'node:fs';import{join}from'node:path';const input=readFileSync(process.argv[2],'utf8'),out=process.argv[3];mkdirSync(out,{recursive:true});const values=input.startsWith('id,category,amount,note\\r\\n')?${JSON.stringify(validationProbe.expected)}:${JSON.stringify(expected)};for(const[k,v]of Object.entries(values))writeFileSync(join(out,k+'.json'),JSON.stringify(v));`;
 	const steps: any[] = [
 		{ name: "set_goal_tasks", arguments: { tasks: milestones.map(task => ({ id: task.id, title: task.title, verification_contract: task.contract })) } },
 		...milestones.slice(0, complete ? 6 : 3).flatMap(task => [
-			{ name: "write", arguments: { path: `${task.id}-proof.txt`, content: "NATIVE_REHEARSAL_ONLY\n".repeat(200) } },
+			{ name: "write", arguments: { path: `${task.id}-proof.txt`, content: proof } },
 			...(complete && task.id === "docs" ? [
 				{ name: "write", arguments: { path: "normalize.mjs", content: syntheticNormalizer } },
 				{ name: "write", arguments: { path: "rehearsal.test.mjs", content: `import test from 'node:test'; import{writeFileSync}from'node:fs';test('NATIVE_REHEARSAL_ONLY',()=>{writeFileSync('checks-ran.txt','executed');${mode === "corrupt" ? "writeFileSync('output/totals.json','{}');" : ""}});` } },
@@ -93,7 +94,14 @@ for (const mode of ["incomplete", "complete", "corrupt"]) test(`Qwen driver rehe
 		assert(summaries >= 3, "summaries must cross the actual provider boundary");
 		assert.deepEqual(result.transitions.map((item: any) => item.task), milestones.slice(0, complete ? 6 : 3).map(task => task.id));
 		assert.equal(result.finalGoal.status, complete ? "complete" : "paused");
-		for (const task of milestones.slice(0, 3)) assert.equal(readFileSync(join(project, `${task.id}-proof.txt`), "utf8"), "NATIVE_REHEARSAL_ONLY\n".repeat(200));
+		for (const task of milestones.slice(0, 3)) assert.equal(readFileSync(join(project, `${task.id}-proof.txt`), "utf8"), proof);
+		const events = readFileSync(join(matrix, "run-01/events.ndjson"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+		const first = events.find(event => event.type === "request" && event.role === "executor");
+		const system = first.payload.messages.filter((message: any) => message.role === "system").map((message: any) => message.content).join("\n");
+		assert.match(system, /mode=upsert preserves omitted fields/, "the real executor must receive the installed goal tool guidance through Pi's normal system prompt");
+		const ballastIndex = events.findIndex(event => event.type === "ballast");
+		const afterBallast = events.slice(ballastIndex + 1).find(event => event.type === "request" && event.role === "executor");
+		assert.equal(afterBallast.payload.max_tokens, 8192, "threshold pressure must leave the configured output allowance intact");
 	} finally {
 		server.closeAllConnections();
 		await new Promise<void>(resolve => server.close(() => resolve()));

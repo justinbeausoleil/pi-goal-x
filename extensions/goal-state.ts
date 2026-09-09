@@ -905,19 +905,22 @@ export function createGoalCore(
 			ctx.ui.notify("This goal is complete; the auditor no longer applies.", "info");
 			return;
 		}
-		const nextEnabled = state.goal.skipAuditor === true;
 		const result = goalService.apply(ctx, {
 			reconcile: false,
 			mutate: (g) => ({ ...g, skipAuditor: g.skipAuditor === true ? undefined : true, updatedAt: nowIso() }),
-			ledger: (written) => [{ type: "auditor_toggled" as const, goalId: written.id, enabled: nextEnabled, at: written.updatedAt }],
+			ledger: (written) => [{ type: "auditor_toggled" as const, goalId: written.id, enabled: written.skipAuditor !== true, at: written.updatedAt }],
 		});
 		if (!result.ok) {
 			ctx.ui.notify("Could not toggle the auditor: " + result.message, "error");
 			return;
 		}
-		goalService.flushTurn(ctx); // P1-3: user-visible setting change persists now, not at turn end
+		const error = goalService.flushForAudit(ctx); // Report success only after the setting is saved.
 		updateUI(ctx);
-		ctx.ui.notify(nextEnabled ? "Auditor enabled for this goal." : "Auditor disabled for this goal.", "info");
+		if (error) {
+			ctx.ui.notify("Could not toggle the auditor: " + error, "error");
+			return;
+		}
+		ctx.ui.notify(result.goal.skipAuditor === true ? "Auditor disabled for this goal." : "Auditor enabled for this goal.", "info");
 	}
 
 	function flushGoalTransaction(ctx: ExtensionContext): void {
