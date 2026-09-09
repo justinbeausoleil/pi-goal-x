@@ -112,8 +112,12 @@ export function registerGoalEvents(core: GoalCore): void {
 		userTriggerPending = false;
 		stopListeningForAbort?.();
 		const signal = ctx.signal;
+		const operationFocus = core.state.goal ? core.focusedOperationToken(core.state.goal.id) : null;
 		const stopped = () => {
 			if (runIsCurrent() && core.runningGoalId === core.state.goal?.id) core.pauseActiveGoal(ctx);
+			// Paused goals do not own ordinary work, but their pending dialogs and
+			// reviews still belong to this run. Never retarget abort to a new focus.
+			else if (operationFocus && core.isFocusedOperationCurrent(operationFocus)) core.cancelFocusedWork(ctx, operationFocus.goalId);
 		};
 		signal?.addEventListener("abort", stopped, {once: true});
 		stopListeningForAbort = () => signal?.removeEventListener("abort", stopped);

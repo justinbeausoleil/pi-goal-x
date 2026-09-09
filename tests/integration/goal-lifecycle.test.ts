@@ -120,6 +120,12 @@ test("S1: native terminal pause charges every executor response once", {timeout:
 	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), "checkpoint-agent", "pause", "--accounting"], {timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""}});
 	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
 });
+for (const boundary of ["dialog", "audit"]) test(`S1/S2: global abort cancels paused goal ${boundary}`, {timeout: 15000}, async () => {
+	const {stdout} = await run(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("../goal-stop-worker.mjs", import.meta.url)), boundary, "abort", "--paused-goal"], {
+		timeout: 12000, env: {...process.env, PI_SUBAGENT_CHILD: "", PI_SUBAGENT_DEPTH: ""},
+	});
+	assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)!).passed, true);
+});
 for (const [boundary, control] of [
 	...["pause", "abort", "unfocus", "switch", "replace", "clear"].map(control => ["response", control]),
 	["ordinary", "replace"],
