@@ -2226,3 +2226,31 @@
   The matrix cannot reach6/6; record all remaining scheduled outcomes before
   diagnosing a repaired candidate.014 stays blocked and live settings stay
   unchanged. Branch2f3901b was pushed successfully before these results.
+
+### 013 matrix02 midpoint and isolated native-prompt repair
+
+- Runs02/03 (Qwen3.6/low/seeds102/103) also FAIL `incomplete milestone: parse`,
+  396692/578460ms,18/22 executor responses, zero compactions/recoveries. Both
+  used task-1-parse etc., completed their own six tasks and received approved
+  audits. Their post-run read-only original JSON comparisons pass, but neither
+  proves the missing boundaries or fresh-input checks. All outcomes remain FAIL.
+- Their reported executor totals are230108/320132 tokens; auditor128737/117798;
+  no summary usage. Raw categories/settings/responses are retained in each run.
+  Run04 has reached one native manual compaction and resumed; runs05/06 remain
+  scheduled. The unchanged sequential driver is still running. Do not duplicate
+  slots or change its frozen source/package/configuration.
+- Read-only diagnosis found the driver's custom system prompt bypasses Pi's
+  normal tool snippets and promptGuidelines. Actual initial executor system
+  messages are246chars and omit both task guidelines: matrix02/prompt-diagnostic.json.
+  This configuration defect is proven; its causal contribution to model failures
+  is not. The fixture, exact IDs, contracts and six-of-six gate remain unchanged.
+- In the separate qualification worktree,6170a5776a5bc26ed7cfc6f080deea7933edf4ae
+  deletes that override and verifies installed guidance in an actual outbound
+  native rehearsal request. Red2/3, green3/3,13635ms; type/lint pass. Evidence:
+  Data013/native-prompt-{red,green}.{log,json}; rehearsal directories retained.
+  Both independent review axes clear e6302fc..6170a57; Spec independently reran
+  the successful case1/1 (Data013/spec-review-6170a57/native-prompt-check.log).
+-6170a57 is intentionally not integrated into the running matrix's worktree.
+  Finish and retain all six matrix02 outcomes, then integrate the reviewed repair
+  and freeze a newly numbered full matrix. No real case was retried, gate relaxed,
+  installed package replaced or live selection changed.013/014 remain unfinished.
