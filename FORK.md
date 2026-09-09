@@ -4,10 +4,13 @@ This fork of [tmonk/pi-goal-x](https://github.com/tmonk/pi-goal-x) is being
 prepared to repair automatic goal startup, task continuity through compaction,
 and large task decomposition on Pi 0.85.1 with local Qwen models.
 
-**Stage: isolated package qualification.** Development tickets001–011 passed
-deterministic/native-host checks and independent review. The private package is
-`@justinbeausoleil/pi-goal-x@0.31.2-reliability.1`. Package compatibility,
-rollback and the fixed six-run Qwen acceptance gate remain in progress.
+The private evaluation package is
+`@justinbeausoleil/pi-goal-x@0.31.2-reliability.1`. Qualification and model
+acceptance attach to an exact commit and tarball hash, not merely this version.
+The repository's [package qualification record](https://github.com/justinbeausoleil/pi-goal-x/blob/feat/goal-reliability/docs/reviews/2026-09-08-ticket-012.md)
+and [Qwen acceptance ticket](https://github.com/justinbeausoleil/pi-goal-x/blob/feat/goal-reliability/docs/tickets/013-qwen-validation.md)
+record current results and any remaining gate. A successful deterministic test
+does not by itself authorize adoption.
 
 See the repository's [specification](https://github.com/justinbeausoleil/pi-goal-x/blob/feat/goal-reliability/spec.md),
 [plan](https://github.com/justinbeausoleil/pi-goal-x/blob/feat/goal-reliability/plan.md),

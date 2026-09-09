@@ -1,4 +1,4 @@
-> Maintainer fork: `@justinbeausoleil/pi-goal-x`. Reliability repairs have passed deterministic verification; package qualification and real-Qwen acceptance are in progress. See [FORK.md](FORK.md) and [release notes](RELEASE_NOTES.md). The ranking badge below describes upstream.
+> Maintainer fork: `@justinbeausoleil/pi-goal-x`. See [FORK.md](FORK.md) and [release notes](RELEASE_NOTES.md) for the reliability changes and links to artifact-specific qualification and model acceptance. The ranking badge below describes upstream.
 
 <div align="center">
   <img src="pi-goal-x.png" alt="pi-goal-x logo" width="560">
