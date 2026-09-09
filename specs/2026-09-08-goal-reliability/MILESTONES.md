@@ -2112,3 +2112,29 @@
   runtime is frozen at the artifact above. Both local model definitions still
   declare 65,536 context/8,192 output. No S3 trial has run; 014 stays blocked by
   its required 6/6 behavioral acceptance. Live settings remain unchanged.
+
+### 013 fixture preparation (no model attempt)
+
+- Added an independent fixture generator under experiments/reliability and a
+  discoverable check. Seeds 101/102/103 each produce a four-column UTF-8 CSV
+  with 40 data rows: 28 accepted, four later duplicate IDs and eight invalid
+  records. Quoted commas, doubled quotes, whitespace and empty notes occur.
+  Expected values are generated from domain values before CSV encoding, never
+  through an executor parser. Hand-computed total checks are 150514/151550/152586
+  cents, with a literal category breakdown checked for seed 101.
+- Six task IDs/contracts are parse, normalize, aggregate, rejections, checks and
+  docs. The objective specifies exact output shapes, validation priority,
+  first-valid-ID behavior, integer cents, standard-library implementation and
+  real executable checks. A separate six-row CRLF probe with literal expected
+  values checks fresh-path execution, invalid IDs not reserving a duplicate,
+  quoted text and unsafe cents. This is frozen with the main fixture before any
+  model use; it does not replace the 40-row project artifacts.
+- Fixture checks and type checking pass; evidence starts at Data013/fixture-*.
+  The S3 driver/configuration is still being prepared. Reuse native compaction
+  and public commands/tools, enforce the existing run limits, record all model
+  and auxiliary usage, and keep expected answers outside the executor project.
+  No S3 request, live setting change or acceptance assertion has occurred.
+- Branch 8072804 (012 accepted) was pushed successfully. The qualified runtime
+  remains artifact source 8e012c7 / SHA e2f0f850...f94e7aa6. Do not rebuild it for
+  unshipped fixture/driver changes. A runtime repair after a failed matrix needs
+  a new candidate and complete new six-run matrix, with old results retained.
