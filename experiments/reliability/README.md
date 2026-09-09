@@ -21,8 +21,13 @@ copied into the manifest nor logged.
 
 After the public parse and aggregate completions, the native `turn_end` event
 starts public manual compaction, then `/goal-resume`. After normalization, the
-observer appends a frozen non-instructional color sequence to the actual tool
-result. Pi owns threshold detection and summarization. The run must produce
+observer appends non-instructional color text to the actual tool result. The
+frozen rule repeats `red tan ` from Pi's public context estimate to 51,200 tokens,
+above its 49,152-token threshold while preserving response room. Both configured
+tokenizers use two tokens per repeat (plus one final space); its eight characters
+also match Pi's estimate. The manifest freezes the rule, and each run records the
+prior estimate, repeat count, actual character size and hash. Pi owns threshold
+detection and summarization. The run must produce
 native manual/threshold/manual events with real summaries; ballast alone does
 not pass. Compaction settings retain 512 recent tokens and reserve 16,384.
 
@@ -53,6 +58,8 @@ node --experimental-strip-types --test tests/goal-qwen-driver.test.ts
 Its local synthetic provider exercises native compaction, rejected incomplete
 execution, the full verifier/auditor/archive path, and rejection of artifacts
 corrupted by a passing executor test. An observable effect proves nested tests
-actually execute. Its deliberately scripted
+actually execute. The outgoing request after pressure must retain its configured
+8,192-token output allowance; the synthetic provider cannot mask native clamping.
+Its deliberately scripted
 artifacts test verifier plumbing, not CSV implementation or real-model ability.
 Reports use `REHEARSAL_PASS`/`REHEARSAL_FAIL`, never the D6 result labels.

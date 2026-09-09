@@ -17,7 +17,9 @@ const readJson = file => JSON.parse(readFileSync(file, "utf8"));
 const writeJson = (file, value) => writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
 const sourceFiles = ["experiments/reliability/run-qwen.mjs", "experiments/reliability/qwen-fixture.ts", "extensions/goal-format.ts", "package-lock.json"];
 const modelIds = ["mlx-community/Qwen3.6-35B-A3B-8bit", "mlx-community/Qwen3.8-27B-8bit"];
-const ballast = "red blue green yellow orange purple black white silver gold. ".repeat(4200);
+// Both configured tokenizers use two tokens per repeat (+ one final space).
+// Eight characters also match Pi's estimate, avoiding output-budget clamping.
+const ballastPattern = "red tan ", ballastTargetTokens = 51200;
 const [, , command, matrixArg, ...args] = process.argv;
 assert(matrixArg && ["freeze", "run"].includes(command), "usage: run-qwen.mjs freeze MATRIX QUALIFICATION INSTALLED_PACKAGE MODELS_JSON | run MATRIX RUN_NUMBER");
 const matrixDir = resolve(matrixArg), manifestPath = join(matrixDir, "matrix.json");
@@ -69,7 +71,7 @@ if (command === "freeze") {
 		limits: { executorResponses: 60, elapsedMs: 1800000, extensionRecoveries: 2 },
 		compaction: { enabled: true, reserveTokens: 16384, keepRecentTokens: 512 },
 		boundaries: [{ task: "parse", reason: "manual" }, { task: "normalize", reason: "threshold" }, { task: "aggregate", reason: "manual" }],
-		ballast: { chars: ballast.length, sha256: hash(ballast), description: "Repeated color names; no instructions or expected answers." },
+		ballast: { pattern: ballastPattern, targetTokens: ballastTargetTokens, tokensPerRepeat: 2, description: "Repeat to the target from Pi's public context estimate; no instructions or expected answers. Record actual size/hash per run." },
 		fixtureFiles, milestones, runs: runs.map((run, index) => ({ number: index + 1, ...run })),
 	});
 	console.log(JSON.stringify({ frozen: manifestPath, runs: runs.length, artifactSha256: qualification.sha256 }));
@@ -196,7 +198,11 @@ try {
 					boundaryPending = boundary;
 					if (boundary.reason === "manual") manualPending = boundary;
 					else {
-						log({ type: "ballast", task: task.id, ...manifest.ballast });
+						const estimatedBefore = session.getContextUsage()?.tokens;
+						assert(Number.isFinite(estimatedBefore), "native context estimate is required for threshold pressure");
+						const repetitions = Math.max(0, Math.ceil((ballastTargetTokens - estimatedBefore) / 2));
+						const ballast = ballastPattern.repeat(repetitions);
+						log({ type: "ballast", task: task.id, ...manifest.ballast, estimatedBefore, repetitions, chars: ballast.length, sha256: hash(ballast) });
 						// A real tool-result tail reaches Pi's next-response threshold check;
 						// context-only custom messages may wait until the whole run settles.
 						return { content: [...event.content, { type: "text", text: ballast }] };
