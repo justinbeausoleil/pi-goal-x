@@ -179,7 +179,6 @@ try {
 	const settingsManager = SettingsManager.inMemory({ compaction: manifest.compaction, retry: { enabled: true, maxRetries: 2 } });
 	const resourceLoader = new DefaultResourceLoader({ cwd: project, agentDir, settingsManager, additionalExtensionPaths: [manifest.installedPackage],
 		noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
-		systemPrompt: "Carry out the user's synthetic CSV development goal using the files in this project. Preserve its requirements and use real tools to verify your work.",
 		extensionFactories: [pi => {
 			pi.on("tool_result", async event => {
 				log({ type: "public_tool_result", event });

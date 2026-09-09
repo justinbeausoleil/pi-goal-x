@@ -94,6 +94,12 @@ for (const mode of ["incomplete", "complete", "corrupt"]) test(`Qwen driver rehe
 		assert.deepEqual(result.transitions.map((item: any) => item.task), milestones.slice(0, complete ? 6 : 3).map(task => task.id));
 		assert.equal(result.finalGoal.status, complete ? "complete" : "paused");
 		for (const task of milestones.slice(0, 3)) assert.equal(readFileSync(join(project, `${task.id}-proof.txt`), "utf8"), "NATIVE_REHEARSAL_ONLY\n".repeat(200));
+		if (success) {
+			const events = readFileSync(join(matrix, "run-01/events.ndjson"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+			const first = events.find(event => event.type === "request" && event.role === "executor");
+			const system = first.payload.messages.filter((message: any) => message.role === "system").map((message: any) => message.content).join("\n");
+			assert.match(system, /mode=upsert preserves omitted fields/, "the real executor must receive the installed goal tool guidance through Pi's normal system prompt");
+		}
 	} finally {
 		server.closeAllConnections();
 		await new Promise<void>(resolve => server.close(() => resolve()));

@@ -1,6 +1,7 @@
 # Frozen Qwen acceptance
 
-`run-qwen.mjs` implements plan D6 with the qualified installed tarball. It never
+`run-qwen.mjs` implements plan D6 with the qualified installed tarball and Pi's
+normal system prompt, including the installed tools' guidance. It never
 installs a package or changes live Pi settings. Commit the fixture and driver,
 then freeze a new matrix directory before any provider request:
 
