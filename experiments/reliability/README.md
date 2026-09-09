@@ -38,6 +38,8 @@ summary/auditor usage), transitions, final state and artifact-check outcome.
 Acceptance checks the original outputs, a separate six-row fresh-input probe,
 the executor's executable checks, documentation, six contracts, single completion
 transitions, enabled auditor approval and exactly one archived completed record.
+Final artifact comparisons run after both executable verification commands,
+so their writes cannot invalidate an earlier successful comparison unnoticed.
 The matrix passes only at 6/6. A repaired candidate needs a new numbered matrix;
 retain every earlier result.
 
@@ -48,6 +50,8 @@ node --experimental-strip-types --test tests/goal-qwen-driver.test.ts
 ```
 
 Its local synthetic provider exercises native compaction, rejected incomplete
-execution and the full verifier/auditor/archive path. Its deliberately scripted
+execution, the full verifier/auditor/archive path, and rejection of artifacts
+corrupted by a passing executor test. An observable effect proves nested tests
+actually execute. Its deliberately scripted
 artifacts test verifier plumbing, not CSV implementation or real-model ability.
 Reports use `REHEARSAL_PASS`/`REHEARSAL_FAIL`, never the D6 result labels.

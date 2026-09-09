@@ -2164,3 +2164,26 @@
   independent fixed-base review are next, then commit/freeze and run all six
   Qwen slots once. No real model request, matrix acceptance or live selection
   change has occurred. Ticket013 remains in progress;014 remains blocked.
+
+### 013 independent review repaired the acceptance verifier
+
+- d947686 passed type/lint, unit957 and discovery/selfcheck957 across73 unit
+  entries. Standards review found no actionable issue and independently ran
+  the fixture and both native rehearsals. Data013/standards-review-d947686.
+- Spec review found two material gaps: inherited NODE_TEST_CONTEXT caused the
+  nested executor test process to skip its files, and passing executor tests
+  could mutate totals after the driver's comparison. The review demonstrated
+  REHEARSAL_PASS with final totals `{}`. Data013/spec-review-d947686 retains both
+  native reproductions. Earlier claimed full-path rehearsal did not prove that
+  executor tests actually ran; its remaining native-flow evidence still holds.
+- The driver now removes that inherited Node marker from verifier child env,
+  runs executor checks and the fresh-input command before final artifact
+  comparisons. Rehearsal tests have an observable file effect and include a
+  passing test that corrupts totals. The registered red failed2/3; green passes
+  3/3,7049ms, including rejection of the corrupted completed project. See
+  Data013/native-review-red.log and native-review-green.log. No gate was relaxed.
+- Matrix01 was frozen successfully at d947686 but no scheduled slot ran. Its
+  manifest is preserved unchanged with superseded.json explaining these
+  pre-execution findings. A new numbered freeze follows review of the repair.
+  Exact runtime/package remains 8e012c7 / SHA e2f0f850...f94e7aa6. No S3 request,
+  live installation or adoption acceptance has occurred.

@@ -10,7 +10,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { makeFixture, milestones, objective, validationProbe } from "../experiments/reliability/qwen-fixture.ts";
 
-for (const complete of [false, true]) test(`Qwen driver rehearses native boundaries and ${complete ? "artifact acceptance" : "incomplete rejection"}`, async () => {
+for (const mode of ["incomplete", "complete", "corrupt"]) test(`Qwen driver rehearses native boundaries: ${mode}`, async () => {
+	const complete = mode !== "incomplete", success = mode === "complete";
 	const matrix = mkdtempSync(join(tmpdir(), "goal-qwen-native-"));
 	const project = join(homedir(), "Developer/scratch", `pi-goal-qwen-${basename(matrix)}-1`);
 	const modelsPath = join(matrix, "models.json");
@@ -26,7 +27,7 @@ for (const complete of [false, true]) test(`Qwen driver rehearses native boundar
 			{ name: "write", arguments: { path: `${task.id}-proof.txt`, content: "NATIVE_REHEARSAL_ONLY\n".repeat(200) } },
 			...(complete && task.id === "docs" ? [
 				{ name: "write", arguments: { path: "normalize.mjs", content: syntheticNormalizer } },
-				{ name: "write", arguments: { path: "rehearsal.test.mjs", content: "import test from 'node:test'; test('NATIVE_REHEARSAL_ONLY',()=>{});" } },
+				{ name: "write", arguments: { path: "rehearsal.test.mjs", content: `import test from 'node:test'; import{writeFileSync}from'node:fs';test('NATIVE_REHEARSAL_ONLY',()=>{writeFileSync('checks-ran.txt','executed');${mode === "corrupt" ? "writeFileSync('output/totals.json','{}');" : ""}});` } },
 				{ name: "write", arguments: { path: "README.md", content: "NATIVE_REHEARSAL_ONLY: normalize.mjs; node --test; duplicate amount category" } },
 				{ name: "bash", arguments: { command: "node normalize.mjs input.csv output" } },
 			] : []),
@@ -77,11 +78,16 @@ for (const complete of [false, true]) test(`Qwen driver rehearses native boundar
 		let stderr = "";
 		try {
 			await promisify(execFile)(process.execPath, ["--experimental-strip-types", resolve("experiments/reliability/run-qwen.mjs"), "run", matrix, "1"], { timeout: 30000, maxBuffer: 4 * 1024 * 1024 });
-			assert(complete, "an incomplete rehearsal must fail");
-		} catch (error: any) { stderr = error.stderr ?? ""; assert.equal(error.code, 1, stderr); assert(!complete, error.stdout + stderr); }
+			assert(success, "incomplete or corrupt artifacts must fail");
+		} catch (error: any) { stderr = error.stderr ?? ""; assert.equal(error.code, 1, stderr); assert(!success, error.stdout + stderr); }
 		const result = JSON.parse(readFileSync(join(matrix, "run-01/result.json"), "utf8"));
-		assert.equal(result.status, complete ? "REHEARSAL_PASS" : "REHEARSAL_FAIL");
+		assert.equal(result.status, success ? "REHEARSAL_PASS" : "REHEARSAL_FAIL");
 		if (!complete) assert.match(result.error, /executor yielded before completing/, JSON.stringify(result, null, 2) + stderr);
+		else assert.equal(readFileSync(join(project, "checks-ran.txt"), "utf8"), "executed", "the nested executor tests must actually run");
+		if (mode === "corrupt") {
+			assert.match(result.error, /deep-equal/);
+			assert.deepEqual(JSON.parse(readFileSync(join(project, "output/totals.json"), "utf8")), {});
+		}
 		assert.deepEqual(result.compactions.map((item: any) => item.reason), ["manual", "threshold", "manual"]);
 		assert(result.compactions.every((item: any) => !item.fromExtension && item.entry.summary));
 		assert(summaries >= 3, "summaries must cross the actual provider boundary");

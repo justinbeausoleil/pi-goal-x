@@ -263,19 +263,24 @@ try {
 		assert.equal(transitions.filter(transition => transition.task === milestone.id).length, 1, `duplicate completed transition: ${milestone.id}`);
 	}
 	assert.deepEqual(compactions.filter(item => item.boundary).map(item => ({ task: item.boundary.task, reason: item.reason })), manifest.boundaries);
+	// node --test sets this for children; forwarding it would silently skip the
+	// executor's independent test process when this driver is itself rehearsed.
+	const checkEnv = { ...process.env };
+	delete checkEnv.NODE_TEST_CONTEXT;
+	const checkOptions = { cwd: project, env: checkEnv, signal: controller.signal, timeout: 15000, maxBuffer: 4 * 1024 * 1024 };
+	assert(readdirSync(project, { recursive: true }).some(name => name.endsWith(".test.mjs")), "an executable Node test file is required");
+	const checks = await promisify(execFile)(process.execPath, ["--test"], checkOptions);
+	log({ type: "executor_checks", stdout: checks.stdout, stderr: checks.stderr });
+	const probe = readJson(join(matrixDir, "probe.json")), probeInput = join(runDir, "independent-input.csv"), probeOutput = join(runDir, "independent-output");
+	writeFileSync(probeInput, probe.csv);
+	const normalized = await promisify(execFile)(process.execPath, [join(project, "normalize.mjs"), probeInput, probeOutput], checkOptions);
+	log({ type: "independent_normalizer", stdout: normalized.stdout, stderr: normalized.stderr });
+	// Check final artifacts after every command that can write them.
 	assert.equal(hash(readFileSync(join(project, "input.csv"))), manifest.fixtureFiles[`input-${scheduled.seed}.csv`]);
 	assert.equal(hash(readFileSync(join(project, "TASK.md"))), manifest.fixtureFiles["objective.txt"]);
 	const expected = readJson(join(matrixDir, `expected-${scheduled.seed}.json`));
 	for (const key of ["normalized", "totals", "rejections"]) assert.deepEqual(readJson(join(project, "output", `${key}.json`)), expected[key]);
-	const probe = readJson(join(matrixDir, "probe.json")), probeInput = join(runDir, "independent-input.csv"), probeOutput = join(runDir, "independent-output");
-	writeFileSync(probeInput, probe.csv);
-	const checkOptions = { cwd: project, signal: controller.signal, timeout: 15000, maxBuffer: 4 * 1024 * 1024 };
-	const normalized = await promisify(execFile)(process.execPath, [join(project, "normalize.mjs"), probeInput, probeOutput], checkOptions);
-	log({ type: "independent_normalizer", stdout: normalized.stdout, stderr: normalized.stderr });
 	for (const key of ["normalized", "totals", "rejections"]) assert.deepEqual(readJson(join(probeOutput, `${key}.json`)), probe.expected[key]);
-	assert(readdirSync(project, { recursive: true }).some(name => name.endsWith(".test.mjs")), "an executable Node test file is required");
-	const checks = await promisify(execFile)(process.execPath, ["--test"], checkOptions);
-	log({ type: "executor_checks", stdout: checks.stdout, stderr: checks.stderr });
 	const readme = readFileSync(join(project, "README.md"), "utf8");
 	for (const term of ["normalize.mjs", "node --test", "duplicate", "amount", "category"]) assert(readme.toLowerCase().includes(term.toLowerCase()), `documentation omits ${term}`);
 	const stored = readdirSync(join(project, ".pi/goals"), { recursive: true }).filter(name => name.endsWith(".md")).map(name => parseGoalFile(join(project, ".pi/goals", name))).filter(goal => goal?.id === completeGoal.id);
