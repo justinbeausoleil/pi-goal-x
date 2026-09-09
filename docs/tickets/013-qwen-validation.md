@@ -1,6 +1,6 @@
 # 013: execute the fixed real-Qwen acceptance matrix
 
-**Status:** in-progress — Codex; matrix02 frozen and scheduled execution started.
+**Status:** in-progress — Codex; matrix02 finished0/6; repaired candidate awaits qualification and a new full matrix.
 **Blocked by:** 012.
 **Requirements:** G8; seams S3.
 **What to build:** The maintainer sees all outcomes from a frozen six-run artifact-producing experiment on the installable candidate.
@@ -48,7 +48,7 @@ Qualified artifact source: `8e012c7323b8cb21c223432fab0a53b83683fe5e`;
 `@justinbeausoleil/pi-goal-x@0.31.2-reliability.1`, SHA256
 `e2f0f850bf2d66cc5c042e29c429168a40ad7bb9f6200014138e56e8f94e7aa6`.
 Location: Data012/attempt-04. Matrix02 uses that exact installed artifact.
-Runs01–03 failed the required milestone/compaction checks; run04 failed the
-required threshold-compaction path. Run05 timed out; run06 continues unchanged. G8 remains
-unmet;014 requires6/6. Reviewed harness repairs and cumulative runtime repairs
-require a newly qualified artifact and a new full matrix afterward.
+All six scheduled outcomes are recorded: **matrix02 FAIL,0/6**.
+See [the complete results report](../reviews/2026-09-08-qwen-matrix-02.md).
+G8 remains unmet;014 requires6/6. Reviewed harness repairs and cumulative runtime
+repairs require a newly qualified artifact and a new full matrix afterward.

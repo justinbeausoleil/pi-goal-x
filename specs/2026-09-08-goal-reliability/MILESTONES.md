@@ -2344,3 +2344,22 @@
 - After all six outcomes and a passing qualification, merge the reviewed fix
   branch into feat/goal-reliability to preserve the exact artifact-source commit
   in its ancestry, then freeze the next full matrix.013/014 remain open.
+
+### Matrix02 complete:0/6; idle full-suite qualification started
+
+- Run06 FAIL at1800072ms,15 executor responses, one manual compaction and one
+  completed milestone. Exposed executor139103 input+11959 output=151062;
+  summary13311+5307=18618. No auditor/recovery. All six original outcomes now
+  exist, and the unchanged outer driver exited1. No slot was retried.
+- docs/reviews/2026-09-08-qwen-matrix-02.md and Data013/matrix-02/results.json
+  report all outcomes, categories and limitations. The matrix is0/6, so G8 and
+  adoption remain blocked. Runtime/tarball/configuration remained frozen.
+- Replacement e47f475 now passes selfcheck958, real-SDK serial958, context28,
+  provider7, NAF105/95, ranking5, both zero-vulnerability audits and dry-pack68.
+  Native40 commands, rollback78 and fresh53-limit benchmark were already green.
+- The one full-suite rerun was queued behind all six driver exits and has now
+  started with model execution idle: Data012/reliability-02/full-idle-command.json
+  and full-idle.log. Original1355/1358 result and old-artifact timeout remain
+  retained; neither limits nor assertions changed. Ticket012 remains open until
+  this passes. Then merge the reviewed branch, preserve e47f475 ancestry, update
+  qualification evidence, and freeze matrix03 before any further model request.
