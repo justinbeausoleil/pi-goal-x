@@ -1,6 +1,6 @@
 # 012: qualify the packed fork and rollback across existing surfaces
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
+**Status:** in-progress — Codex; all blockers verified, 2026-09-08.
 **Blocked by:** 004, 005, 006, 008, 009, 010, 011.
 **Requirements:** G9, G13; seams S1, S2.
 **What to build:** An isolated user can install the exact candidate, use the original goal surfaces, and restore the prior package/data safely.

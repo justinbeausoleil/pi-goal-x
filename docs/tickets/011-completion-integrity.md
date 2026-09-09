@@ -1,6 +1,6 @@
 # 011: persist trustworthy completion outcomes and archive safely
 
-**Status:** in-progress — Codex; blockers and010 verified, 2026-09-08.
+**Status:** done — Codex; verified candidate6a76032, 2026-09-08.
 **Blocked by:** 005, 007, 008, 009.
 **Requirements:** G6, G7; seams S1, S2.
 **What to build:** The user can distinguish reviewed completion, bypass, rejection, cancellation, and archival failure after compaction or reopen.
@@ -15,12 +15,12 @@ Use the plan's navigation/test table; trace the selected public flow before edit
 
 ## Acceptance criteria
 
-- [ ] Reject completion with configured required-task gates, missing contract evidence, or unresolved retained scope; optional planning semantics stay as defined in D3. A nonempty evidence string alone is not independent proof.
-- [ ] Persist latest review outcome/report/work revision/bypass origin in authoritative goal metadata; expose full scope and review through D2 paging and bounded next-response steering. Ledger failure cannot erase rejection.
-- [ ] Drive every D3 outcome-table row: approve, reject, malformed/no marker, provider error, user cancel/continue, all three user-owned bypass origins, and stale focus/work revision.
-- [ ] Verify the independent auditor uses actual synthetic workspace evidence and retained contracts. Executor claims, audit-skipped completion, and settings toggles never receive an independently-verified label.
-- [ ] Expose the result to the executor before deferred archival; complete/archive once. Inject archive move/write failure and crash/reopen before archival. Existing /goal-recovery must discover the complete-but-unarchived record outside the open pool and retry archival after confirmation, without a new executor/completion turn.
-- [ ] Confirm completion from active/paused/budget_limited when evidence permits; blocked must be resumed first. Cancelling/rejecting a review respects an intervening pause/unfocus and cannot start stale work.
+- [x] Reject completion with configured required-task gates, missing contract evidence, or unresolved retained scope; optional planning semantics stay as defined in D3. A nonempty evidence string alone is not independent proof.
+- [x] Persist latest review outcome/report/work revision/bypass origin in authoritative goal metadata; expose full scope and review through D2 paging and bounded next-response steering. Ledger failure cannot erase rejection.
+- [x] Drive every D3 outcome-table row: approve, reject, malformed/no marker, provider error, user cancel/continue, all three user-owned bypass origins, and stale focus/work revision.
+- [x] Verify the independent auditor uses actual synthetic workspace evidence and retained contracts. Executor claims, audit-skipped completion, and settings toggles never receive an independently-verified label.
+- [x] Expose the result to the executor before deferred archival; complete/archive once. Inject archive move/write failure and crash/reopen before archival. Existing /goal-recovery must discover the complete-but-unarchived record outside the open pool and retry archival after confirmation, without a new executor/completion turn.
+- [x] Confirm completion from active/paused/budget_limited when evidence permits; blocked must be resumed first. Cancelling/rejecting a review respects an intervening pause/unfocus and cannot start stale work.
 
 ## Proof and completion
 
@@ -30,7 +30,14 @@ suites, and the plan's required checks. Record baseline/red (or preservation
 characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
-Evidence: pending implementation.
+Evidence: [independent review and coverage](../reviews/2026-09-08-ticket-011.md),
+`~/Data/pi-goal-x/reliability/011/review-checks.json`, and the milestone log.
+Frozen6a76032 passes1349/1349 full tests,953 discovery/selfchecks, type/lint,
+28 context fixtures,7 actual SDK payload cross-checks,53 unchanged B2/B7 limits,
+historical NAF,5 ranking checks and dry pack. Both independent review axes pass.
+Native fault/compaction/reopen tests retain their failing attempts. Full
+development audit's ESLint/js-yaml advisory is recorded for012; production
+audit is clear. Packed installation and real-Qwen proof belong to012–014.
 
 Follow-up from 002: the real-host completed-state fixture showed that
 runGoalCompletionFlow reads loadGoalSettingsFileConfig (project-only) while the

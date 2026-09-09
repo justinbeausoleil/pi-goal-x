@@ -1908,3 +1908,28 @@
 - Next: freeze repaired candidate, re-review both axes, full qualification,
   context/provider gates, benchmark/harness/dry-pack checks. Tickets012–014 and
   the real-Qwen matrix remain pending; no live installation or selection change.
+
+### 011 accepted; 012 package qualification opened
+
+- Frozen6a76032863f53319a0d2738dd6ef8fa71438aa9a passes1349/1349 full tests
+  (48 suites,76 files,263291ms),953 discovery/selfchecks, installation with
+  scripts disabled, type/lint,28 context fixtures,7 real SDK payload checks,
+  53 unchanged B2/B7 timing limits, historical NAF and5 ranking checks. Dry
+  pack:65 files,270690 bytes. Exact commands/logs are in Data011/review-checks.json.
+- Spec re-review passes9 scenarios/10 native processes; standards re-review
+  passes4 scenarios and source pin checks. Both axes are clear at the fixed
+  base8f2745f through6a76032. All011 acceptance criteria are now checked, with
+  cumulative coverage/review in docs/reviews/2026-09-08-ticket-011.md.
+- Full development audit identifies js-yaml4.3.1 via ESLint (GHSA-2883-xcg3-v3hh;
+  fixed4.3.2). Production audit is clear.012 owns the targeted lockfile update.
+  The user emphasized maintaining quality while reducing wasted tokens; no
+  required check, review, fixture, assertion or performance limit was dropped.
+- 012 plan: identify the private fork package/prerelease and notices, resolve
+  the development advisory, reuse native workers against the actually installed
+  tarball and declared Node runtimes, verify all existing surfaces/settings and
+  byte-preserved migration/rollback, run serial SDK/package/harness gates, then
+  independently review. Acceptance remains unchecked until evidence exists.
+- Read-only preparation discovered a planning count error: current and original
+  fe430b2 source both register the same16 commands, not17.012 will document the
+  correction and verify the whole existing set; it will not invent a command.
+  Tickets013–014 remain blocked by qualification; no live selection changed.
