@@ -69,7 +69,7 @@ Ticket IDs and blocking edges are canonical in the [ticket index](docs/tickets/R
 | G5 | User/agent pause, abort, unfocus, clear, focus change, and pending steering invalidate stale continuations and block new goal work-tool dispatch. Host overflow recovery cannot also spawn a duplicate continuation. Already-dispatched effects are reported, not claimed undone. | 007, 010 |
 | G6 | Reload, reopen, new session, fork, and tree navigation follow the explicit ownership table. Goal records remain authoritative. Corruption, conflicting writes, and failed repair/archive operations cannot silently replace valid progress. Child sessions cannot acquire parent goal controls. | 006, 011 |
 | G7 | Completion enforces configured task gates and required contract evidence; plan deletion, skipping, lightweight flags, or disabling display/tools cannot waive retained scope. Audit findings survive compaction/reopen. Audited completion requires approval; user-owned bypass remains available but is durably labelled unverified/audit-skipped. | 005, 011 |
-| G8 | The fixed six-run Qwen matrix uses real work and model summaries with at least three real compactions per run. Every scheduled attempt is reported. Behavioral acceptance requires all six to satisfy artifact, state, and completion checks within the declared limits. | 013 |
+| G8 | First measure upstream-versus-fork Qwen benefit with the bounded D6 diagnostic. Broader behavioral acceptance remains the fixed six-run matrix with real work, model summaries, and at least three real compactions per run; all six must satisfy artifact, state, and completion checks. Report every attempt. The broad gate is deferred, not waived, and further matrix execution requires a separate maintainer decision. | 013 |
 | G9 | The exact packed artifact loads alone, preserves supported legacy records, and has a tested backup/rollback procedure. Package identity, supported versions, and installation instructions distinguish the fork. Live adoption is separate from isolated verification and preparation. | 012, 014 |
 | G10 | Draft questions, questionnaires, proposal/refinement, cancellation, auditor choice, and tweak confirmation survive compaction/reopen appropriately. Cancelled proposals preserve approved goal/focus/scope; explicit draft cancellation persists a tombstone so it cannot return on reopen. Stale confirmation cannot modify a changed goal. | 005 |
 | G11 | Usage is attributed once to the goal that incurred it across custom starts, retries, aborts, compaction, and focus changes. Budget exhaustion produces one durable limited transition and at most one wrap-up; resuming without increasing/removing an exhausted budget cannot restart work. | 008 |
@@ -115,6 +115,15 @@ supply preservation coverage; extend them only where the changed behavior needs 
 The earlier 200-node probe seeded storage and scripted summaries. It proves
 feasibility, not G3 or G8. Completing the experiment with failures does not mean
 behavioral acceptance passed.
+
+The maintainer's 2026-09-08 cost review supersedes automatic matrix execution.
+Ticket 013 first answers whether the fork helps in one controlled post-compaction
+scenario, with a maximum of four short Qwen responses and a full-input budget.
+A recorded lossy summary makes this a diagnostic, not proof of model-generated
+compaction quality or general reliability. A tie, regression, or invalid probe
+ends this round without more model calls. Ticket 014 records the resulting
+adoption decision; neither a positive diagnostic nor completing that decision
+record satisfies G8's broader gate or authorizes live installation.
 
 ## Out of scope
 

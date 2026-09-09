@@ -1,7 +1,7 @@
 # Development tickets: goal reliability
 
 These are development tickets for the goal package, not tasks it generates.
-Status: implementation approved 2026-09-08. Tickets 001–012 are verified for the replacement candidate; 013 is in progress.
+Status: implementation approved 2026-09-08; remaining testing replanned at the maintainer's cost review. Tickets 001–012 are verified for the replacement candidate; 013's bounded diagnostic is ready.
 Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 [source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
@@ -19,24 +19,27 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | done | G5, G12 |
 | [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | done | G6, G7 |
 | [012](012-package-compatibility.md) | qualify the packed fork and rollback across existing surfaces | 004, 005, 006, 008, 009, 010, 011 | done | G9, G13 |
-| [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | in-progress | G8 |
-| [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
+| [013](013-qwen-validation.md) | measure Qwen benefit with one bounded comparison | 012 | ready-for-agent | G8 diagnostic stage |
+| [014](014-adoption-plan.md) | record the adoption decision before more testing | 013 (report required, not a passing result) | blocked | G9 |
 
-The current frontier is **013**: matrix03 is frozen and running against the
-qualified reliability.2 candidate (Codex, single implementation writer).
-Matrix02 finished0/6 and remains retained; it does not qualify the repaired candidate.
+The current frontier is **013**: one upstream-versus-fork diagnostic, capped at
+four short Qwen responses, 17,408 input plus output tokens, and five minutes.
+No diagnostic has run yet. Matrix03 was stopped at the maintainer's request:
+two failures, one interrupted run, three unstarted cancellations. Matrix02's
+0/6 and all matrix03 evidence remain retained. Neither passed the adoption gate.
 The completed bounded child [012a](012a-harness-sdk.md) repaired the existing
-experiment launcher; the original 14-ticket scope is unchanged.
+experiment launcher; numbering is unchanged, with 013–014's testing approach revised.
 Later tickets follow only their
 listed blockers. Use one writer unless parallel work is explicitly requested.
 Blockers are numbered before dependents; approval is a shared entry condition,
 not a repeated gate inside every slice.
 
 012 qualifies the packed candidate before 013 spends real model time.
-A completed 013 experiment with failed cases blocks 014; completion of the
-experiment and passing behavioral acceptance are separate facts.
-014 prepares a live trial but does not execute it. No ticket needs live-install
-authorization to run isolated tests or prepare a concrete configuration diff.
+013 can finish with no demonstrated benefit; 014 then records a no-go decision.
+A positive diagnostic is not broad acceptance. The six-run quality gate stays
+unpassed and deferred; further broad testing needs a separate decision after
+the report. 014 does not execute tests or a live trial. Any later eligible
+trial proposal must include a concrete configuration diff before live approval.
 
 Each ticket includes its entry documents, precise contract references,
 end-to-end demo, exclusions, and acceptance evidence. Assignee: maintainer

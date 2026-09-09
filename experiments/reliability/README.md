@@ -1,5 +1,12 @@
 # Frozen Qwen acceptance
 
+**Deferred after the maintainer's 2026-09-08 cost review.** Matrix03 is stopped;
+its separate `interruption.json` records two failures, one interrupted run and
+three unstarted cancellations. Retain all frozen evidence. These commands are
+the broader acceptance protocol, not the next task: see
+[ticket 013](../../docs/tickets/013-qwen-validation.md) for the bounded benefit
+comparison. Do not resume or start another matrix automatically.
+
 `run-qwen.mjs` implements plan D6 with the qualified installed tarball and Pi's
 normal system prompt, including the installed tools' guidance. It never
 installs a package or changes live Pi settings. Commit the fixture and driver,

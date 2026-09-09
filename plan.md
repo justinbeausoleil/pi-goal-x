@@ -17,14 +17,21 @@ records gaps, resolutions, source anchors, and preservation coverage.
   at the filesystem boundary is allowed to test write/lock/archive errors;
   observe diagnostics and externally visible records. Copied legacy fixtures
   test migration, never the public 200-node capacity claim.
-- **S3 — local Qwen through Pi:** use the packed candidate, real work tools and
-  summaries, and independently checked synthetic artifacts.
+- **S3 — local Qwen through Pi:** compare upstream and the packed candidate
+  with real work tools and independently checked artifacts. The first bounded
+  diagnostic reuses a recorded summary; deferred broad acceptance uses real
+  model-generated summaries.
 
 The maintainer approved this plan, S1–S3, D1–D6, all 14 tickets, and ADRs
 0002–0004 on 2026-09-08. Authorization covers implementation, dependency
 alignment, local/isolated tests, the fixed Qwen matrix, documentation, commits,
 and pushes to the fork implementation branch. Live adoption, publication,
 main changes, and messages to others remain outside this goal.
+
+The maintainer's 2026-09-08 cost review supersedes automatic execution of the
+remaining Qwen matrix. Stop matrix03, preserve all outcomes, and revise 013–014
+around the bounded comparison below. More broad model runs need a separate
+decision after its report; do not automatically restart a matrix after repairs.
 
 The ticket index is the single dependency graph. Start with the first unfinished eligible ticket, initially 001.
 003 and 006 become independent after 002; use one writer unless parallel work
@@ -276,7 +283,58 @@ extension. Retain supported legacy goal/session reads and user-edited prompt
 reconciliation. Rollback means restore the pretrial package/settings/data copy,
 retaining fork-written data separately; do not claim upstream can losslessly
 rewrite new fields or larger plans. Test both a migrated original record and a
-fork-modified record backup/restore. Prepare live adoption only after S3 passes.
+fork-modified record backup/restore. Ticket 014 can record a no-go decision
+without more testing; prepare a recommended live trial only after the broader
+six-run gate passes.
+
+### First: bounded benefit diagnostic
+
+Reuse the existing native Pi harness, public setup operations and deterministic
+compaction adapter. Compare original upstream
+`fe430b251eeaff4ff7c041085fd05458b2776cb9` with the already-qualified
+`e47f475a37ddc04db1e68199c33041888a3d32c1` reliability.2 artifact, in separate
+isolated sessions with equivalent goal state. Freeze one small post-compaction
+work scenario and independent expected output before any model call. Public
+setup selects the current task and records completed work; do not spend model
+responses creating plans or depend on model-invented task IDs reaching a trigger.
+Use the same recorded lossy summary, work inputs, native tool profile and model
+settings for both versions. Let each extension supply its own normal goal
+context; do not hand-inject the fork's answer into the baseline request.
+
+Use Qwen3.6-35B-A3B-8bit with thinking off, temperature 0.2 and top-p 0.95.
+Allow at most two executor responses per version, 256 generated tokens each
+(including any reasoning), four requests total. Preflight each complete outbound
+request, including system text, tool schemas, chat template and prior results,
+with the configured tokenizer: at most 4,096 input tokens per request. If the
+count or output cap cannot be enforced, stop before dispatch and report the
+probe invalid. Maximum submitted input is 16,384 tokens and maximum generation
+is 1,024 tokens, 17,408 combined; actual usage must also be recorded.
+Disable model-based setup, summary generation, audit, Oracle, retries and
+recovery for this diagnostic. Enforce a five-minute wall-clock limit for the
+whole pair and abort outstanding work at the limit. No automatic resampling,
+second model, fixture tuning or candidate repair followed by another model run.
+
+Score actual work effects automatically: correct next-task work, preservation
+of the pending requirement, and no repeated write to completed work. Freeze
+these assertions with the fixture; a prose claim or remembered task ID is not
+sufficient. Report one compact comparison with checks, input/output usage,
+elapsed time, errors and evidence locators. Call it a positive diagnostic only
+if the fork passes all checks and upstream fails at least one; otherwise report
+no benefit demonstrated, regression, or inconclusive as appropriate. Truncation,
+unavailable models, unequal setup or budget failures are inconclusive, never
+evidence of benefit. Even a positive result is one scenario, not statistical
+proof or the six-run acceptance gate.
+
+Run unattended and inspect one final result; no repeated Codex polling or model
+reviewers. The Qwen budget does not include Codex orchestration tokens. Reuse
+012's qualification and existing deterministic evidence; run only the smallest
+offline check needed for any new probe plumbing. No new benchmark framework.
+Stop after the report and use 014 for the decision about any further investment.
+
+### Deferred: broader behavioral acceptance (unchanged quality gate)
+
+The following protocol is retained for a separately authorized future matrix.
+It is not the current ticket frontier and must not restart automatically.
 
 Freeze the S3 fixture and candidate before execution. Six runs:
 Qwen3.6-35B-A3B-8bit and Qwen3.8-27B-8bit, each off/low/low thinking, fixed seeds
@@ -308,7 +366,9 @@ and audit. Configure at most two extension network-recovery attempts.
 These limits end a failed trial; they are not production defaults. Report all
 six scheduled outcomes, including unavailable-model, timeout, tool/protocol,
 summary, artifact, premature-completion, and audit failures. No retry-until-pass.
-A changed candidate starts a newly numbered six-run matrix; retain older results.
+If a future matrix is authorized, a changed candidate uses a newly numbered
+matrix; retain older results. User-directed cancellation records interrupted
+and unstarted slots separately from completed failures and cannot earn a pass.
 Passing requires six of six runs with exact expected artifacts, all contracts
 satisfied, no duplicate completed transitions, and audited completion. Failed
 validation blocks adoption, not publication of honest results.
@@ -331,7 +391,7 @@ limitations. Reuse existing runner/test adapters and port the small real-Pi
 lab reproduction in 001; new tests must be discoverable by the runner.
 The fast runner substitutes SDK pieces, so test:all alone cannot prove S1.
 
-Before integration run npm ci --ignore-scripts, npm run check, npm run lint,
+For runtime/package integration run npm ci --ignore-scripts, npm run check, npm run lint,
 npm run test:all, npm run test:selfcheck, and npm pack --dry-run. For changed
 payloads run npm run context:gate and npm run context:provider-check; retain
 applicable benchmark/CI gates, including bench:gate:naf, the ranking-updater
@@ -341,6 +401,9 @@ for it. Record baseline
 failures with the exact upstream/candidate commands; do not quietly delete
 them. The package ticket also checks the real installed artifact and supported
 runtime matrix. Review each fixed-base diff against standards and spec.
+Documentation-only replanning requires diff/link/consistency checks and review
+against both standards and spec; it does not rerun package qualification or
+consume model calls. A probe-only harness change gets its focused offline check.
 
 Update docs/architecture.md when runtime behavior changes, then ticket
 evidence and [milestones](specs/2026-09-08-goal-reliability/MILESTONES.md).

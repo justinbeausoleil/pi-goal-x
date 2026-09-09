@@ -2429,3 +2429,44 @@
   The exact qualified artifact remains e47f475 / reliability.2.001–012 stay
   verified;013 and014 remain unfinished. No extra model request, live selection
   change, or weakened acceptance is authorized by a failed model result.
+
+### Maintainer cost review: stop matrix03 and replan 013–014
+
+- On 2026-09-08 local time the maintainer asked to rethink the remaining testing
+  tickets to avoid further token spending without sacrificing quality. This
+  supersedes the earlier instructions to finish all six matrix03 slots and
+  automatically start new matrices after repairs.
+- At 2026-09-09T03:56:10Z the scheduler was stopped before terminating its active
+  watchdog/driver. All three task processes were verified exited. The model
+  server and live Pi configuration were untouched. Separate evidence:
+  Data013/matrix-03/interruption-processes.json and interruption.json. Frozen
+  manifests, commands, completed results and partial event logs were preserved.
+- Matrix03 run01 FAIL at652535ms,24 executor responses,0 compactions;
+  run02 FAIL at682734ms,23 responses,0 compactions. Both failed the exact parse
+  milestone check. Their reported input plus output totals are727635 and545839,
+  including auditor usage. Neither run measures improvement over upstream.
+- Run03 was interrupted, not a completed benchmark failure:14 completed executor
+  responses and3 auditor responses report209996 tokens. Its in-flight request
+  has no final usage; the partial total is not a complete spending measurement.
+  Slots04–06 never started and are recorded as cancelled by user replanning.
+  Matrix03 did not pass; matrix02's0/6 remains unchanged.
+- Updated intent/spec/D6 and tickets013–014 using the existing local spec/ticket
+  workflow.013 now compares original upstream with qualified reliability.2 in
+  one controlled post-compaction scenario. Four requests maximum, each capped
+  at4096 complete-input tokens and256 generated tokens, total17408; five-minute
+  pair limit. No model-generated setup/summary/audit, retries, extra model or
+  automatic resampling. A focused offline plumbing check and one final report
+  replace broad repeated suites, polling and extra reviewers.
+- 014 now records the evidence-based adoption decision and can finish with a
+  no-go outcome. A positive diagnostic permits only a proposal for further
+  evaluation; broader execution needs a separate maintainer decision. The
+  six-of-six G8 quality gate is retained and unpassed. No diagnostic result is
+  general acceptance or live-install authorization.
+- Replanning changed documentation only; the qualified runtime/artifact and
+  completed001–012 evidence remain valid. No new model request was launched.
+  Diagnostic execution is the next ticket, not part of this replanning change.
+- Validation: git diff --check passes; all44 relative links in the eight changed
+  Markdown files resolve. Checked interruption statuses/usage and budget
+  arithmetic against the preserved evidence. Local spec/standards review confirms
+  the unchanged broad acceptance gate, explicit spending stop, correct blockers,
+  and documentation-only scope. No additional agents or runtime suites were run.

@@ -1,31 +1,29 @@
-# 014: prepare the verified fork for an intentional live trial
+# 014: record the adoption decision before more testing
 
-**Status:** ready-for-agent — approved 2026-09-08; execute after listed blockers.
-**Blocked by:** 013 (behavioral acceptance PASS required).
-**Requirements:** G9; seams S2 evidence plus prepared configuration diff.
-**What to build:** The maintainer has an exact package-selection change and rollback plan ready to review without disturbing the live setup.
+**Status:** blocked — awaiting 013's bounded comparison report.
+**Blocked by:** 013 (a report, including a negative or inconclusive result).
+**Requirements:** G9; qualified S2 evidence and G8's retained adoption gate.
+**What to build:** A concise decision record showing whether further Qwen testing is justified and whether the exact qualified fork is eligible for a live-trial proposal.
 
 ## Agent handoff
 
-Read [spec](../../spec.md), [plan](../../plan.md) sections D6, the
-[glossary](../../CONTEXT.md), applicable ADRs, and blocker evidence.
-Use the plan's navigation/test table; trace the selected public flow before edits.
-
-**Boundary:** Adoption preparation only. Its completion does not require or imply live installation approval; live execution can be a subsequent explicitly authorized action.
+Read [spec](../../spec.md), [plan D6](../../plan.md#d6--package-and-live-validation),
+and the 012/013 evidence. Reuse existing qualification and rollback results.
+This ticket does not launch experiments or change live package selection.
 
 ## Acceptance criteria
 
-- [ ] Prepare the precise pinned fork source/version and intended dotfiles package-reference/check changes using the qualified candidate; preserve unrelated packages, settings, credentials, and user changes.
-- [ ] Include a reviewable before/after selection, no-co-load check, backup locations, isolated rollback evidence, and post-install verification commands. Keep implementation details out of normal goal UI.
-- [ ] Record accepted limitations and the six-run result reference; label an unpassed matrix as blocked rather than recommending adoption.
-- [ ] Finish all preparation without changing live package selection. Record any later explicit live-trial authorization before applying that action; publication/upstream contributions are separate.
+- [ ] State the measured benefit and limitations from 013 alongside the existing deterministic/package evidence. Distinguish a positive diagnostic from broad behavioral acceptance.
+- [ ] If the diagnostic ties, regresses or is inconclusive, record no demonstrated benefit and stop further model spending. If positive, identify the smallest remaining uncertainty and propose a bounded next evaluation for a separate maintainer decision; do not run it automatically.
+- [ ] State that live adoption remains blocked while the six-run G8 gate is unpassed. Reference the exact qualified candidate and existing backup/rollback evidence; a no-go decision can complete this ticket without pretending adoption is ready.
+- [ ] Only if broader acceptance subsequently passes, prepare the exact pinned dotfiles selection diff, no-co-load check, backups, rollback and post-install checks. Preserve unrelated user changes. Preparation does not authorize applying it; publication and upstream contributions remain separate.
 
 ## Proof and completion
 
-A concrete, reproducible package-selection diff and rollback sequence refer to the exact already-tested artifact.
-Run the inherited S1/S2/S3 command applicable above, targeted prior regression
-suites, and the plan's required checks. Record baseline/red (or preservation
-characterization), green commands/results, artifact locators, review findings,
-and limitations. Acceptance checkboxes require evidence.
+Deliver one reviewable decision record with evidence locators and explicit
+remaining conditions. A completed decision record is not a completed G8 gate.
+No duplicate qualification runs, model reviewers or live changes are required.
+If later evidence warrants a trial proposal, make its configuration diff
+concrete before seeking authorization to apply it.
 
-Evidence: pending implementation.
+Evidence: awaiting the bounded comparison; no adoption recommendation issued.

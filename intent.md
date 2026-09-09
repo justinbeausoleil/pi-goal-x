@@ -29,6 +29,9 @@ configuration form the compatibility baseline.
 
 ## Constraints
 
+- Following the maintainer's 2026-09-08 cost review, test comparative Qwen
+  benefit with one bounded diagnostic before considering more broad model runs.
+  Preserve quality gates and failed evidence; do not retry until a result passes.
 - Follow SDLC to develop this fork. SDLC documents and development tickets are
   repository maintenance records; they are not runtime goal features.
 - Preserve upstream history, MIT attribution, useful public behavior, and
