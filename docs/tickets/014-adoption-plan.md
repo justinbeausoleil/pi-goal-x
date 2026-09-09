@@ -1,6 +1,6 @@
 # 014: record the adoption decision before more testing
 
-**Status:** blocked — awaiting the bounded comparison after the offline setup repair. Prior no-go decision is superseded.
+**Status:** done — Codex; positive progress signal recorded, further model spending stopped, live adoption deferred.
 **Blocked by:** 013 (a report, including a negative or inconclusive result).
 **Requirements:** G9; qualified S2 evidence and G8's retained adoption gate.
 **What to build:** A concise decision record showing whether further Qwen testing is justified and whether the exact qualified fork is eligible for a live-trial proposal.
@@ -27,5 +27,7 @@ If later evidence warrants a trial proposal, make its configuration diff
 concrete before seeking authorization to apply it.
 
 Evidence: [diagnostic and adoption decision](../reviews/2026-09-08-qwen-benefit-decision.md).
-No comparative benefit was measured: token-count preflight failed before any
-Qwen request. Further model spending stops; the six-run gate remains unpassed.
+The corrected preflight enabled one actual pair. The fork completed the fixture
+within two responses while upstream was still inspecting state/files. This
+is limited evidence of progress, not proven net savings or general reliability.
+Further model spending stops; the six-run gate remains unpassed.

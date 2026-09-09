@@ -2510,3 +2510,25 @@
   an earlier real-server payload matches its reported3477 input tokens exactly.
   Retained all failed preparation evidence. Final preflight06 checks the guarded
   runner; only one actual pair will run, at the original four-request/token cap.
+
+### Actual bounded pair completed: positive progress signal
+
+- Frozen probe sourced643ee1; Data013/benefit-run-01 records four requests in
+  13405ms. All input counts matched the server exactly:2432/2796 upstream and
+  3246/3255 fork. Outputs41/116 and82/134. Total11729 input+373 output=12102,
+  below17408, with no generated summaries, retries, truncation or model reruns.
+- Upstream read goal state, then attempted to read the prospective output
+  (ENOENT); it identified the correct task/contract but had not written the file.
+  The fork wrote exact ACCOUNT=007 newline on response1 and completed the task
+  on response2. Both preserved the completed receipt with no repeated writes.
+- Raw driver labels upstream INCONCLUSIVE because it groups model tool errors
+  with harness errors; fork PASS. assessment.json preserves raw labels and
+  explains the model's absent-file read. The frozen work-effect checks provide
+  a positive progress signal; this is not a clean automated acceptance verdict.
+- The fork spent6717 tokens while upstream's unfinished attempt spent5385.
+  Faster progress within the response cap is observed; net savings and eventual
+  upstream completion cost are unknown. No general reliability claim follows.
+- 013 and014 are done for their revised scope. Retained the superseded early
+  no-go and every offline failure; current report explains the loader root cause
+  and maintainer correction. Stop here with broader G8 unpassed and no live
+  adoption recommendation. Any further fixed pair needs a separate decision.
