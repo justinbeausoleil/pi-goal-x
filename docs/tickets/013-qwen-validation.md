@@ -1,6 +1,6 @@
 # 013: measure Qwen benefit with one bounded comparison
 
-**Status:** done — Codex; INCONCLUSIVE_PREFLIGHT, zero Qwen requests. Closed under the declared invalid-preflight stop rule; broad G8 acceptance remains unpassed.
+**Status:** in-progress — reopened after maintainer correction: repair offline setup and run the bounded comparison. Model budget unchanged.
 **Blocked by:** 012 (done).
 **Requirements:** G8 diagnostic stage; seams S1 setup and S3 real executor.
 **What to build:** One compact upstream-versus-fork result that shows whether the fork helps Qwen resume correct work after a controlled compaction, within a fixed token budget.

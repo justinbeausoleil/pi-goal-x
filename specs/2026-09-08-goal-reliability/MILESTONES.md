@@ -2497,3 +2497,16 @@
   tarball hash checked. All four offline outcomes report zero dispatch; provider
   onPayload executes before its HTTP call, and both final errors occurred there.
   Runtime/package code is unchanged; existing012 qualification was reused.
+
+### Maintainer correction: repair offline setup and continue
+
+- The maintainer challenged stopping at a fixable dependency/tool error. Reopened
+  013 and the dependent decision. The earlier no-go was premature and superseded.
+- Root cause: the standalone preflight skipped the model-module import that
+  registers MLX's NumPy Qwen processor before load_processor. A single import
+  matches the server's normal loading path without loading weights or installing
+  PyTorch/Torchvision. No dependencies or live server settings changed.
+- Preflight05 succeeds at2435 upstream/3255 fork input tokens. Offline replay of
+  an earlier real-server payload matches its reported3477 input tokens exactly.
+  Retained all failed preparation evidence. Final preflight06 checks the guarded
+  runner; only one actual pair will run, at the original four-request/token cap.

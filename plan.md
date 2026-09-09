@@ -409,3 +409,13 @@ Update docs/architecture.md when runtime behavior changes, then ticket
 evidence and [milestones](specs/2026-09-08-goal-reliability/MILESTONES.md).
 Historical planning changes modified no runtime code or dependencies. The
 approved implementation keeps live Pi configuration unchanged.
+
+### Maintainer clarification: repair offline preparation
+
+The maintainer clarified that a fixable tool/dependency setup error should be
+repaired without terminating the evaluation. Offline preparation may be corrected
+without increasing the Qwen request/token budget or resampling model results.
+The earlier preflight failure was the harness omitting MLX's processor registration;
+importing the installed model module fixes it without PyTorch or new dependencies.
+Only dispatch after exact counting succeeds. Real-model budget/behavior failures
+still terminate the scheduled comparison; the broader quality gate is unchanged.

@@ -1,6 +1,6 @@
 # 014: record the adoption decision before more testing
 
-**Status:** done — Codex; no-go decision after 013's inconclusive preflight. No live-trial proposal or additional testing authorized by this outcome.
+**Status:** blocked — awaiting the bounded comparison after the offline setup repair. Prior no-go decision is superseded.
 **Blocked by:** 013 (a report, including a negative or inconclusive result).
 **Requirements:** G9; qualified S2 evidence and G8's retained adoption gate.
 **What to build:** A concise decision record showing whether further Qwen testing is justified and whether the exact qualified fork is eligible for a live-trial proposal.
