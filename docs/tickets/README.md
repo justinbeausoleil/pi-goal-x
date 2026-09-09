@@ -1,7 +1,7 @@
 # Development tickets: goal reliability
 
 These are development tickets for the goal package, not tasks it generates.
-Status: implementation approved 2026-09-08; remaining testing replanned at the maintainer's cost review. Tickets 001–012 are verified for the replacement candidate; 013's bounded diagnostic is ready.
+Status: tickets 001–012 are verified for the replacement candidate. Replanned 013–014 are done with an inconclusive preflight and no-go decision; broader G8 acceptance is unpassed.
 Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 [source-backed lifecycle review](../reviews/2026-09-08-ticket-red-team.md).
 
@@ -19,12 +19,14 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [010](010-provider-recovery.md) | coordinate provider recovery with Pi and user stops | 007 | done | G5, G12 |
 | [011](011-completion-integrity.md) | persist trustworthy completion outcomes and archive safely | 005, 007, 008, 009 | done | G6, G7 |
 | [012](012-package-compatibility.md) | qualify the packed fork and rollback across existing surfaces | 004, 005, 006, 008, 009, 010, 011 | done | G9, G13 |
-| [013](013-qwen-validation.md) | measure Qwen benefit with one bounded comparison | 012 | ready-for-agent | G8 diagnostic stage |
-| [014](014-adoption-plan.md) | record the adoption decision before more testing | 013 (report required, not a passing result) | blocked | G9 |
+| [013](013-qwen-validation.md) | measure Qwen benefit with one bounded comparison | 012 | done: inconclusive preflight | G8 diagnostic stage |
+| [014](014-adoption-plan.md) | record the adoption decision before more testing | 013 (report required, not a passing result) | done: no-go | G9 |
 
-The current frontier is **013**: one upstream-versus-fork diagnostic, capped at
-four short Qwen responses, 17,408 input plus output tokens, and five minutes.
-No diagnostic has run yet. Matrix03 was stopped at the maintainer's request:
+There is **no automatic execution frontier**. The bounded comparison's offline
+input counter failed before dispatch: zero Qwen requests, no measured benefit.
+013–014 close under their explicit inconclusive/no-go outcome; see the
+[decision report](../reviews/2026-09-08-qwen-benefit-decision.md).
+Matrix03 was stopped at the maintainer's request:
 two failures, one interrupted run, three unstarted cancellations. Matrix02's
 0/6 and all matrix03 evidence remain retained. Neither passed the adoption gate.
 The completed bounded child [012a](012a-harness-sdk.md) repaired the existing

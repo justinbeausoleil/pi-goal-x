@@ -1,6 +1,6 @@
 # 013: measure Qwen benefit with one bounded comparison
 
-**Status:** ready-for-agent — replanned at the maintainer's 2026-09-08 cost review; diagnostic not yet run.
+**Status:** done — Codex; INCONCLUSIVE_PREFLIGHT, zero Qwen requests. Closed under the declared invalid-preflight stop rule; broad G8 acceptance remains unpassed.
 **Blocked by:** 012 (done).
 **Requirements:** G8 diagnostic stage; seams S1 setup and S3 real executor.
 **What to build:** One compact upstream-versus-fork result that shows whether the fork helps Qwen resume correct work after a controlled compaction, within a fixed token budget.
@@ -14,11 +14,20 @@ restarted. Do not alter runtime code to chase a passing diagnostic.
 
 ## Acceptance criteria
 
-- [ ] Freeze one small work fixture, a recorded lossy summary, equivalent public goal setup, upstream/candidate identities, settings and independent expected effects before calling Qwen. Exercise native post-compaction continuation without asking the model to build a plan first.
+- [x] Freeze one small work fixture, a recorded lossy summary, equivalent public goal setup, upstream/candidate identities, settings and independent expected effects before calling Qwen. Exercise native post-compaction continuation without asking the model to build a plan first.
 - [ ] Run Qwen3.6 with thinking off: at most two executor responses per version, four requests total, 256 generated tokens per request. Enforce the complete-input limit of 4,096 tokens per request before dispatch; at most 17,408 input plus output tokens for the pair and five minutes total. If enforcement is unavailable, stop without model calls.
 - [ ] Disable model-based setup/summaries/audit/Oracle and all retries/recovery. Score actual next-task work, the pending requirement and absence of repeated completed-work writes. No model judge or new benchmark framework.
-- [ ] Report both outcomes, actual usage, elapsed time, errors, artifact checks and limitations once. Truncation or setup/budget failure is inconclusive. A positive diagnostic requires every fork check to pass and at least one upstream check to fail; a tie does not demonstrate benefit.
-- [ ] Stop after this pair. Retain all earlier failures and the interruption record. No automatic repeats, second model or broader matrix, including after a positive result. Hand the report to 014 for a decision.
+- [x] Report both outcomes, actual usage, elapsed time, errors, artifact checks and limitations once. Truncation or setup/budget failure is inconclusive. A positive diagnostic requires every fork check to pass and at least one upstream check to fail; a tie does not demonstrate benefit.
+- [x] Stop after this pair or invalid preflight. Retain all earlier failures and the interruption record. No automatic repeats, second model or broader matrix, including after a positive result. Hand the report to 014 for a decision.
+
+Execution/scoring criteria above remain unevaluated: the offline complete-input
+counter failed before dispatch because the installed full MLX processor requires
+missing PyTorch/Torchvision dependencies. No approximate count, dependency
+installation or Qwen call followed. An inconclusive preflight is the permitted
+terminal outcome, not a passing behavioral test. Both versions reached equivalent
+public setup and native compaction. See the
+[diagnostic and adoption decision](../reviews/2026-09-08-qwen-benefit-decision.md)
+for all four offline preparation attempts, zero usage and evidence locators.
 
 ## Proof and completion
 
@@ -28,7 +37,7 @@ summary tests continuation under controlled information loss; it does not test
 Qwen summary quality or establish general reliability. Validate new probe
 plumbing with a focused offline check; reuse 012's completed qualification.
 Inspect one compact final result without repeated Codex polling or extra agents.
-No new model calls were made for this replanning.
+No real model calls were made during replanning or diagnostic preparation.
 
 ## Retained evidence
 

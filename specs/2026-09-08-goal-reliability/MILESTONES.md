@@ -2470,3 +2470,30 @@
   arithmetic against the preserved evidence. Local spec/standards review confirms
   the unchanged broad acceptance gate, explicit spending stop, correct blockers,
   and documentation-only scope. No additional agents or runtime suites were run.
+
+### Bounded diagnostic: inconclusive preflight; no-go decision
+
+- The maintainer authorized proceeding with revised013–014. Reused native Pi
+  public operations and a recorded lossy summary for a tiny current-task work
+  fixture, upstreamfe430b2 versus qualifiede47f475/reliability.2. Both reached
+  equivalent goal/task/contracts/evidence state and one native compaction.
+- Four offline preparation attempts are retained:01–02 exposed asynchronous
+  setup timing;03 exposed automatic activation of all five native goal tools;
+ 04 reached complete-prompt counting but the installed MLX load_processor path
+  required unavailable PyTorch/Torchvision dependencies. This is a preparation
+  limitation, not a Qwen response or demonstrated fork regression.
+- Followed the invalid-preflight stop rule: zero Qwen requests/tokens, no new
+  dependencies, approximate token counts, live run, automatic retry or matrix.
+  Actual behavioral scoring did not run. No higher budget was substituted.
+- Data013/benefit-decision.json and docs/reviews/2026-09-08-qwen-benefit-decision.md
+  retain results and locators. Exact prototype snapshots are in
+  Data013/benefit-preflight-04; their unused live branch is unqualified and was
+  not added to the maintained repository. All earlier logs remain intact.
+- 013 closes with INCONCLUSIVE_PREFLIGHT;014 closes with no-go/no demonstrated
+  comparative benefit. Broader G8 acceptance remains unpassed and deferred;
+  ticket completion does not claim all original reliability goals were met.
+  No live-trial configuration change or further testing follows automatically.
+- Validation: public setup equivalence, original upstream commit and qualified
+  tarball hash checked. All four offline outcomes report zero dispatch; provider
+  onPayload executes before its HTTP call, and both final errors occurred there.
+  Runtime/package code is unchanged; existing012 qualification was reused.

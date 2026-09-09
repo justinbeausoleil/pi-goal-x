@@ -1,6 +1,6 @@
 # 014: record the adoption decision before more testing
 
-**Status:** blocked — awaiting 013's bounded comparison report.
+**Status:** done — Codex; no-go decision after 013's inconclusive preflight. No live-trial proposal or additional testing authorized by this outcome.
 **Blocked by:** 013 (a report, including a negative or inconclusive result).
 **Requirements:** G9; qualified S2 evidence and G8's retained adoption gate.
 **What to build:** A concise decision record showing whether further Qwen testing is justified and whether the exact qualified fork is eligible for a live-trial proposal.
@@ -13,10 +13,10 @@ This ticket does not launch experiments or change live package selection.
 
 ## Acceptance criteria
 
-- [ ] State the measured benefit and limitations from 013 alongside the existing deterministic/package evidence. Distinguish a positive diagnostic from broad behavioral acceptance.
-- [ ] If the diagnostic ties, regresses or is inconclusive, record no demonstrated benefit and stop further model spending. If positive, identify the smallest remaining uncertainty and propose a bounded next evaluation for a separate maintainer decision; do not run it automatically.
-- [ ] State that live adoption remains blocked while the six-run G8 gate is unpassed. Reference the exact qualified candidate and existing backup/rollback evidence; a no-go decision can complete this ticket without pretending adoption is ready.
-- [ ] Only if broader acceptance subsequently passes, prepare the exact pinned dotfiles selection diff, no-co-load check, backups, rollback and post-install checks. Preserve unrelated user changes. Preparation does not authorize applying it; publication and upstream contributions remain separate.
+- [x] State the measured benefit and limitations from 013 alongside the existing deterministic/package evidence. Distinguish a positive diagnostic from broad behavioral acceptance.
+- [x] If the diagnostic ties, regresses or is inconclusive, record no demonstrated benefit and stop further model spending. If positive, identify the smallest remaining uncertainty and propose a bounded next evaluation for a separate maintainer decision; do not run it automatically.
+- [x] State that live adoption remains blocked while the six-run G8 gate is unpassed. Reference the exact qualified candidate and existing backup/rollback evidence; a no-go decision can complete this ticket without pretending adoption is ready.
+- Not applicable to this no-go outcome: only if broader acceptance subsequently passes, prepare the exact pinned dotfiles selection diff, no-co-load check, backups, rollback and post-install checks. Preserve unrelated user changes. Preparation does not authorize applying it; publication and upstream contributions remain separate.
 
 ## Proof and completion
 
@@ -26,4 +26,6 @@ No duplicate qualification runs, model reviewers or live changes are required.
 If later evidence warrants a trial proposal, make its configuration diff
 concrete before seeking authorization to apply it.
 
-Evidence: awaiting the bounded comparison; no adoption recommendation issued.
+Evidence: [diagnostic and adoption decision](../reviews/2026-09-08-qwen-benefit-decision.md).
+No comparative benefit was measured: token-count preflight failed before any
+Qwen request. Further model spending stops; the six-run gate remains unpassed.
