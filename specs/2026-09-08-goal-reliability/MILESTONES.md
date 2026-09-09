@@ -2079,3 +2079,11 @@
 - Check/lint pass. Next pin this small unshipped repair, test the launcher against
   the installed tarball on Node22/24, re-review, then close012 if cleared.
   Exact artifact remains attempt-03 SHA657c335e353701f648461cdba3feaa2632ed374e64cc2a29d8d8a322d399f65c.
+
+- Installed launcher checks at7b945fa caught missing peer resolution when its
+  helper import bypassed Pi's aliases inside the isolated tarball directory.
+  The harness now loads the identical candidate repository helper through the
+  SDK's Jiti loader; no runtime code, classifier copy or peer alias layer was
+  added. The actual installed extension still loads only through native Pi.
+  Node22.15.0/24.0.0 executable checks now pass2/2 each (12325/12428ms), including
+  both terminal error paths and delayed recovery. Prior failed logs retained.

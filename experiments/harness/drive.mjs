@@ -28,7 +28,7 @@
  */
 
 import { readFileSync, mkdirSync, readdirSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join } from "node:path";
 import { createRequire } from "node:module";
 import {
 	createAgentSession,
@@ -174,10 +174,10 @@ if (extInfo.errors.length || extInfo.extensions.length !== 1) {
 	console.error("[drive] expected exactly one successfully loaded extension");
 	process.exit(2);
 }
-// Use the selected package's existing classifier, loaded with Pi's TS loader.
+// Reuse this candidate's existing classifier, loaded with Pi's TS loader.
 // An active goal alone cannot tell us whether a provider failure is recoverable.
 const { createJiti } = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent"))("jiti");
-const { isNetworkErrorAssistantMessage, isAbortedAssistantMessage } = await createJiti(import.meta.url).import(join(dirname(extInfo.extensions[0].path), "goal-format.ts"));
+const { isNetworkErrorAssistantMessage, isAbortedAssistantMessage } = await createJiti(import.meta.url).import(join(import.meta.dirname, "../../extensions/goal-format.ts"));
 
 // Persistent session under the run dir so we can inspect after.
 const sessionManager = SessionManager.create(sandboxDir, sessionDir);

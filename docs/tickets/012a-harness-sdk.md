@@ -50,7 +50,7 @@ The repaired combined fixture passes2/2 in4738ms; re-review remains pending.
 
 The follow-up spec review cleared yielding but reproduced a sibling error path:
 an active-goal HTTP401 was incorrectly treated as delayed recovery. The driver
-now reuses the selected package's existing transient/aborted-message classifier
+now reuses the candidate repository's existing transient/aborted-message classifier
 through Pi's TypeScript loader. Active and unfocused authorization errors both
 exit1 with their diagnostic; eligible recovery retains its bounded wait.
 The registered fixture also exhausts Pi's two immediate retries, waits beyond
@@ -58,3 +58,11 @@ the quiet window for one extension recovery, and observes a second real goal
 checkpoint followed by public pause. No classifier or retry policy was copied.
 Data012/harness-active-error-red.log and harness-recovery-green.log preserve
 red and green; the combined2/2 checks pass in11838ms. Final re-review pending.
+
+The installed-package checks caught a harness import-resolution mistake:
+directly importing a helper beside the isolated package bypassed Pi's peer
+aliases. The harness now imports its own candidate source helper; the packed
+runtime is byte-identical, and no competing extension is registered. Native
+executable checks against the actual installed artifact pass on Node22.15.0
+and24.0.0 (2/2 each,12325/12428ms). Both the failed first checks and repaired
+logs remain in Data012/attempt-03/harness-node-*.log.
