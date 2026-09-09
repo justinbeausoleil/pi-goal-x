@@ -2404,3 +2404,28 @@
 - Operational checkpoint: native outer runner session95035 owns all six slots.
   All prior sessions are complete. New evidence/project directories use
   matrix-03 / pi-goal-qwen-matrix-03-N. Do not launch a duplicate slot.
+
+### Matrix03 first outcome and task-ID diagnosis
+
+- Run01 FAIL: incomplete milestone parse,652535ms,24 executor responses,
+  zero compactions/recoveries. The unchanged runner has started run02; all six
+  scheduled outcomes must still be retained once each. Matrix03 cannot reach6/6.
+- Reported executor usage389995+11375=401370;
+  auditor320976+5289=326265; no summary usage.
+  Full per-category/request records remain in run01/result.json and events.ndjson.
+- The first actual outgoing system prompt is3847chars, includes installed task
+  guidance and retains max_tokens8192 (native-prompt-observation.json). The
+  custom-prompt repair is active, but this run still supplied task-1-parse etc.
+- Initial get_goal task inspection was empty; the full3808-char objective and
+  exact-ID instruction were available before its first set_goal_tasks call.
+  The model supplied the prefixed IDs and the runtime preserved them; no host
+  auto-seeded plan or ID rewriting caused this outcome. The schema's task-1
+  example is present, but its causal influence is unproven. No new repair is
+  justified solely by that observation. See run01/task-id-diagnostic.json.
+- Early lightweight monitoring counted all completed tasks as milestones. That
+  wording was corrected to count only the six required IDs; driver acceptance
+  always remained strict. No actual scheduled outcome or fixture was changed.
+- Keep main runtime/package/configuration frozen for remaining matrix03 slots.
+  The exact qualified artifact remains e47f475 / reliability.2.001–012 stay
+  verified;013 and014 remain unfinished. No extra model request, live selection
+  change, or weakened acceptance is authorized by a failed model result.
