@@ -2306,7 +2306,7 @@
   late-result rejection and subsequent ordinary-work preservation. Spec inspected
   the retained31-case evidence without duplicating it. Data013/cumulative-repairs.json
   indexes commands/results; original probes and reviewer confirmations are under
-  Data/reliability/cumulative-standards-53cb5f1 (relative to pi-goal-x).
+  ~/Data/pi-goal-x/reliability/cumulative-standards-53cb5f1.
 - Repairs remain isolated in ~/Developer/scratch/pi-goal-x-review-fixes, branch
   fix/goal-review-findings at e22aea8, descended from both reviewed harness fixes.
   Ticket012 is reopened for a distinct prerelease artifact, full qualification,
@@ -2316,3 +2316,31 @@
   reliability.1 package remain frozen. Finish all six outcomes, integrate the
   reviewed commits, and freeze a new full matrix only after012 passes again.
   No live selection, publication, or main-branch change is authorized here.
+
+### Replacement artifact installed; full-suite timeout diagnosis
+
+- Candidate e47f475a37ddc04db1e68199c33041888a3d32c1 identifies the reviewed
+  runtime as @justinbeausoleil/pi-goal-x@0.31.2-reliability.2. Both review axes
+  clear its metadata/docs delta; the cumulative7ac9380 review remains clear.
+- Evidence root: ~/Data/pi-goal-x/reliability/012/reliability-02. artifact.json
+  pins the tarball SHA256
+  1f32b6757aad3889933c543a3eead173747faf9c7f27860cbede98fdf5be3e64 and proves
+  all68 installed files match source. The old matrix's package remains untouched.
+- npm ci --ignore-scripts, type/lint, all40 native compatibility commands across
+  Node22.15/24 and fresh53-limit B2/B7 checks pass. Rollback restores78 files
+  byte-for-byte and retains the fork-written copy separately.
+- Full suite at e47f475:1355/1358 pass, three existing large/long/advice-review
+  compaction cases hit the15-second fixture deadline. The prior8e012c7 artifact
+  also reproduces the manual-case timeout under the current model load; see
+  prior-artifact-large-under-load.json/log. Earlier qualification had passed the
+  manual/overflow cases near that deadline. Do not increase limits or mark012
+  done. Finish remaining checks and rerun the full suite after model execution
+  ends; all failed logs remain retained. No runtime repair is inferred yet.
+- Matrix02/run05 FAIL at1800065ms,11 executor responses, no compactions, no
+  completed milestones. Reported usage115791 input+15641 output=131432; cache
+  and reasoning0 as exposed. Responses5–10 repeat identical command and thinking
+  hashes; cause unproven. run05/repetition-diagnostic.json is read-only evidence.
+  Run06 began2026-09-09T02:50:10Z, using unchanged frozen sources/configuration.
+- After all six outcomes and a passing qualification, merge the reviewed fix
+  branch into feat/goal-reliability to preserve the exact artifact-source commit
+  in its ancestry, then freeze the next full matrix.013/014 remain open.
