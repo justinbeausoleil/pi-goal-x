@@ -2205,3 +2205,24 @@
   outcome. Runtime artifact remains Data012/attempt-04, source8e012c7,
   SHA e2f0f850bf2d66cc5c042e29c429168a40ad7bb9f6200014138e56e8f94e7aa6.
   Only013's freeze criterion is checked; G8 and014 still require6/6 PASS.
+
+### 013 first real outcome; remaining five cases running unchanged
+
+- Matrix02/run01 (Qwen3.6/off/seed101) FAIL,572511ms,50 executor responses,
+  zero compactions/recoveries. The model used task-1-parse etc. rather than the
+  six requested exact IDs, so none of the three milestone boundaries fired.
+  It eventually completed its6 tasks and the independent auditor approved,
+  but the acceptance driver correctly rejected `incomplete milestone: parse`.
+- Exposed usage: executor576661 input+13342 output=590003; auditor111558+
+  2536=114094. No summary usage; cache/reasoning categories are0 as reported.
+  All raw requests, responses, tool results and final state are retained under
+  Data013/matrix-02/run-01. No trial was restarted or settings changed.
+- A post-run read-only JSON comparison is recorded separately; it cannot
+  substitute for the missing lifecycle evidence or change the FAIL outcome.
+  The normalizer/checks were not re-executed as an acceptance retry.
+- Runs02–06 now execute sequentially from the frozen commands.json through
+  watchdogs. Continue observing their logs/results; do not launch duplicates
+  or edit the frozen source/package. Run02 started2026-09-09T01:43:58Z.
+  The matrix cannot reach6/6; record all remaining scheduled outcomes before
+  diagnosing a repaired candidate.014 stays blocked and live settings stay
+  unchanged. Branch2f3901b was pushed successfully before these results.
