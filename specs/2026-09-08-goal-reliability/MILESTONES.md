@@ -2250,7 +2250,40 @@
   Data013/native-prompt-{red,green}.{log,json}; rehearsal directories retained.
   Both independent review axes clear e6302fc..6170a57; Spec independently reran
   the successful case1/1 (Data013/spec-review-6170a57/native-prompt-check.log).
--6170a57 is intentionally not integrated into the running matrix's worktree.
+- 6170a57 is intentionally not integrated into the running matrix's worktree.
   Finish and retain all six matrix02 outcomes, then integrate the reviewed repair
   and freeze a newly numbered full matrix. No real case was retried, gate relaxed,
   installed package replaced or live selection changed.013/014 remain unfinished.
+
+### 013 real pressure failure and reviewed bounded-pressure repair
+
+- Matrix02/run04 (Qwen3.8/off/seed101) FAIL,1194145ms,19 executor responses,
+  manual then overflow compaction; the required threshold path did not occur.
+  Run05 started2026-09-09T02:20:09Z;06 remains scheduled in the unchanged driver.
+- The actual request after normalization explains the failure: the fixed
+  256200-character ballast raised Pi's native context estimate to75013. Pi's
+  native output clamp sent max_tokens1; the provider returned a length stop,
+  output1 and no content. Native recoverable-length handling selects overflow.
+  Earlier wording that it consumed the8192 allowance was incorrect: the actual
+  outgoing allowance was1. Logs retain the actual request, usage and summaries.
+- In the isolated qualification worktree,53cb5f16a920939e0a30d95f4f39d1723133b9e2
+  freezes a deterministic `red tan ` repeat rule targeting51200 from the public
+  native context estimate. It records prior estimate/count/actual size/hash.
+  Both cached tokenizers independently give2n+1 tokens for8n characters, matching
+  Pi's character estimate closely. Data013/pressure-tokenizer-check.json records
+  exact tokenizer snapshots/hashes and counts through51201tokens; no generation
+  or network was involved.
+- The native provider stub previously masked output clamping. The new outgoing
+  request assertion reproduces1!=8192, then passes with the repair. Existing
+  native cases now use prior contexts5057/12257 and all retain8192 output tokens,
+  manual/threshold/manual events and the previous artifact/audit checks.
+  Green3/3,8705ms; type/lint pass. Data013/pressure-repair.json links exact commands,
+  red/green logs and all retained rehearsal directories, including earlier greens.
+- Both review axes clear6170a57..53cb5f1. Spec independently ran the successful
+  native rehearsal1/1. The full cumulative review7ac9380..53cb5f1 is now running
+  on both axes before another expensive matrix;013/014 remain known open gates.
+- Root HEAD still has only tracking updates over frozen e6302fc sources. Finish
+  matrix02's remaining slots without retrying or changing them, retain all six
+  outcomes, then integrate6170a57 and53cb5f1 (plus any required review repairs).
+  Freeze a new full matrix only after that. Runtime tarball stays8e012c7 /
+  SHA e2f0f850...f94e7aa6; no live selection or package installation changed.
