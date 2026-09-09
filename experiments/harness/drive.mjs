@@ -16,7 +16,8 @@
  *   drive.mjs <case-dir> <run-dir>
  *
  * Required env:
- *   PI_GOAL_TEST_EXTENSION    abs path to extension file
+ *   PI_GOAL_TEST_EXTENSION    abs path to extension file or installed package
+ *   PI_GOAL_TEST_MODELS_FILE  optional explicit custom models.json path
  *   PI_GOAL_TEST_PROVIDER     provider id (e.g. openrouter, fireworks)
  *   PI_GOAL_TEST_MODEL        model id
  *   PI_GOAL_TEST_THINKING     off | low | medium | high
@@ -29,14 +30,13 @@
 import { readFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import {
-	AuthStorage,
 	createAgentSession,
+	createAgentSessionRuntime,
 	DefaultResourceLoader,
-	ModelRegistry,
+	ModelRuntime,
 	SessionManager,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { randomUUID } from "node:crypto";
 
 const [, , caseDirArg, runDirArg] = process.argv;
 if (!caseDirArg || !runDirArg) {
@@ -54,25 +54,32 @@ mkdirSync(sessionDir, { recursive: true });
 // Per-case env overrides via <case-dir>/env.json. Loaded BEFORE the extension
 // is imported so module-load-time env reads pick them up. Use this to tweak
 // extension constants at test time.
-try {
-	const envPath = join(caseDir, "env.json");
-	const raw = readFileSync(envPath, "utf8");
-	const parsed = JSON.parse(raw);
-	if (parsed && typeof parsed === "object") {
-		for (const [k, v] of Object.entries(parsed)) {
-			process.env[k] = String(v);
-		}
-		console.error(`[drive] case env applied: ${JSON.stringify(parsed)}`);
+function readCaseObject(name) {
+	try {
+		const parsed = JSON.parse(readFileSync(join(caseDir, name), "utf8"));
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("expected a JSON object");
+		return parsed;
+	} catch (error) {
+		if (error.code === "ENOENT") return {};
+		throw new Error(`Invalid ${name}: ${error.message}`);
 	}
-} catch {
-	// no per-case env override
 }
+const caseEnv = readCaseObject("env.json");
+for (const [key, value] of Object.entries(caseEnv)) {
+	if (!["string", "number", "boolean"].includes(typeof value)) throw new Error(`Invalid env.json value for ${key}`);
+	process.env[key] = String(value);
+}
+if (Object.keys(caseEnv).length) console.error(`[drive] case env applied: ${Object.keys(caseEnv).join(", ")}`);
 
 const extPath = process.env.PI_GOAL_TEST_EXTENSION;
 const provider = process.env.PI_GOAL_TEST_PROVIDER || "openrouter";
 const modelId = process.env.PI_GOAL_TEST_MODEL || "moonshotai/kimi-k2.6";
 const thinking = process.env.PI_GOAL_TEST_THINKING || "high";
 const turnTimeoutMs = Number(process.env.PI_GOAL_TEST_TURN_TIMEOUT || "180") * 1000;
+const QUIET_MS = Number(process.env.PI_GOAL_QUIET_MS || "5000");
+if (!Number.isFinite(turnTimeoutMs) || turnTimeoutMs <= 0 || turnTimeoutMs > 2 ** 31 - 1 ||
+	!Number.isFinite(QUIET_MS) || QUIET_MS < 0) throw new Error("Invalid harness timeout or quiet-window setting");
+if (!["off", "minimal", "low", "medium", "high", "xhigh"].includes(thinking)) throw new Error("Invalid PI_GOAL_TEST_THINKING");
 if (!extPath) {
 	console.error("PI_GOAL_TEST_EXTENSION env is required");
 	process.exit(2);
@@ -93,24 +100,32 @@ for (const line of inputText.split(/\r?\n/)) {
 		turns.push({ kind: "abort_after_ms", ms: Number(RegExp.$1) });
 	}
 }
-if (turns.length === 0) {
+if (!turns.some(turn => turn.kind === "turn" && turn.text.trim())) {
 	console.error("INPUT.md has no 'TURN: <prompt>' lines");
 	process.exit(2);
 }
 
 // Run pi in the sandbox so disk-backed extension artifacts (.pi/goals/) land there.
 process.chdir(sandboxDir);
+const agentDir = join(runDir, "agent-dir");
+mkdirSync(agentDir, { recursive: true });
+process.env.PI_CODING_AGENT_DIR = agentDir;
+process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = join(agentDir, "goal-settings.json");
+const modelRuntime = await ModelRuntime.create({
+	authPath: join(agentDir, "auth.json"),
+	modelsPath: process.env.PI_GOAL_TEST_MODELS_FILE ?? null,
+	allowModelNetwork: false,
+	refreshOnCreate: false,
+});
+if (modelRuntime.getError()) throw new Error(modelRuntime.getError());
 
-const authStorage = AuthStorage.create();
-const modelRegistry = ModelRegistry.create(authStorage);
-
-let model = modelRegistry.find(provider, modelId);
+let model = modelRuntime.getModel(provider, modelId);
 if (!model) {
 	// CLI behaviour: when --provider X --model Y but Y is not a known built-in or
 	// custom model under provider X, pi constructs a "custom model id" — taking
 	// the shape of any same-provider model and overriding id+name. We replicate
 	// that here for fireworks router IDs etc. See pi's buildFallbackModel().
-	const sameProvider = modelRegistry.getAll().filter((m) => m.provider === provider);
+	const sameProvider = modelRuntime.getModels(provider);
 	if (sameProvider.length === 0) {
 		console.error(`No models available for provider "${provider}". Cannot build fallback.`);
 		process.exit(2);
@@ -123,28 +138,18 @@ if (!model) {
 // Custom settings: disable compaction (tests are short, we don't want auto-compact
 // kicking in mid-test and confusing the rubric). A case can opt in to compaction
 // by dropping a `compaction.json` file in its case dir, e.g.:
-//   { "enabled": true, "thresholdTokens": 4000 }
-let compactionConfig = { enabled: false };
-try {
-	const compactionPath = join(caseDir, "compaction.json");
-	const raw = readFileSync(compactionPath, "utf8");
-	const parsed = JSON.parse(raw);
-	if (parsed && typeof parsed === "object" && parsed.enabled === true) {
-		compactionConfig = parsed;
-		console.error(`[drive] case-level compaction enabled: ${JSON.stringify(parsed)}`);
+//   { "enabled": true, "reserveTokens": 16384, "keepRecentTokens": 4096 }
+const compactionConfig = { enabled: false, ...readCaseObject("compaction.json") };
+for (const [key, value] of Object.entries(compactionConfig)) {
+	if (key === "enabled" ? typeof value !== "boolean" :
+		!["reserveTokens", "keepRecentTokens"].includes(key) || !Number.isFinite(value) || value < 0) {
+		throw new Error(`Invalid compaction.json setting: ${key}`);
 	}
-} catch {
-	// no override; keep default disabled
 }
 const settingsManager = SettingsManager.inMemory({
 	compaction: compactionConfig,
 	retry: { enabled: true, maxRetries: 2 },
 });
-
-// Custom agent dir to avoid leaking host's ~/.pi extensions/skills/themes.
-// Make it empty + isolated to this run.
-const agentDir = join(runDir, "agent-dir");
-mkdirSync(agentDir, { recursive: true });
 
 const resourceLoader = new DefaultResourceLoader({
 	cwd: sandboxDir,
@@ -157,32 +162,35 @@ const resourceLoader = new DefaultResourceLoader({
 	noThemes: true,
 	noContextFiles: true,
 });
-await resourceLoader.reload();
+await resourceLoader.reload({ resolveProjectTrust: async () => true });
 
 // Surface extension load errors loud and clear.
 const extInfo = resourceLoader.getExtensions();
 for (const e of extInfo.errors) {
 	console.error(`[drive] extension load error: ${e.path}: ${e.error}`);
 }
-if (extInfo.extensions.length === 0) {
-	console.error("[drive] no extensions loaded — extension load probably failed silently");
+if (extInfo.errors.length || extInfo.extensions.length !== 1) {
+	console.error("[drive] expected exactly one successfully loaded extension");
 	process.exit(2);
 }
 
 // Persistent session under the run dir so we can inspect after.
 const sessionManager = SessionManager.create(sandboxDir, sessionDir);
 
-const { session, modelFallbackMessage } = await createAgentSession({
-	cwd: sandboxDir,
-	agentDir,
-	model,
-	thinkingLevel: thinking,
-	authStorage,
-	modelRegistry,
-	resourceLoader,
-	sessionManager,
-	settingsManager,
-});
+let failed = false;
+let providerError;
+const host = await createAgentSessionRuntime(async ({ sessionManager, sessionStartEvent }) => {
+	const created = await createAgentSession({
+		cwd: sandboxDir, agentDir, model, thinkingLevel: thinking, modelRuntime,
+		resourceLoader, sessionManager, settingsManager, sessionStartEvent,
+	});
+	await created.session.bindExtensions({ onError: error => {
+		failed = true;
+		console.error(`[drive] extension error: ${error.error}`);
+	} });
+	return { ...created, services: { cwd: sandboxDir, agentDir, modelRuntime, settingsManager, resourceLoader, diagnostics: [] }, diagnostics: [] };
+}, { cwd: sandboxDir, agentDir, sessionManager });
+const { session, modelFallbackMessage } = host;
 
 if (modelFallbackMessage) {
 	console.error(`[drive] modelFallback: ${modelFallbackMessage}`);
@@ -204,6 +212,9 @@ emit({
 const unsubscribe = session.subscribe((event) => {
 	try {
 		emit(event);
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			providerError = event.message.stopReason === "error" ? event.message.errorMessage ?? "provider error" : undefined;
+		}
 	} catch (err) {
 		console.error(`[drive] failed to emit event: ${err?.message || err}`);
 	}
@@ -239,7 +250,6 @@ session.subscribe((e) => {
 // (step_complete) execution. We use a goal-aware policy: while a goal is
 // active+autoContinue, we keep waiting (with a generous ceiling); only when the
 // goal goes paused/complete/missing do we fall back to the short quiet window.
-const QUIET_MS = Number(process.env.PI_GOAL_QUIET_MS || "5000");
 const POLL_MS = 50;
 
 function readActiveGoal() {
@@ -293,15 +303,15 @@ const promptWithTimeout = async (text, idx, opts = {}) => {
 	const deadline = Date.now() + turnTimeoutMs;
 	lastTurnActivityAt = Date.now();
 	let abortTimer = null;
+	let promptTimer;
 	if (opts.abortAfterMs && opts.abortAfterMs > 0) {
 		emit({ type: "_drive_abort_armed", index: idx, after_ms: opts.abortAfterMs });
 		abortTimer = setTimeout(() => {
 			emit({ type: "_drive_abort_scheduled", index: idx, after_ms: opts.abortAfterMs });
-			try {
-				session.abort();
-			} catch (e) {
+			session.abort().catch(e => {
+				failed = true;
 				emit({ type: "_drive_abort_error", index: idx, error: String(e?.message || e) });
-			}
+			});
 		}, opts.abortAfterMs);
 	}
 	try {
@@ -310,18 +320,22 @@ const promptWithTimeout = async (text, idx, opts = {}) => {
 		// turns even after prompt() resolves.
 		await Promise.race([
 			promptResult,
-			new Promise((_, rej) => setTimeout(() => rej(new Error("prompt timeout")), turnTimeoutMs)),
+			new Promise((_, rej) => { promptTimer = setTimeout(() => rej(new Error("prompt timeout")), turnTimeoutMs); }),
 		]);
+		clearTimeout(promptTimer);
 		// Now wait for the system to actually go quiet (slash commands trigger
 		// background turns; we want those captured before moving on).
-		await waitForQuiescence(deadline);
+		if (!await waitForQuiescence(deadline)) throw new Error("queued work timeout");
+		if (providerError) throw new Error(providerError);
 	} catch (err) {
+		failed = true;
 		emit({ type: "_drive_error", index: idx, message: String(err?.message || err) });
 		if (String(err?.message || "").includes("timeout")) {
 			aborted = true;
 			session.abort().catch(() => {});
 		}
 	} finally {
+		clearTimeout(promptTimer);
 		if (abortTimer) clearTimeout(abortTimer);
 	}
 	const elapsed = Date.now() - start;
@@ -332,7 +346,7 @@ try {
 	let idx = 0;
 	let pendingAbortMs = 0;
 	for (const t of turns) {
-		if (aborted) break;
+		if (aborted || failed) break;
 		if (t.kind === "turn") {
 			idx += 1;
 			await promptWithTimeout(t.text, idx, { abortAfterMs: pendingAbortMs });
@@ -346,8 +360,11 @@ try {
 } finally {
 	unsubscribe();
 	try {
-		session.dispose();
-	} catch {}
+		await host.dispose();
+	} catch (error) {
+		failed = true;
+		console.error(`[drive] shutdown failed: ${error.message}`);
+	}
 }
 
-process.exit(aborted ? 124 : 0);
+process.exit(aborted ? 124 : failed ? 1 : 0);

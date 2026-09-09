@@ -1,305 +1,167 @@
-# pi-goal Agent Flow Design
+# pi-goal-x agent flow
 
-This document explains the agent flow of the `pi-goal` project: how the user
-states an objective, how the executing agent works, how the independent
-auditor verifies, and how the runtime maintains state, the ledger, the UI, and
-auto-continuation.
+This describes the reliability fork on Pi 0.85.1. Package and real-model
+qualification status is recorded in [release notes](../RELEASE_NOTES.md).
+Historical implementation plans remain historical records; the current module
+and storage details are in [architecture](architecture.md).
 
-## 1. Core mental model
+## Roles and execution
 
-`pi-goal` is not another general-purpose agent; it is a pi extension. It adds a
-"long-running goal runtime" layer on top of the main coding agent: goals are
-created explicitly, go through a lifecycle, and completion is independently
-audited.
+The user owns the objective, focus, scope revisions, resumption and abandonment.
+The executor performs authorized work and reports task progress or a terminal
+outcome. A separate auditor inspects completion claims and workspace evidence.
+The extension retains authoritative project state and coordinates Pi's lifecycle.
 
-The system has four roles:
+A guided `/goal` or `/sisyphus` starts discussion with three drafting tools.
+The user confirms a proposal before execution starts. `/goal-direct` and
+`/sisyphus-direct` create an explicitly supplied objective immediately.
 
-| Role | Responsibility |
-|---|---|
-| User | Owns intent. Starts goals, pauses/resumes/clears them, chooses focus. |
-| Executing agent | Works on the confirmed focused goal. Reports terminal outcomes via `update_goal`. |
-| Auditor agent | An independent in-memory pi agent session that checks whether a completion claim actually satisfies the goal. |
-| `pi-goal` runtime | Maintains goal state, the tool surface, prompts, the ledger, the UI widget, and auto-continuation. |
+Every executor context event reconciles the focused record and supplies current
+identity, work revision, lifecycle action, requirements, task, budget and relevant
+review/Oracle/user guidance. Automatic goal text is bounded to 10,000 characters;
+omitted detail has a lossless retrieval reference. Custom-message starts also
+establish execution identity and enforce stale-trigger guards. Dynamic goal state
+is not carried in the static system prompt.
 
-Core principle:
+Pi owns compaction and immediate retries. Tiny checkpoints retain identity,
+while native manual, threshold and overflow compaction preserve durable project
+progress. Summarizer and child-review contexts stay separate. A stopped or stale
+checkpoint cannot authorize work; ordinary new user requests remain distinct.
 
-> The user owns intent; the executing agent does the work; the auditor
-> independently verifies; the runtime coordinates and records.
+## Public tools and commands
 
-## 2. Overall flow
+The normal profile has five goal tools, or three when task tools are disabled.
+Guided discussion temporarily advertises only `goal_question`,
+`goal_questionnaire` and `propose_goal_draft`. Lifecycle validity is enforced
+at execution; advertising a tool is not authority to bypass a stop.
 
-```text
-User command
-  -> pi-goal command handler (/goal, /sisyphus, /goal-*)
-  -> guided draft and explicit confirmation, direct creation, or focus/lifecycle state update
-  -> runtime reconciles from disk, re-computes prompts and the active tool subset
-  -> executing agent works on the focused goal
-  -> tool call / turn events update accounting and the ledger
-  -> update_goal(complete) triggers the independent auditor
-  -> approved -> goal archived at turn_end; rejected -> goal stays open
-```
+| Tool | Behavior |
+| --- | --- |
+| `create_goal` | Create and focus a goal after an explicit user request. |
+| `get_goal` | Inspect the focused goal, work revision and paged detail. |
+| `update_goal` | Request completion, report blocked, or pause with a reason and suggested action. |
+| `set_goal_tasks` | Upsert or replace the plan through validated, confirmed structural mutation. |
+| `update_goal_task` | Apply task progress/evidence with the current work revision. |
 
-Five model tools are registered:
-
-| Tool | Role |
-|---|---|
-| `create_goal` | Create and focus a new goal after an explicit user request |
-| `get_goal` | Read-only snapshot of the focused goal |
-| `update_goal` | Terminal outcomes: `complete` (audited) or `blocked` (three-turn rule) |
-| `set_goal_tasks` | Define/replace the task tree (with confirmation) |
-| `update_goal_task` | Per-task status updates without stopping the turn |
-
-Lifecycle actions the model does not own (pause, resume, clear, focus, tweak,
-settings) are user-owned slash commands.
-
-## 3. Main state containers
-
-The runtime keeps:
-
-- a goal pool `goalsById: Map<goalId, GoalRecord>` reconstructed from
-  `.pi/goals/active_goal_*.md` plus compatible legacy session entries;
-- a session focus `focusedGoalId` reconstructed from branch-local
-  `pi-goal-focus` custom session entries;
-- `focusRevision` — incremented on every focus change, used to invalidate
-  pending async operations (completion, task-list confirmation) so results
-  cannot mutate a goal after the session detached from it.
-
-## 4. Persistence: goal files and ledger
-
-### 4.1 Goal files
-
-```text
-.pi/goals/active_goal_<timestamp>_<id>.md
-.pi/goals/archived/goal_<timestamp>_<id>.md
-```
-
-Each file has extension-owned metadata and a user-editable `# Goal Prompt`
-section. Before focused commands, tools, and lifecycle hooks act, the runtime
-re-reads the focused active file and reconciles lifecycle state from disk, so
-external changes win over stale memory. Session focus is never written into
-these files.
-
-### 4.2 Ledger files
-
-The ledger is one project-level append-only JSONL file
-(`.pi/goals/goal_events.jsonl`). Its 18 event types cover creation,
-tweaks, focus changes, pause/resume/block/clear, completion requests, audit
-start/result/skip, budget limits, and task-list changes. The runtime reads it
-for auditor-rejection memory and compaction summaries; it is never rewritten
-in place.
-
-## 5. Command palette: the user owns intent
-
-The curated fourteen-command palette:
+The 16 commands are unchanged from the original runtime baseline:
 
 | Command | Behavior |
-|---|---|
-| `/goal [seed]` | Guided regular-goal drafting, questionnaire where useful, then explicit confirmation |
-| `/sisyphus [seed]` | Guided Sisyphus drafting with ordered-work constraints and explicit confirmation |
-| `/goal-direct <objective>` | Direct regular-goal creation without drafting |
-| `/sisyphus-direct <objective>` | Direct Sisyphus creation without drafting |
-| `/goal-list` | List all open goals and the current focus |
-| `/goal-status` | Read-only focused-goal summary plus other-open-goal count; append `verbose` for diagnostics or `health` for storage/runtime checks |
-| `/goal-focus` | Choose this session's focused goal |
-| `/goal-unfocus` | Detach the session without modifying the shared goal |
-| `/goal-settings` | Fully operable settings editor for all eight persisted fields |
-| `/goal-tweak <change>` | Guided, user-confirmed refinement of the focused objective and task plan |
-| `/goal-clear` | Archive the focused goal after confirmation (cancel is a durable no-op) |
-| `/goal-cancel` | Cancel the in-progress guided draft without creating a goal |
-| `/goal-pause` | Pause the focused active goal (Esc also pauses) |
-| `/goal-resume` | Resume a paused or blocked goal |
+| --- | --- |
+| `/goal`, `/sisyphus` | Discuss and confirm regular/ordered goals. |
+| `/goal-direct`, `/sisyphus-direct` | Start explicitly supplied regular/ordered goals. |
+| `/goal-list` | List open goals and focus. |
+| `/goal-status` | Show the dashboard; `verbose` exposes full task detail and `health` diagnoses state. |
+| `/goal-focus`, `/goal-unfocus` | Choose or detach this session's focus. |
+| `/goal-settings` | Edit layered settings or remove an override. |
+| `/goal-tweak` | Discuss and confirm a scope/plan revision. |
+| `/goal-clear` | Archive after confirmation; cancellation preserves the record. |
+| `/goal-cancel` | Persist cancellation of an unconfirmed draft. |
+| `/goal-pause`, `/goal-resume` | Stop or explicitly resume eligible work. |
+| `/goal-refresh` | Re-read externally changed goals and settings. |
+| `/goal-recovery` | Report storage problems; `repair` confirms backup and safe repair. |
 
-## 6. Goal creation flow
+## Task plans and retained requirements
 
-`/goal [seed]` and `/sisyphus [seed]` enter a temporary draft profile.
-The agent can ask questions, select a questionnaire when it adds value, and
-propose both a full objective and a task tree in a single confirmation dialog.
-Confirm creates and focuses the goal atomically; Continue Chatting retains the
-draft. `/goal-direct` and `/sisyphus-direct` are the explicit immediate paths.
+Plans support 200 nodes; upsert accepts at most 50 entries per call. Replacement
+specifies the full tree/order. Existing-plan structure and progress changes
+require `expected_work_revision` from a current read or successful mutation.
+Usage and wall-clock changes do not invalidate this content fingerprint.
+Validation rejects the entire invalid/stale batch before it changes progress.
 
-## 7. Tool surface and runtime gates
+Requirements live in the goal's retained scope as well as the editable plan.
+Deleting/skipping tasks, changing lightweight flags or hiding tools cannot waive
+those requirements. Required contracts need current evidence; a nonempty evidence
+claim alone is not independent verification. Ordinary task confirmation cannot
+approve scope removal. The user-owned tweak workflow binds scope confirmation to
+the goal, work revision and session/focus generation.
 
-The normal execution surface is a FIXED three/five profile; guided drafting
-temporarily replaces it with three draft tools:
+Changing a completed task's title/contract reopens it and clears current evidence.
+Historical evidence remains history. External requirement edits remain visible
+as pending proposals rather than silently replacing approved execution scope.
+Legacy records remain readable and migrate through the existing mutation path.
 
-- exactly five goal tools are installed when tasks are enabled — `create_goal`,
-  `get_goal`, `update_goal`, `set_goal_tasks`, `update_goal_task`;
-- exactly the three core tools when tasks are disabled;
-- during a user-started `/goal`, `/sisyphus`, or `/goal-tweak` draft, only
-  `goal_question`, `goal_questionnaire`, and `propose_goal_draft` are
-  advertised until confirm or cancellation;
-- the profile is installed once at session start and after a settings change
-  that toggles `disableTasks`; focus, status, budget, completion, audit, and
-  compaction transitions never add/remove/restore goal tools;
-- ordinary pi work tools (`read`, `write`, `edit`, `bash`, ...) are never
-  touched by the extension;
-- invalid lifecycle calls are rejected by the executor with a concise
-  state-aware result (e.g. `update_goal(blocked)` from a paused goal), not by
-  hiding tools.
+`get_goal` pages full objectives, task fields, retained scope, history and latest
+review, with at most 4,000 content characters per page and content-bound cursors.
+Draft cancellation persists a branch-local tombstone. Forks may inherit normal
+discussion, but they do not inherit autonomous execution authority.
 
-The `tool_call` interceptor:
+## Persistence, ownership and stops
 
-- blocks work tools after a stop tool has fired in the same turn (post-stop
-  guard);
-- blocks work tools when the checkpoint that triggered the turn is no longer
-  actionable (stale checkpoint guard);
-- tracks whether the turn did meaningful goal work (the empty-turn gate for
-  auto-continuation).
+Project goal files are authoritative; session entries restore branch-local focus
+and drafts. GoalService owns writes, archives and best-effort ledger appends.
+Per-goal locks and storage revisions reject conflicting work; accounting can
+rebase its additive usage without overwriting newer user changes.
 
-## 8. Execution loop and auto-continue
+Same-session reopen restores explicit focus against current disk state. New
+sessions start unfocused unless the existing sole-goal selection setting applies.
+User forks persist null focus; backward tree navigation suppresses autonomous
+continuation until explicit focus/resume. Delegated children cannot register or
+acquire parent goal controls.
 
-When `autoContinue` is on, the extension queues continuation prompts after
-agent turns for the focused goal only. The loop stops or pauses when:
+Pause, abort, unfocus, clear, focus changes and pending user steering invalidate
+old operations and continuations. New goal work tools are blocked before dispatch.
+Effects already dispatched are reported honestly, not claimed undone. Escape
+inside a goal modal belongs to that modal; Escape in an audit offers its existing
+cancel/continue or complete-without-audit choice.
 
-- the agent calls `update_goal(status="complete")`;
-- the agent calls `update_goal(status="blocked")`;
-- the user invokes `/goal-pause`, `/goal-clear`, or the user aborts the turn;
-- a turn ends without meaningful goal-work tool activity.
+## Completion and recovery
 
-Continuation prompts include a goal id so stale prompts can be detected and
-neutralized. If focus changes or the goal is archived before a queued
-checkpoint runs, the checkpoint becomes stale and cannot drive task work.
+Completion checks lifecycle, configured task gates and retained requirements.
+Blocked goals require explicit resume first. Active, paused and budget-limited
+goals may complete when the evidence permits. `completion_summary` is an optional
+untrusted executor claim; it never substitutes for independent review.
 
-## 9. Completion and the visible audit phases
+The auditor gets approved requirements and actual workspace tools in its own
+session. It cannot invoke parent goal mutations. Approval, disapproval, malformed
+output, provider error and cancellation are distinct outcomes. Latest review
+metadata records outcome, report, reviewed work revision, time and bypass origin;
+ledger history preserves older outcomes after later reviews. Rejection survives
+compaction/reopen even if the best-effort ledger fails.
 
-### 9.1 The executing agent requests completion
+Audited completion requires approval. Per-goal opt-out, resolved disabled settings
+and explicit Escape bypass remain user-owned and are labelled audit-skipped.
+None waives retained scope. Success messages/cards wait for the authoritative
+completion write. An actual audit may still be diagnostic history if that write
+fails, without claiming the goal completed.
 
-`update_goal({status: "complete"})` has no verification-summary parameter. The
-runtime validates that the goal is in a completable status, optionally warns
-about pending tasks (`blockCompletion`), appends a `completion_requested`
-ledger event, and starts the auditor. When `settings.disabled` is true the
-auditor is skipped immediately: the flow records `audit_skipped` and completes
-through the normal deferred-completion path. Legacy persisted
-`skipAuditor: true` records are honored the same way; Escape during a running
-audit remains the explicit per-attempt user bypass.
+The tool result observes the complete record before deferred archival at turn end.
+Archive write/unlink failure keeps the active record authoritative and reports
+its location. Completed records outside the open pool appear in recovery.
+Confirmed repair backs up exact bytes, rechecks the selected record under lock
+and retries archival without another executor/auditor turn. A stable completed
+archive path prevents duplicate copies across accounting updates. Ledger failures
+produce warnings without undoing a successful archive.
 
-### 9.2 The audit appears in the conversation
+## Budgets, blockers and provider recovery
 
-A `[GOAL AUDIT STARTED]`-style message is sent with `triggerTurn`, so the
-executing agent's turn yields to the auditor. A `pi-goal-audit-event` message
-with phase `started` is displayed, and the goal widget shows an audit progress
-spinner. Escape during the audit opens a dialog to complete without audit or
-continue working.
+Executor-reported input/output tokens and active time belong once to the goal
+that incurred them, including retries, aborts, focus changes and responses after
+archival. Compaction/auditor/Oracle usage is separate. Exhaustion produces one
+budget-limited transition and at most one wrap-up; it never means completion.
+Resume cannot bypass an exhausted budget that has not been increased or removed.
 
-### 9.3 The independent auditor session
+The three-consecutive-blocker rule remains model guidance, not a runtime counter.
+Optional Oracle advice has fingerprint-based reuse and a meaningful-work
+follow-up gate. Inspection alone does not discharge advice. Stall and repeated
+inspection messages steer rather than claim progress. Existing no-progress
+limits prevent endless automatic empty turns.
 
-A separate in-memory pi session runs with a focused auditor prompt. The
-auditor receives the objective, the executor's completion claim, and goal
-metadata; it can inspect the workspace with `read`, `grep`, `find`, `ls`, and
-`bash`; and it must end with exactly one marker: `<approved/>` or
-`<disapproved/>` (an error or abort also rejects).
+Extension network recovery waits for Pi's settled lifecycle and rechecks goal,
+generation and user intent at dispatch. It does not duplicate Pi's immediate
+retry/overflow recovery. Positive retry caps remain bounded; the existing zero
+setting means unbounded recovery until another stop applies.
 
-### 9.4 The audit result appears in the conversation
+## User interface and verification
 
-The result is sent as a `pi-goal-audit-event` with phase `approved` or
-`rejected`, and an `audit_result` ledger event records the verdict. A rejected
-completion leaves the goal open and the verdict is remembered so future
-prompts inject the auditor's objections.
+The dashboard, expanded task view and status share the same model. Ctrl+Shift+T
+expands/collapses it; Escape collapses before pausing work. Navigation keys scroll
+the expanded view, and Ctrl+Shift+A persists the focused goal's auditor choice.
+The widget factory retains its mounted component so those callbacks and render
+invalidations reach the displayed widget. Layered global/project/environment
+settings and disabled features preserve existing records and obligations.
 
-### 9.5 Archiving
-
-On approval, the goal is set complete in memory and the active file is written
-without archiving; archival is deferred to `turn_end` so the agent can see the
-auditor result first. At `turn_end` the goal is archived, a `goal_completed`
-ledger event is appended, and the session focus is cleared.
-
-## 10. Blocked, pause, and post-stop behavior
-
-- `update_goal({status: "blocked"})` records a distinct `blocked` status with
-  an agent stop reason and stops continuation. The three-consecutive-turn
-  blocker rule is prompt policy, not a persisted counter.
-- `/goal-pause` and Esc set `paused` (user-owned) with `autoContinue: false`.
-- `/goal-resume` reactivates a paused or blocked goal.
-- After any stop tool fires in a turn, subsequent tool calls in the same turn
-  are blocked except read-only inspection.
-
-## 11. Compaction and auditor-rejection memory
-
-On session compaction the runtime persists the current goal, re-arms
-accounting, and arms a deterministic post-compaction summary for the next
-agent turn. Auditor rejections are read from the ledger and injected into
-future prompts so the agent addresses them before requesting completion again.
-
-## 12. Token budgets
-
-An optional `token_budget` may be set at creation. When accounted usage
-reaches the budget, the goal transitions to a distinct `budget_limited` status
-exactly once, a `goal_budget_limited` ledger event is emitted, one-time
-wrap-up steering is injected (summarize; do not start new substantive work; do
-not claim completion unless real), and pending continuations are cancelled.
-`budget_limited` never implies completion.
-
-## 13. Module map
-
-```text
-goal.ts (thin installer)
-├─ goal-state.ts     GoalCore: state + service/runtime/accounting wiring
-├─ goal-tools.ts     registration composition only
-├─ goal-core-tools.ts create/get/update handlers + blocked and agent-pause flows
-├─ goal-completion.ts audit orchestration + completion commit
-├─ goal-task-tools.ts task structure/status handlers + tree helpers
-├─ goal-task-confirmation.ts task result boundary with neutral labels
-├─ goal-draft.ts     drafting prompt/confirmation text helpers
-├─ goal-drafting.ts  guided drafting orchestration + durable draft sessions
-├─ goal-commands.ts  fourteen-command palette
-├─ goal-events.ts    13 lifecycle event handlers
-├─ goal-widget.ts    terminal keybindings + debug helpers
-├─ goal-format.ts    pure formatting/message helpers
-├─ goal-service.ts   sole mutation boundary
-├─ goal-runtime.ts   continuation/stale-checkpoint/turn-stop
-├─ goal-accounting.ts serialized accounting + budgets
-├─ goal-policy.ts    lifecycle/task validation + reports
-├─ goal-auditor.ts   independent audit session
-├─ goal-ledger.ts    ledger reads
-├─ goal-record.ts    record types/creation/migration
-├─ goal-pool.ts      pool/focus helpers
-├─ prompts/          bounded five-tool steering prompts
-├─ storage/          goal file IO (reads + serializers)
-└─ widgets/          goal widget, notifications, escape dialog, task overlay
-```
-
-## 14. Key design trade-offs
-
-- **Five tools, user-owned lifecycle.** A small stable surface is easier to
-  prompt-bound than a large phase-dependent one; lifecycle actions are user
-  commands so the model cannot pause/resume/clear on its own.
-- **GoalService as the sole mutation boundary.** Ordering (reconcile → write →
-  ledger → memory) is enforced in one place; handlers cannot corrupt files or
-  ledger state.
-- **Auditor from actual evidence, not paperwork.** Removing the
-  verification-summary field pushes the auditor to inspect real artifacts,
-  which is a stronger completion gate.
-- **Budget exhaustion is a system transition, not completion.** The
-  `budget_limited` status stops continuation and arms wrap-up steering without
-  implying the goal is done.
-- **Disk is authoritative at operation start.** Reconciliation before each
-  focused action picks up prior external edits and prevents deleted files from
-  being resurrected.
-- **Cross-process mutations are serialized.** Each goal carries a persisted
-  monotonic `revision` (missing historical values normalize to zero). A
-  short per-goal filesystem lock (atomic create under `.pi/goals/.locks` with
-  bounded acquisition and stale-lock recovery) guards reads, and
-  `GoalService.apply` re-reads the authoritative file under the lock: a stale
-  writer receives a typed conflict carrying the current revision instead of
-  overwriting blindly. `update_goal_task` retries once only when the same task
-  and status/structure remain unchanged; `set_goal_tasks` surfaces the typed
-  conflict. Old readers keep existing data readable.
-
-## 15. Hardening and runtime follow-up
-
-This document describes the shipped behavior. The 2026-08-04 hardening plan
-([`specs/2026-08-04-goal-simplification-hardening`](../specs/2026-08-04-goal-simplification-hardening/TECH.md))
-is implemented: it addresses paused-record resurrection, operation-start
-task reconciliation, task-confirmation auditor-state coupling, budget
-validation, ledger semantics, the primary legacy runtime surface, and the
-E2E/experiment migration.
-
-The runtime follow-up
-([`2026-08-04 goal runtime follow-up`](../specs/2026-08-04-goal-runtime-follow-up/TECH.md))
-then shipped the remaining work: guided drafting restored as a transient
-user-invoked workflow (durable draft sessions, `/goal-cancel`, `/goal-status`,
-per-draft auditor selection), a fully operable settings menu, `/goal-clear`
-confirmation, neutral task-confirmation labels, failure-checked completion
-commits, per-goal revision/lock serialization with typed conflicts, the
-agent-pause outcome, untrusted `completion_summary` claims, the enforced
-experiment matrix, the runner self-check, and the Pi SDK 0.83 family upgrade.
+Native lifecycle fixtures exercise the Pi loader, commands, tools, compaction,
+reopen and filesystem faults. Package qualification also installs actual tarballs,
+checks supported Node versions and restores pretrial package/settings/data while
+retaining fork-written data separately. The six-run Qwen artifact gate is a
+separate acceptance step; passing deterministic checks does not imply adoption.

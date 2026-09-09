@@ -1973,3 +1973,64 @@
   and full qualification, current documentation/harness compatibility, then
   two-axis review. No012 acceptance box is checked, no S3 trial has started,
   and live package selection remains unchanged.
+
+### 012 — runtime matrix and rollback; bounded harness follow-up
+
+- Commit104118358702c5940bff4e098ead44ca2a403c23 contains private identity and
+  mounted-widget repair. Real-SDK serial tests pass953/953 (43 suites,18819ms;
+  Data012/serial-first.log). No SDK adapter was used for that command.
+- Installed attempt-02 tarball SHA256
+  de139499aad4c8a892cbd3e3f049aae8abd5adbcbe5cec1eef22fe82ac1009de passes34
+  native cases:17 each on official Node22.15.0/24.0.0. Exact per-case commands,
+  versions, timings and logs are in attempt-02/native-matrix.json. Coverage:
+  four starts plus create_goal, both-mode UI/settings, retained audit scope,
+  legacy refresh, public200-node detail, manual/threshold/overflow compactions,
+  audited/bypassed completion, rejection reopen with ledger fault and recovery.
+- New explicit package-rollback.mjs installs an actual original fe430b2 tarball,
+  loads copied legacy goal/session state, switches settings to the actual fork,
+  performs public migration/plan mutation, and restores the entire pretrial
+  package/settings/session/project tree. Other package/settings/data remain.
+  The restored upstream package reads its original tasks; the final tree is
+  restored again after inspection. Fork-written data stays separately retained.
+  rollback-05 passes78 file/symlink comparisons; result.json gives exact hashes
+  and backup paths. Upstream artifact SHA256:
+  44e1c8e5aea1a644ab01326de70cf51504e8dc70c150cdad7dda166f177bf026.
+- Retain rollback01–04 attempts. Two comparisons mistook absent vs undefined
+  JavaScript properties for serialized data loss; semantic comparisons now
+  compare all serialized values, while full filesystem SHA/symlink checks stay
+  exact. The copied legacy fixture also has lightweight_subtasks on a leaf:
+  reads preserve it, but structural mutation correctly rejects it. The final
+  public edit explicitly corrects that unused flag while adding the trial task;
+  validation is unchanged. No fork implementation defect was found there.
+- Current agent-flow documentation is being reconciled with implemented behavior.
+  The experiment launcher still imports removed AuthStorage/ModelRegistry and
+  fails before usage processing (harness-sdk-red.log). Create bounded child012a
+  under012 for native SDK/loader/isolated configuration/launcher outcome checks.
+  Existing shell tests cannot catch an import failure because they stub the
+  driver. No real provider was called; S3 remains unstarted.
+- Checkpoint:1041183 committed, parent012 in progress,012a in progress. Working
+  changes are rollback fixture, current agent-flow documentation and this
+  follow-up tracking. Next repair/test012a, finish current documentation,
+  freeze/package final candidate, full gates and independent reviews. No012
+  acceptance boxes are checked and live selection remains unchanged.
+
+### 012a launcher compatibility repair and qualification checkpoint
+
+- The actual launcher now uses ModelRuntime, isolated run settings/auth paths,
+  an explicit custom-model file when supplied, native loader trust resolution,
+  extension binding and runtime shutdown. No real model or live package change.
+- The executable local-HTTP fixture first reproduced the missing SDK export,
+  then separately reproduced ignored queued-work deadlines and malformed JSON.
+  Green harness-final.log: shell/native checks 2/2, 4117ms. Public direct startup,
+  pause/readback, timeout124, provider401 exit1, invalid configuration and an
+  intentional scheduled abort are observed through actual Pi requests/events.
+  check/lint/diff checks pass. The pause fixture's first response-count assumption
+  was corrected because a public pause intentionally aborts the current turn.
+- Current agent-flow documentation and experiment metadata distinguish the
+  16-command interface, native SDK launcher and unqualified historical cases.
+  C16's obsolete thresholdTokens setting is replaced with native settings; its
+  historical artifact rubric is unchanged and cannot itself prove compaction.
+- Package rollback fixture is ready with the earlier rollback-05 evidence.
+  Next freeze this candidate, run final required gates, qualify the final packed
+  artifact and obtain independent spec/standards review for base b84ec25.
+  Parent012 and child012a remain in progress;013/014 remain pending.

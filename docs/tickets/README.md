@@ -23,6 +23,8 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
 
 The current frontier is **012** (Codex, single implementation writer).
+Its bounded child [012a](012a-harness-sdk.md) repairs the existing experiment
+launcher's obsolete SDK calls; the original14-ticket scope is unchanged.
 Later tickets follow only their
 listed blockers. Use one writer unless parallel work is explicitly requested.
 Blockers are numbered before dependents; approval is a shared entry condition,

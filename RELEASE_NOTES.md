@@ -1,8 +1,8 @@
 # 0.31.2-reliability.1 — private qualification candidate
 
-Package: `@justinbeausoleil/pi-goal-x`; derived from upstream0.31.2 under MIT.
-Pi0.85.1 is the supported SDK line. Node22.15/24 compatibility is being checked;
-the final declaration will match the verified runtimes. This candidate has not
+Package: `@justinbeausoleil/pi-goal-x`; derived from upstream 0.31.2 under MIT.
+Pi 0.85.1 is the supported SDK line. Installed-package lifecycle checks passed
+on Node 22.15.0 and 24.0.0; final package qualification remains in progress. This candidate has not
 yet passed the required six-run real-Qwen matrix. No live adoption is implied.
 
 - Every executor response receives bounded current goal context, including

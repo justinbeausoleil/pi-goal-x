@@ -15,14 +15,14 @@ The supported five-tool release cases are C20-C26:
 
 B1-B2 and C1-C19 have been MIGRATED to the current interface: every case now
 targets the five tools (create_goal, get_goal, update_goal, set_goal_tasks,
-update_goal_task), the ten-command palette, and user-owned lifecycle commands,
+update_goal_task), the 16-command palette, and user-owned lifecycle commands,
 with removed tool names appearing only in negative rubric assertions. The full
 supported matrix is machine-readable in `SUPPORTED_CASES.json`; `BASELINE.md`
 remains a historical Stage 0 snapshot.
 
 ## Running
 
-Every case in `SUPPORTED_CASES.json` is runnable with the harness:
+`SUPPORTED_CASES.json` lists the cases accepted by the launcher:
 
 ```bash
 cd experiments
@@ -30,8 +30,25 @@ bash harness/run.sh C20-core-tool-selection --count 3 --grade --no-smoke
 bash harness/run.sh B2-task-completion --count 3 --grade --no-smoke
 ```
 
-The harness installs the fixed three/five-tool profile at session start, so
-real-model runs exercise the same tool surface as the local suites.
+The driver uses Pi 0.85.1's ModelRuntime, resource loader, extension binding and
+session shutdown. Agent settings, credentials files, sessions and project state
+are isolated under the run directory. Provider environment credentials remain
+available; custom models require an explicit `PI_GOAL_TEST_MODELS_FILE` path.
+No host models or extensions are discovered implicitly. The selected extension
+owns its normal/drafting tool profiles. `PI_GOAL_TEST_EXTENSION` may point to an
+installed package directory as well as a source entry point.
+
+The native executable check covers direct startup, public pause/readback,
+queued-work timeout, provider failure, scheduled abort and invalid configuration.
+Malformed JSON or unsupported compaction settings fail instead of being ignored.
+`compaction.json` uses native `enabled`, `reserveTokens` and `keepRecentTokens`;
+the threshold depends on the selected model's context window. C16's obsolete
+`thresholdTokens` field was replaced with native settings. A short C16 run may
+never reach compaction and cannot count as compaction evidence.
+
+Case membership and historical rubrics are not a claim that every real-model
+case passed on this fork. The frozen six-run Qwen acceptance gate is specified
+separately in plan.md D6 and ticket 013; the optional cases do not substitute for it.
 
 ## Supported case matrix (enforced)
 

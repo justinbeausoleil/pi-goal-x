@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Supported experiment case matrix. Every case here targets the current five-tool surface (create_goal, get_goal, update_goal, set_goal_tasks, update_goal_task) and the ten-command palette. Removed tool names appear only in negative rubric assertions. Real-model runs are opt-in release gates and are NOT part of npm test.",
+  "note": "Launcher case membership for the five normal goal tools and 16-command palette. Historical case rubrics are retained; membership does not certify real-model success on the reliability fork. Native SDK launcher checks run in npm test; real-model cases are opt-in. The separate plan D6 six-run Qwen matrix owns fork behavioral acceptance.",
   "supported": [
     "B1-repeated-blocker",
     "B2-task-completion",

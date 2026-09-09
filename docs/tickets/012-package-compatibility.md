@@ -32,6 +32,9 @@ and limitations. Acceptance checkboxes require evidence.
 
 Evidence: pending implementation.
 
+Bounded child [012a](012a-harness-sdk.md) owns the obsolete-SDK experiment
+launcher discovered during qualification. Complete it before012 acceptance.
+
 Planning count correction: both the original runtime baseline fe430b2 and the
 current fork register the same16 commands in extensions/goal-commands.ts. The
 approved text's17 was a counting error; no command was removed or added. Verify
