@@ -2187,3 +2187,21 @@
   pre-execution findings. A new numbered freeze follows review of the repair.
   Exact runtime/package remains 8e012c7 / SHA e2f0f850...f94e7aa6. No S3 request,
   live installation or adoption acceptance has occurred.
+
+### 013 matrix02 started after independent repair clearance
+
+- Both axes clear e6302fce600c1016acf83210b44124699a895f65. Spec independently
+  reran all3 registered rehearsals and its original corruption probe: the real
+  child test executes, changes totals to `{}`, and the verifier rejects it.
+  Standards inspected the narrow repair without redundant full checks.
+- Final selfcheck958/958,43suites,73unit entries,23667ms; type/lint pass.
+  Data013/preparation-e6302fc.json links current commands and review evidence.
+- Matrix02 is frozen at Data013/matrix-02/matrix.json, with6 scheduled argv
+  records in commands.json. It verifies all68 exact installed package files,
+  source/lock/config/fixture hashes, model allocation and D6 limits. Matrix01
+  remains a retained unexecuted preparation record, not a failed model attempt.
+- Run01 (Qwen3.6,off,seed101) has started through the outer watchdog and native
+  driver. No model attempt has been rerun. Continue all6 once and retain every
+  outcome. Runtime artifact remains Data012/attempt-04, source8e012c7,
+  SHA e2f0f850bf2d66cc5c042e29c429168a40ad7bb9f6200014138e56e8f94e7aa6.
+  Only013's freeze criterion is checked; G8 and014 still require6/6 PASS.
