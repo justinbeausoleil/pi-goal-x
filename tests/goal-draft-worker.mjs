@@ -35,6 +35,7 @@ const auditServer = scenario === "scope-audit" ? http.createServer(async (req, r
 const warnings = [], warn = console.warn;
 console.warn = (...args) => { warnings.push(args.join(" ")); warn(...args); };
 let session, host, steps = [], requests = 0, summaries = 0, decision = "Continue", replacement = "Replace", auditor = "Disabled", duringDialog, duringDialogTitle = "Confirm", afterTool, shutdownFiles, settingsChoices = [], providerFailure;
+let terminalInput, goalWidget, confirmClear = false;
 const objective = label => `1) Discuss ${label}. Done when the requirements are agreed.\n2) Implement ${label}. Done when its tests pass.`;
 const proposal = (selectedMode, label) => ({ name: "propose_goal_draft", args: { objective: objective(label), sisyphus: selectedMode === "sisyphus", auto_continue: false } });
 const latestDraft = () => session.sessionManager.getBranch().findLast(e => e.type === "custom" && e.customType === "pi-goal-draft");
@@ -46,7 +47,7 @@ const files = () => {
 async function open(manager, sessionStartEvent) {
   const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
     systemPrompt: "Discuss the synthetic fixture without starting unconfirmed goal work.",
-    additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
+    additionalExtensionPaths: [process.env.PI_GOAL_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
     extensionFactories: [pi => {
       pi.on("tool_result", async event => { results.push(event); if (afterTool) await afterTool(event); });
       // Observe the outgoing host settlement before the fork runtime exists.
@@ -55,14 +56,21 @@ async function open(manager, sessionStartEvent) {
   });
   await loader.reload({ resolveProjectTrust: async () => true });
   assert.deepEqual(loader.getExtensions().errors, []);
+  if (scenario === "package-surfaces") {
+    const goalExtensions = loader.getExtensions().extensions.filter(extension => extension.commands.has("goal"));
+    assert.equal(goalExtensions.length, 1, "load exactly one goal extension");
+    assert.deepEqual([...goalExtensions[0].commands.keys()].sort(), ["goal", "sisyphus", "goal-cancel", "goal-direct", "sisyphus-direct", "goal-list", "goal-status", "goal-refresh", "goal-recovery", "goal-focus", "goal-unfocus", "goal-settings", "goal-tweak", "goal-clear", "goal-pause", "goal-resume"].sort());
+  }
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
   await runtime.setRuntimeApiKey("openai", "synthetic-unused");
   if (auditServer) runtime.registerProvider("fixture", {baseUrl: `http://127.0.0.1:${auditServer.address().port}/v1`, api: "openai-completions", apiKey: "synthetic-unused", models: [{id: "reviewer", name: "Reviewer", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192, cost: model.cost}]});
   const created = await createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, thinkingLevel: "off", resourceLoader: loader, sessionManager: manager, settingsManager: settings, sessionStartEvent });
   session = created.session;
   await session.bindExtensions({ mode: "rpc", onError: error => errors.push(error), uiContext: {
-    notify(message) { notices.push(message); }, setStatus() {}, setWidget() {}, setEditorText() {}, onTerminalInput: () => () => {},
-    input: async () => "Fixture custom answer", confirm: async () => false,
+    notify(message) { notices.push(message); }, setStatus() {}, setEditorText() {},
+    setWidget: (_key, factory) => { if (scenario === "package-surfaces") goalWidget = typeof factory === "function" ? factory({requestRender() {}, terminal: {rows: 24}}, {fg: (_color, value) => value, bg: (_color, value) => value, bold: value => value}) : undefined; },
+    onTerminalInput: handler => { terminalInput = handler; return () => {}; },
+    input: async () => "Fixture custom answer", confirm: async () => confirmClear,
     select: async (title, choices) => {
       dialogs.push({ title, choices });
       if (title === "Cancel this question?") return undefined;
@@ -138,7 +146,53 @@ try {
   ]);
   assert.equal(latestDraft().data.auditorEnabled, !!auditServer, "per-draft auditor choice survives refinement");
   assert.deepEqual(files(), [], "discussion creates no approved goal");
-  if (scenario === "scope-audit") {
+  if (scenario === "package-surfaces") {
+    assert.deepEqual(session.getActiveToolNames().filter(name => /goal/.test(name)).sort(), ["goal_question", "goal_questionnaire", "propose_goal_draft"].sort());
+    decision = "Confirm";
+    const proposed = proposal(mode, "Package qualification");
+    proposed.args.tasks = Array.from({length: 20}, (_, i) => ({id: `item-${i}`, title: `Package task ${i}`}));
+    await run("Confirm this synthetic package trial.", [proposed]);
+    assert.deepEqual(session.getActiveToolNames().filter(name => /goal/.test(name)).sort(), ["create_goal", "get_goal", "update_goal", "set_goal_tasks", "update_goal_task"].sort());
+    for (const command of ["/goal-list", "/goal-status", "/goal-status verbose", "/goal-status health", "/goal-refresh", "/goal-recovery", "/goal-recovery repair"]) {
+      const count = notices.length;
+      await session.prompt(command);
+      assert(notices.length > count, `${command} reports through the native command surface`);
+    }
+    assert(notices.some(notice => notice.includes("Package task 19")), "verbose status exposes the whole plan");
+    const compact = goalWidget.render(140).join("\n");
+    assert(compact.includes("Package"));
+    assert.deepEqual(terminalInput("\x1b[116;6u"), {consume: true}, "Ctrl+Shift+T expands the native widget");
+    const expanded = goalWidget.render(140).join("\n");
+    assert.notEqual(expanded, compact);
+    for (const key of ["\x1b[B", "\x1b[A", "\x1b[6~", "\x1b[5~", "\x1b[F", "\x1b[H"]) assert.deepEqual(terminalInput(key), {consume: true}, `navigation ${JSON.stringify(key)} in ${expanded}`);
+    assert.deepEqual(terminalInput("\x1b"), {consume: true}, "Escape collapses the view without pausing");
+    await run("Inspect the focused trial goal.", [{name: "get_goal", args: {}}]);
+    const beforeToggle = results.at(-1).details.goal.skipAuditor;
+    assert.deepEqual(terminalInput("\x1b[97;6u"), {consume: true}, "Ctrl+Shift+A toggles the focused auditor");
+    await run("Inspect the saved auditor choice.", [{name: "get_goal", args: {}}]);
+    assert.equal(!!results.at(-1).details.goal.skipAuditor, !beforeToggle);
+    terminalInput("\x1b[97;6u");
+    settingsChoices = ["Done"];
+    await session.prompt("/goal-settings");
+    assert.deepEqual(settingsChoices, []);
+    await session.prompt("/goal-pause");
+    await session.prompt("/goal-unfocus");
+    await session.prompt("/goal-status");
+    assert.match(notices.at(-1), /Goal focus required/);
+    await session.prompt("/goal-focus");
+    await run("/goal-resume", []);
+    await session.prompt("/goal-pause");
+    await run("/goal-tweak Review the trial wording.", [proposal(mode, "Reviewed package qualification")]);
+    const beforeClear = files();
+    await session.prompt("/goal-clear");
+    assert.deepEqual(files(), beforeClear, "cancelled clear preserves the package trial record");
+    confirmClear = true;
+    await session.prompt("/goal-clear");
+    assert.deepEqual(files(), []);
+    await run(`/${mode} Discuss a separate unconfirmed trial`, []);
+    await session.prompt("/goal-cancel");
+    assert(latestDraft().data.clearedAt);
+  } else if (scenario === "scope-audit") {
     decision = "Confirm";
     const proposed = proposal(mode, "Audited approved requirements");
     const goalContract = "Verify the exact content of scope-audit-proof.txt.";

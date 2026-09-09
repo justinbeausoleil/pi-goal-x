@@ -49,7 +49,7 @@ the spec/plan, not in this inventory.
 
 | Phase / concern | Primary baseline source | Required evidence / disposition | Owner; spec |
 | --- | --- | --- | --- |
-| Load, SDK, registration | [installer](../../extensions/goal.ts), [tool profiles](../../extensions/goal-tool-names.ts) | Real Pi loader/start, all 17 commands and 5 execution/3 drafting tools; align supported SDK. Repair/qualify. | 001, 012; G1, G9, G13 |
+| Load, SDK, registration | [installer](../../extensions/goal.ts), [tool profiles](../../extensions/goal-tool-names.ts) | Real Pi loader/start, all 16 commands and 5 execution/3 drafting tools; align supported SDK. Repair/qualify. Original review counted17;012 source inspection confirms the same16 registrations in both fe430b2 and the fork. | 001, 012; G1, G9, G13 |
 | Guided regular/ordered drafting | [draft runtime](../../extensions/goal-drafting.ts), [questionnaire](../../extensions/goal-questionnaire.ts) | Questions/refinement/confirm/cancel, durable draft, no-UI behavior, no synthetic question gate; retain minimal reconnaissance. Preserve. | 005; G10 |
 | Direct regular/ordered creation | [commands](../../extensions/goal-commands.ts), [core tools](../../extensions/goal-core-tools.ts) | All starts and public explicit creation receive objective before first work. Repair. | 001; G1 |
 | Tweak and structural confirmation | [draft runtime](../../extensions/goal-drafting.ts), [task confirmation](../../extensions/goal-task-confirmation.ts) | Full before/after inspection, scope receipt, cancellation, no stale commit; auto-confirm cannot waive scope. Extend. | 005; G7, G10 |

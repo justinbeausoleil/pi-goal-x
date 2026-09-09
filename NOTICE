@@ -1,0 +1,11 @@
+pi-goal-x reliability fork
+
+This package is maintained as @justinbeausoleil/pi-goal-x by Justin Beausoleil.
+It is derived from https://github.com/tmonk/pi-goal-x, runtime baseline
+fe430b251eeaff4ff7c041085fd05458b2776cb9, with upstream Git history preserved.
+
+Original copyright (c) 2026 Lucas. The original MIT license and attribution
+are preserved in LICENSE. Fork changes are distributed under the same license.
+
+This private prerelease is not published to npm. It is distinct from the
+upstream pi-goal-x package; install only one goal extension in a Pi session.

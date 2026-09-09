@@ -1,4 +1,4 @@
-> Maintainer fork: see [FORK.md](FORK.md) for the goal-reliability design, status, and development records. Runtime repairs are not implemented yet.
+> Maintainer fork: `@justinbeausoleil/pi-goal-x`. Reliability repairs have passed deterministic verification; package qualification and real-Qwen acceptance are in progress. See [FORK.md](FORK.md) and [release notes](RELEASE_NOTES.md). The ranking badge below describes upstream.
 
 <div align="center">
   <img src="pi-goal-x.png" alt="pi-goal-x logo" width="560">
@@ -13,7 +13,7 @@
   </a>
 </div>
 
-# pi-goal-x
+# pi-goal-x reliability fork
 
 Adds `/goal` functionality to [pi](https://github.com/earendil-works/pi-coding-agent). The agent helps you define a goal and plan, continues working on it automatically, and submits the result to an optional independent completion auditor.
 
@@ -21,9 +21,23 @@ The extension saves goal objectives, tasks, and progress across sessions. You ca
 
 ## Install
 
+This private prerelease is distributed as an exact packed tarball, not through
+npm publication. Use Pi0.85.1 and the Node versions listed in the release notes.
+Keep the trial separate from your normal Pi agent directory:
+
 ```bash
-pi install npm:pi-goal-x
+artifact=/absolute/path/justinbeausoleil-pi-goal-x-0.31.2-reliability.1.tgz
+mkdir -p "$HOME/Developer/scratch"
+trial_dir=$(mktemp -d "$HOME/Developer/scratch/pi-goal-x-trial.XXXXXX")
+npm install --prefix "$trial_dir/package" --ignore-scripts --legacy-peer-deps "$artifact"
+PI_CODING_AGENT_DIR="$trial_dir/agent" pi install "$trial_dir/package/node_modules/@justinbeausoleil/pi-goal-x"
+PI_CODING_AGENT_DIR="$trial_dir/agent" pi
 ```
+
+Use a synthetic project for the trial. Load one goal extension only. Retain the
+pretrial package, settings and project data; keep fork-written data separately
+when rolling back. Upstream cannot be assumed to preserve new metadata or large
+plans when rewriting them. Live adoption awaits the recorded acceptance gate.
 
 ## Create a goal
 
@@ -84,7 +98,7 @@ Cancelling a proposal keeps the discussion for refinement. Use `/goal-cancel` to
 
 When enabled, a separate agent reviews the work before the goal is accepted as complete. It checks the objective, tasks, recorded evidence, completion requirements, and workspace.
 
-If the auditor approves, the goal is archived as complete. If it identifies unmet requirements, the goal remains open with feedback describing the work still needed. You can choose the auditor model in `/goal-settings` and toggle auditing for the focused goal with `Ctrl+Shift+A`.
+If the auditor approves, the goal is archived as audited completion. If it identifies unmet requirements, the goal remains open with durable feedback describing the work still needed. You can choose the auditor model in `/goal-settings` and toggle auditing for the focused goal with `Ctrl+Shift+A`. Explicit bypass is labelled audit-skipped completion. Hiding task tools or bypassing review does not waive retained requirements.
 
 ## Progress and goal controls
 

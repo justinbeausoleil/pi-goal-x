@@ -1933,3 +1933,43 @@
   fe430b2 source both register the same16 commands, not17.012 will document the
   correction and verify the whole existing set; it will not invent a command.
   Tickets013–014 remain blocked by qualification; no live selection changed.
+
+### 012 — private package identity and mounted-widget repair (partial)
+
+- Candidate identity is now @justinbeausoleil/pi-goal-x@0.31.2-reliability.1,
+  private:true, fork repository metadata, original MIT license and new NOTICE.
+  Packed FORK.md/release notes and isolated-install instructions distinguish
+  current verification from pending package/Qwen acceptance. The upstream
+  publication workflow/guard remains untouched.
+- Targeted npm update changes only js-yaml4.3.1 to4.3.2 besides root package
+  identity. npm ci --ignore-scripts succeeds; full development audit now reports
+  zero vulnerabilities (Data012/install.log and development-audit.json).
+- Initial actual tarball installation into Developer/scratch/pi-goal-x-package-probe
+  passes the existing real-Pi auditor/artifact/archive worker. Retain that
+  original tarball in Data012/initial-package. Native workers now accept the
+  same PI_GOAL_TEST_EXTENSION override for the installed package directory.
+- The new package-surfaces characterization confirms the existing16 registrations,
+  native guided three/five-tool profiles, commands/settings and keyboard/render
+  behavior. It exposed an inherited bug: core.goalWidgetComponentRef was never
+  assigned the mounted component, so navigation could not scroll. The original
+  fe430b2 has the same missing assignment. The existing widget factory now fills
+  that existing reference in both focused/unfocused registration paths.
+  No new UI or command is introduced.
+- Data012/packed-surfaces-navigation.log records the actual native ArrowDown
+  failure with overflowing content. Initial viewport-less and viewport attempts
+  are retained. After the shared wiring repair both goal/sisyphus source cases
+  pass;121 related widget/modal/status checks, type and lint pass. A subsequent
+  fixture failure expected the wrong unfocused text; the canonical response is
+  "Goal focus required". Navigation assertions remain in place.
+- Data012/attempt-02 contains the next actual tarball/install and a passing
+  package-directory load/UI smoke. Official Node22.15.0 and24.0.0 darwin-arm64
+  archives were downloaded into Library/Caches/pi-goal-x/qualification/node
+  and verified against their official SHA256 lists. Both run that installed
+  package-surfaces goal fixture successfully; broader runtime qualification
+  remains pending. Early setup attempted a nonexistent cwd before mkdir and
+  performed no download; the corrected setup completed.
+- Next: native packed coverage across remaining surfaces/settings, legacy
+  migration plus exact package/settings/data backup/rollback, real-SDK serial
+  and full qualification, current documentation/harness compatibility, then
+  two-axis review. No012 acceptance box is checked, no S3 trial has started,
+  and live package selection remains unchanged.

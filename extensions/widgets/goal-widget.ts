@@ -84,20 +84,12 @@ export function makeGoalWidgetFactory(opts: {
 	getExpanded?: () => boolean;
 	getLedgerEvents?: () => GoalLedgerEvent[];
 	getAuditResult?: () => AuditResultView | null;
-}) {
-	return (tui: TUI, theme: Theme) => new GoalWidgetComponent({
-		tui,
-		theme,
-		getGoal: opts.getGoal,
-		getOpenGoalCount: opts.getOpenGoalCount,
-		getAuditorProgress: opts.getAuditorProgress,
-		getSettings: opts.getSettings,
-		getDebugMode: opts.getDebugMode,
-		getStalled: opts.getStalled,
-		getExpanded: opts.getExpanded,
-		getLedgerEvents: opts.getLedgerEvents,
-		getAuditResult: opts.getAuditResult,
-	});
+}, componentRef?: {current: GoalWidgetComponent | null}) {
+	return (tui: TUI, theme: Theme) => {
+		const component = new GoalWidgetComponent({...opts, tui, theme});
+		if (componentRef) componentRef.current = component;
+		return component;
+	};
 }
 
 export interface AuditorWidgetProgress {

@@ -89,7 +89,7 @@ const steps = [
 let inFlight;
 const detailContent = new Map(), detailCursors = new Map(), contentRevisions = new Map();
 async function accountOtherSession() {
-  const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPrompt: "Report briefly.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))] });
+  const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPrompt: "Report briefly.", additionalExtensionPaths: [process.env.PI_GOAL_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))] });
   await loader.reload({ resolveProjectTrust: async () => true });
   assert.deepEqual(loader.getExtensions().errors, []);
   const runtime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
@@ -193,7 +193,7 @@ async function record(event) {
 function flatten(tasks) { return tasks.flatMap(task => [task, ...flatten(task.subtasks ?? [])]); }
 async function open(manager) {
   const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPrompt: "Perform the authorized synthetic fixture.",
-    additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
+    additionalExtensionPaths: [process.env.PI_GOAL_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
     extensionFactories: [pi => {
       pi.on("tool_result", record);
       // One accounting save before execution is adopted; another after the

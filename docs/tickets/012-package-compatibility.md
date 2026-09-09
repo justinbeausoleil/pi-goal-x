@@ -17,7 +17,7 @@ Use the plan's navigation/test table; trace the selected public flow before edit
 
 - [ ] Give the packed candidate the D6 fork name/prerelease identity and correct repository/install/notice metadata; preserve MIT attribution, ancestry, and upstream publication guard. Record commit and tarball hashes.
 - [ ] Install/load the actual tarball alone through Pi in isolated agent/project directories. Verify Pi 0.85.1 and declared Node 22.15/24 compatibility, or narrow declarations to what passed.
-- [ ] Exercise all 17 registered slash commands, five normal tools, three draft tools, lifecycle-dependent visibility and executor validation, both modes, dashboard/overlay/status/list, and documented keybindings against the lifecycle matrix.
+- [ ] Exercise all 16 registered slash commands, five normal tools, three draft tools, lifecycle-dependent visibility and executor validation, both modes, dashboard/overlay/status/list, and documented keybindings against the lifecycle matrix.
 - [ ] Run existing layered-settings/UI suites for global/project/env precedence, override removal, refresh/cache invalidation, invalid values, task/contract disabling, auditor/Oracle selection, and finite/unbounded retry settings. No data/requirements disappear when a feature is disabled.
 - [ ] Read copied legacy goals/sessions, migrate a synthetic record, make fork changes, then restore pretrial package/settings/data while preserving the fork-written copy separately. Do not claim upstream can rewrite new metadata losslessly.
 - [ ] Run D6 build/test/payload/package and applicable CI gates, real-SDK serial tests, existing shell-harness tests, runner discovery checks, and dependency audits; report inherited failures separately. Verify current architecture, agent-flow, experiment support matrix, release notes, and package instructions match the fork without rewriting historical records. Preserve package users' other packages/settings and use no credentials/private data in artifacts.
@@ -31,3 +31,8 @@ characterization), green commands/results, artifact locators, review findings,
 and limitations. Acceptance checkboxes require evidence.
 
 Evidence: pending implementation.
+
+Planning count correction: both the original runtime baseline fe430b2 and the
+current fork register the same16 commands in extensions/goal-commands.ts. The
+approved text's17 was a counting error; no command was removed or added. Verify
+the actual complete set through the packed loader.

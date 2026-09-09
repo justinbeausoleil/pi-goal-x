@@ -512,6 +512,8 @@ Pure ANSI text wrapping/truncation is cached by text and layout arguments across
 widgets and dialogs. Live auditor previews scan only the report tail, while the
 complete final report remains available. Measurements and the module audit are
 in `specs/2026-09-07-comprehensive-optimization/`.
+The widget factory retains the rendered component in the existing core reference
+so keyboard navigation, invalidation and scrolling reach the mounted widget.
 
 The `tool_call` interceptor blocks work tools after a stop tool has fired in
 the same turn, and blocks work tools when the checkpoint that triggered the

@@ -40,7 +40,7 @@ const pause = {name: "update_goal", args: {status: "paused", reason: "Ownership 
 
 async function open(manager, sessionStartEvent) {
   const loader = new DefaultResourceLoader({cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
-    systemPrompt: "Perform only the explicitly authorized fixture work.", additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
+    systemPrompt: "Perform only the explicitly authorized fixture work.", additionalExtensionPaths: [process.env.PI_GOAL_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
     extensionFactories: [pi => {
       pi.on("tool_result", event => {
         results.push(event);

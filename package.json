@@ -1,6 +1,7 @@
 {
-  "name": "pi-goal-x",
-  "version": "0.31.2",
+  "name": "@justinbeausoleil/pi-goal-x",
+  "version": "0.31.2-reliability.1",
+  "private": true,
   "description": "Adds /goal to pi: conversational goal planning, flexible or ordered goals, persistent progress, and an independent completion auditor.",
   "license": "MIT",
   "author": "pi-goal-x contributors",
@@ -20,17 +21,20 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tmonk/pi-goal-x.git"
+    "url": "git+https://github.com/justinbeausoleil/pi-goal-x.git"
   },
-  "homepage": "https://github.com/tmonk/pi-goal-x#readme",
+  "homepage": "https://github.com/justinbeausoleil/pi-goal-x#readme",
   "bugs": {
-    "url": "https://github.com/tmonk/pi-goal-x/issues"
+    "url": "https://github.com/justinbeausoleil/pi-goal-x/issues"
   },
   "files": [
     "extensions",
     "scripts/recover-session-checkpoints.mjs",
     "README.md",
     "LICENSE",
+    "NOTICE",
+    "FORK.md",
+    "RELEASE_NOTES.md",
     "docs/agent-flow-design.md",
     "docs/agentic-runtime-prd.md",
     "docs/architecture.md",

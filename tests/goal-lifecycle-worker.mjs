@@ -44,7 +44,7 @@ const loader = new DefaultResourceLoader({
 	cwd, agentDir, settingsManager: settings,
 	noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
 	systemPrompt: "Perform the authorized synthetic fixture.",
-	additionalExtensionPaths: [fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
+	additionalExtensionPaths: [process.env.PI_GOAL_TEST_EXTENSION ?? fileURLToPath(new URL("../extensions/goal.ts", import.meta.url))],
 	extensionFactories: [pi => {
 		pi.on("before_agent_start", () => { starts++; });
 		pi.on("tool_result", event => {

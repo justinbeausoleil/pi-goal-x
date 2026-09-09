@@ -695,7 +695,7 @@ export function createGoalCore(
 						getExpanded: () => dashboardExpanded,
 						getLedgerEvents: () => state.goal ? goalActivityEvents(ctx, state.goal.id) : [],
 						getAuditResult: () => auditResult,
-					}),
+					}, goalWidgetComponentRef),
 					{ placement: "aboveEditor" },
 				);
 				widgetRegistered = true;
@@ -725,7 +725,7 @@ export function createGoalCore(
 					getExpanded: () => dashboardExpanded,
 					getLedgerEvents: () => state.goal ? goalActivityEvents(ctx, state.goal.id) : [],
 					getAuditResult: () => auditResult,
-				}),
+				}, goalWidgetComponentRef),
 				{ placement: "aboveEditor" },
 			);
 			widgetRegistered = true;
