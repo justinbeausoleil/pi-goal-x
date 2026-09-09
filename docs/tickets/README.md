@@ -22,7 +22,7 @@ Read the [spec](../../spec.md), [plan contracts](../../plan.md), and
 | [013](013-qwen-validation.md) | execute the fixed real-Qwen acceptance matrix | 012 | in-progress | G8 |
 | [014](014-adoption-plan.md) | prepare the verified fork for an intentional live trial | 013 (behavioral acceptance PASS required) | ready-for-agent | G9 |
 
-The current frontier is **013**: freeze and execute a new full matrix for the
+The current frontier is **013**: matrix03 is frozen and running against the
 qualified reliability.2 candidate (Codex, single implementation writer).
 Matrix02 finished0/6 and remains retained; it does not qualify the repaired candidate.
 The completed bounded child [012a](012a-harness-sdk.md) repaired the existing

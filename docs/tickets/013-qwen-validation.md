@@ -1,6 +1,6 @@
 # 013: execute the fixed real-Qwen acceptance matrix
 
-**Status:** in-progress — Codex; matrix02 finished0/6; qualified repaired candidate awaits a new full matrix.
+**Status:** in-progress — Codex; matrix03 frozen and running on qualified reliability.2; matrix02 retained0/6.
 **Blocked by:** 012.
 **Requirements:** G8; seams S3.
 **What to build:** The maintainer sees all outcomes from a frozen six-run artifact-producing experiment on the installable candidate.
@@ -57,4 +57,10 @@ Replacement qualification is complete at source
 `e47f475a37ddc04db1e68199c33041888a3d32c1`, reliability.2, SHA256
 `1f32b6757aad3889933c543a3eead173747faf9c7f27860cbede98fdf5be3e64`.
 Data012/reliability-02/qualification.json and both review axes verify it.
-The next full matrix must freeze this artifact after integration.
+Matrix03 freezes this artifact at integrated source
+`5af1169ee02401d61e16df4c2bee6226b7980f3e`:
+`~/Data/pi-goal-x/reliability/013/matrix-03/matrix.json`.
+All six commands are recorded before execution; each runs once through its
+original watchdog. Native prompt and bounded-pressure repairs are included.
+Reporting checkboxes above retain the completed matrix02 evidence; matrix03
+must independently reach6/6 before this ticket can be done.

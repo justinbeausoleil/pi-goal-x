@@ -2384,3 +2384,23 @@
   verified the complete qualification and all six original matrix02 outcomes
   without duplicate tests/model calls.012 is done for reliability.2;013 is the
   frontier. No runtime source changed after its e47f475 qualification.
+
+### Reviewed branch integrated; matrix03 frozen and running
+
+- Merge5af1169ee02401d61e16df4c2bee6226b7980f3e integrates the reviewed fixes
+  while retaining exact artifact-source e47f475 in ancestry. Runtime, tests,
+  fixture/driver, lock and package files match the qualified worktree. The
+  implementation branch was pushed; main and live package selection stay unchanged.
+- Matrix03 is frozen at that merge in Data013/matrix-03/matrix.json. Artifact
+  reliability.2 SHA256 remains1f32b6757aad3889933c543a3eead173747faf9c7f27860cbede98fdf5be3e64.
+  Freeze verifies all68 installed files and source/config/fixture hashes. Native
+  prompt6170a57 and pressure53cb5f1 repairs are present; no assertion or D6 limit
+  was weakened. Matrix02/results.json and its complete0/6 report are retained.
+- commands.json records all six exact watchdog commands before any request.
+  The sequential runner started run01 at2026-09-09T03:28:31Z and will run1–6
+  once each. Keep frozen source/package/config unchanged; no concurrent heavy
+  qualification work remains. Record every outcome before diagnosing another
+  candidate.013 requires6/6;014 remains dependent on that result.
+- Operational checkpoint: native outer runner session95035 owns all six slots.
+  All prior sessions are complete. New evidence/project directories use
+  matrix-03 / pi-goal-qwen-matrix-03-N. Do not launch a duplicate slot.
