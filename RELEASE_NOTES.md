@@ -1,3 +1,14 @@
+# 0.31.2-reliability.2 — private qualification candidate
+
+- Auditor-toggle notices and ledger entries now reflect the saved result. A
+  failed durable write reports an error and leaves the prior selection intact.
+- Global abort cancels pending task confirmation and completion review even
+  when the goal was already paused. Late results cannot mutate that goal, and
+  cancellation does not retarget a newly selected goal.
+
+This candidate requires its own package qualification and six-run Qwen gate.
+See [FORK.md](FORK.md) for the artifact-specific records.
+
 # 0.31.2-reliability.1 — private qualification candidate
 
 Package: `@justinbeausoleil/pi-goal-x`; derived from upstream 0.31.2 under MIT.

@@ -26,7 +26,7 @@ npm publication. Use Pi0.85.1 and the Node versions listed in the release notes.
 Keep the trial separate from your normal Pi agent directory:
 
 ```bash
-artifact=/absolute/path/justinbeausoleil-pi-goal-x-0.31.2-reliability.1.tgz
+artifact=/absolute/path/justinbeausoleil-pi-goal-x-0.31.2-reliability.2.tgz
 mkdir -p "$HOME/Developer/scratch"
 trial_dir=$(mktemp -d "$HOME/Developer/scratch/pi-goal-x-trial.XXXXXX")
 npm install --prefix "$trial_dir/package" --ignore-scripts --legacy-peer-deps "$artifact"
