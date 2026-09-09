@@ -40,3 +40,10 @@ Historical optional cases/rubrics remain. C16's unsupported thresholdTokens
 configuration now uses native reserve/retention settings; a run that never
 compacts supplies no compaction evidence. No rubric assertion was removed or
 relaxed, and no optional real-model case or S3 trial was run for this repair.
+
+Independent spec review of9190336 found a legitimate no-work yield incorrectly
+timed out while the disk goal stayed active. The added native clarification →
+/goal-pause chain reproduces exit124, then passes after the launcher uses Pi's
+idle/queue state and reserves its delayed-recovery wait for provider failures.
+Data012/harness-yield-red.log and harness-yield-green.log retain both outcomes.
+The repaired combined fixture passes2/2 in4738ms; re-review remains pending.

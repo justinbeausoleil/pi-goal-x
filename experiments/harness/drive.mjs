@@ -243,19 +243,16 @@ session.subscribe((e) => {
 
 // Quiet-window for "no more chained activity". Slash commands (sendMessage with
 // triggerTurn) queue follow-up turns that fire-and-forget AFTER prompt() resolves.
-// autoContinue also fires another turn ~50ms after each turn_end. The window
-// must be large enough to capture LLM RTT before the next turn_start event,
-// otherwise the harness exits between an autoContinue chain's links. 400ms was
-// too tight for sisyphus goals where the schema forces turn-per-step
-// (step_complete) execution. We use a goal-aware policy: while a goal is
-// active+autoContinue, we keep waiting (with a generous ceiling); only when the
-// goal goes paused/complete/missing do we fall back to the short quiet window.
+// The window covers the extension's short continuation timer. Pi's idle/queue
+// state owns in-flight work; a persisted active goal can have yielded to the user.
+// After a provider error, extension recovery can outlast the quiet window, so
+// retain the existing goal-aware wait for that case, bounded by the deadline.
 const POLL_MS = 50;
 
 function readActiveGoal() {
 	// The extension persists the goal record under .pi/goals/active_goal_*.md
-	// (in CWD). We sniff that file to check if autoContinue is still chasing
-	// the objective so the harness can wait through inter-turn LLM RTT.
+	// (in CWD). After a provider error this tells us whether extension recovery
+	// may still be pending beyond the quiet window.
 	try {
 		const dir = ".pi/goals";
 		const list = readdirSync(dir);
@@ -275,18 +272,13 @@ function readActiveGoal() {
 }
 
 async function waitForQuiescence(deadline) {
-	// Settling strategy: after the last turn_end, we wait QUIET_MS. If a new
-	// turn starts during that window (slash-command follow-up or autoContinue
-	// continuation), the timer resets. Additionally, while the goal is still
-	// active+autoContinue, we extend waiting until the next turn fires or the
-	// deadline hits — this captures the LLM RTT gap between turns.
+	// Each new turn resets the quiet window; native busy/queued work keeps it open.
 	while (Date.now() < deadline) {
-		const idle = !session.isStreaming && inFlightTurns === 0;
+		const idle = session.isIdle && session.pendingMessageCount === 0 && inFlightTurns === 0;
 		const sinceActivity = Date.now() - lastTurnActivityAt;
 		if (idle && sinceActivity >= QUIET_MS) {
-			// Quiet window elapsed. But if the goal is still actively chasing
-			// autoContinue, give it more time — the next turn may just be slow
-			// to start (LLM cold start, large prompt, etc.).
+			if (!providerError) return true;
+			// An active automatic goal can still have a delayed recovery attempt.
 			const g = readActiveGoal();
 			if (!g || g.status !== "active" || g.autoContinue === false) return true;
 			// Goal is still active+autoContinue. Wait up to deadline for the

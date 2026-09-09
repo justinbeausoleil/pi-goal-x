@@ -34,6 +34,7 @@ test("experiment driver binds the native SDK, drains direct startup and preserve
 	const requests: any[] = [];
 	let holdResponse = false;
 	let rejectRequest = false;
+	let clarification = false;
 	const server = createServer(async (req, res) => {
 		let body = "";
 		for await (const chunk of req) body += chunk;
@@ -49,7 +50,7 @@ test("experiment driver binds the native SDK, drains direct startup and preserve
 			: requests.length === 2 ? { name: "get_goal", arguments: "{}" } : undefined;
 		res.writeHead(200, { "content-type": "text/event-stream" });
 		for (const [delta, finish_reason] of [
-			[{ role: "assistant", ...(tool ? { tool_calls: [{ index: 0, id: `call-${requests.length}`, type: "function", function: tool }] } : { content: "The goal is paused." }) }, null],
+			[{ role: "assistant", ...(tool ? { tool_calls: [{ index: 0, id: `call-${requests.length}`, type: "function", function: tool }] } : { content: clarification ? "Which file should I write? I will wait for your answer." : "The goal is paused." }) }, null],
 			[{}, tool ? "tool_calls" : "stop"],
 		]) res.write(`data: ${JSON.stringify({ id: "harness", object: "chat.completion.chunk", created: 1, model: "synthetic", choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
 		res.end("data: [DONE]\n\n");
@@ -117,6 +118,11 @@ test("experiment driver binds the native SDK, drains direct startup and preserve
 		const abort = await run("scheduled-abort");
 		assert.match(abort.stdout, /_drive_abort_scheduled/);
 		assert(!abort.stdout.includes('"type":"_drive_error"'));
+		holdResponse = false;
+		clarification = true;
+		writeFileSync(path.join(caseDir, "INPUT.md"), "TURN: /goal-direct Clarify which file to write.\nTURN: /goal-pause\n");
+		const yielded = await run("yield-followup", { PI_GOAL_TEST_TURN_TIMEOUT: "0.5" });
+		assert.equal(yielded.stdout.split('"type":"_turn_done"').length - 1, 2, "a legitimate yield must allow the next user command");
 	} finally {
 		server.closeAllConnections();
 		await new Promise<void>(resolve => server.close(() => resolve()));

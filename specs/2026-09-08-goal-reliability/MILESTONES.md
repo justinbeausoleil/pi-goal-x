@@ -2034,3 +2034,29 @@
   Next freeze this candidate, run final required gates, qualify the final packed
   artifact and obtain independent spec/standards review for base b84ec25.
   Parent012 and child012a remain in progress;013/014 remain pending.
+
+### 012 frozen package and independent review follow-up
+
+- Candidate919033648e51180c96b107fefedc6a27d2825f46 full suite passed1352/1352,
+  48suites/76files,265623ms, no skipped/failed tests (full-9190336.log).
+  Runner selfcheck passed954/954 across71 files; NAF105/95 baseline gate and
+  ranking5 checks pass. Dry pack has68 files. Tests are evidence, not S3.
+- attempt-03 artifact SHA256:
+  657c335e353701f648461cdba3feaa2632ed374e64cc2a29d8d8a322d399f65c.
+  It installs and passes six native cases across Node22.15.0/24.0.0.
+  Packed-byte comparison proves all runtime/package metadata identical to the
+  earlier34-case attempt-02; only release notes/agent-flow/architecture differ.
+  rollback-06 passes78 exact restored files against this exact artifact.
+- Standards review of b84ec25...9190336 reports no material violations or
+  actionable smells; independent harness and both package surfaces passed.
+  Spec review found one real launcher defect: an active goal legitimately
+  yielding a clarification was mistaken for pending work, preventing the next
+  scripted user command. Its reproduction and requests are retained under
+  Data012/spec-review-9190336, and the registered test independently went red.
+- Repair uses native idle/queue state after a quiet window; the disk-active
+  recovery wait applies only following a provider error. Clarification then
+  /goal-pause now passes alongside stalled-executor timeout, provider error,
+  scheduled abort, invalid configuration and public pause/readback (2/2,4738ms).
+  Only the unshipped experiment launcher/tests/tracking changed after9190336;
+  the installed artifact is unchanged. Final serial check and re-review next.
+  No012/013/014 completion claim or live adoption.
