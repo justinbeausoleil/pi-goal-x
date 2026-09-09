@@ -28,7 +28,8 @@
  */
 
 import { readFileSync, mkdirSync, readdirSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve, join, dirname } from "node:path";
+import { createRequire } from "node:module";
 import {
 	createAgentSession,
 	createAgentSessionRuntime,
@@ -173,12 +174,17 @@ if (extInfo.errors.length || extInfo.extensions.length !== 1) {
 	console.error("[drive] expected exactly one successfully loaded extension");
 	process.exit(2);
 }
+// Use the selected package's existing classifier, loaded with Pi's TS loader.
+// An active goal alone cannot tell us whether a provider failure is recoverable.
+const { createJiti } = createRequire(import.meta.resolve("@earendil-works/pi-coding-agent"))("jiti");
+const { isNetworkErrorAssistantMessage, isAbortedAssistantMessage } = await createJiti(import.meta.url).import(join(dirname(extInfo.extensions[0].path), "goal-format.ts"));
 
 // Persistent session under the run dir so we can inspect after.
 const sessionManager = SessionManager.create(sandboxDir, sessionDir);
 
 let failed = false;
 let providerError;
+let recoveryEligible = false;
 const host = await createAgentSessionRuntime(async ({ sessionManager, sessionStartEvent }) => {
 	const created = await createAgentSession({
 		cwd: sandboxDir, agentDir, model, thinkingLevel: thinking, modelRuntime,
@@ -214,6 +220,7 @@ const unsubscribe = session.subscribe((event) => {
 		emit(event);
 		if (event.type === "message_end" && event.message.role === "assistant") {
 			providerError = event.message.stopReason === "error" ? event.message.errorMessage ?? "provider error" : undefined;
+			recoveryEligible = isNetworkErrorAssistantMessage(event.message) || isAbortedAssistantMessage(event.message);
 		}
 	} catch (err) {
 		console.error(`[drive] failed to emit event: ${err?.message || err}`);
@@ -277,7 +284,7 @@ async function waitForQuiescence(deadline) {
 		const idle = session.isIdle && session.pendingMessageCount === 0 && inFlightTurns === 0;
 		const sinceActivity = Date.now() - lastTurnActivityAt;
 		if (idle && sinceActivity >= QUIET_MS) {
-			if (!providerError) return true;
+			if (!recoveryEligible) return true;
 			// An active automatic goal can still have a delayed recovery attempt.
 			const g = readActiveGoal();
 			if (!g || g.status !== "active" || g.autoContinue === false) return true;
@@ -317,7 +324,7 @@ const promptWithTimeout = async (text, idx, opts = {}) => {
 		clearTimeout(promptTimer);
 		// Now wait for the system to actually go quiet (slash commands trigger
 		// background turns; we want those captured before moving on).
-		if (!await waitForQuiescence(deadline)) throw new Error("queued work timeout");
+		if (!await waitForQuiescence(deadline)) throw new Error(providerError ? `provider recovery timeout: ${providerError}` : "queued work timeout");
 		if (providerError) throw new Error(providerError);
 	} catch (err) {
 		failed = true;

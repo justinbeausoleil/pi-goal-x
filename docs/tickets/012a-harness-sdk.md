@@ -47,3 +47,14 @@ timed out while the disk goal stayed active. The added native clarification →
 idle/queue state and reserves its delayed-recovery wait for provider failures.
 Data012/harness-yield-red.log and harness-yield-green.log retain both outcomes.
 The repaired combined fixture passes2/2 in4738ms; re-review remains pending.
+
+The follow-up spec review cleared yielding but reproduced a sibling error path:
+an active-goal HTTP401 was incorrectly treated as delayed recovery. The driver
+now reuses the selected package's existing transient/aborted-message classifier
+through Pi's TypeScript loader. Active and unfocused authorization errors both
+exit1 with their diagnostic; eligible recovery retains its bounded wait.
+The registered fixture also exhausts Pi's two immediate retries, waits beyond
+the quiet window for one extension recovery, and observes a second real goal
+checkpoint followed by public pause. No classifier or retry policy was copied.
+Data012/harness-active-error-red.log and harness-recovery-green.log preserve
+red and green; the combined2/2 checks pass in11838ms. Final re-review pending.

@@ -2060,3 +2060,22 @@
   Only the unshipped experiment launcher/tests/tracking changed after9190336;
   the installed artifact is unchanged. Final serial check and re-review next.
   No012/013/014 completion claim or live adoption.
+
+### 012a active provider errors and preserved delayed recovery
+
+- Real-SDK serial at c40848b passed954/954,43suites,22894ms; current fresh B2/B7
+  passed53 unchanged limits with0 regressions/guard violations. Both dependency
+  audits report0 vulnerabilities. No package/runtime files changed afterward.
+- Standards re-review cleared c40848b. Spec confirmed the clarification fix,
+  but found an active-goal401 incorrectly waited as though recovery were pending.
+  Its original native repro and the registered red are retained in Data012.
+- The launcher now loads the selected package's existing provider-error
+  classifier with Pi's existing Jiti loader. Terminal errors reach their actual
+  failure status; transient/transport recovery retains its wait and deadline.
+  Tests cover active and unfocused401, plus3 transient503 responses exhausting
+  Pi's immediate retries, then a300ms extension recovery beyond the100ms quiet
+  window. Two actual goal checkpoints and a public paused result prove the
+  recovery path was preserved. Combined harness2/2 passes11838ms.
+- Check/lint pass. Next pin this small unshipped repair, test the launcher against
+  the installed tarball on Node22/24, re-review, then close012 if cleared.
+  Exact artifact remains attempt-03 SHA657c335e353701f648461cdba3feaa2632ed374e64cc2a29d8d8a322d399f65c.
